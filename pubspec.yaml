@@ -1,0 +1,47 @@
+name: hello_world_app
+description: "GarageCo Flutter App"
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.0
+
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  ## SUPABASE
+  supabase_flutter: ^2.5.6
+
+  ## CAROUSEL
+  carousel_slider: ^5.1.1
+
+  ## SHIMMER
+  shimmer: ^3.0.0
+
+  ## IMAGE PICKER
+  image_picker: ^1.1.2
+
+  
+  url_launcher: ^6.2.5
+
+  geolocator: ^14.0.2
+  
+  geocoding: ^4.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
