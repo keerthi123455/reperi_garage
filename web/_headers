@@ -1,0 +1,23 @@
+# Never cache the main entry files — always check for the latest version.
+# This ensures users get new deployments without needing to clear cache
+# or use incognito mode.
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/flutter_bootstrap.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/flutter_service_worker.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/version.json
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# Hashed build assets (main.dart.js, canvaskit, etc.) are safe to cache
+# aggressively since Flutter changes their filenames/hashes on every build.
+/main.dart.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.js
+  Cache-Control: public, max-age=31536000, immutable
