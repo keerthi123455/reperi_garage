@@ -1,6 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 
 class FleetRequestDetailsScreen extends StatefulWidget {
@@ -19,7 +20,11 @@ class FleetRequestDetailsScreen extends StatefulWidget {
 class _FleetRequestDetailsScreenState
     extends State<FleetRequestDetailsScreen> {
   late String _currentStatus;
-  File? _adminImage;
+
+  // ── Web-safe image state ──
+  // dart:io File does NOT work on Flutter Web.
+  // We store raw bytes instead, which works on every platform.
+  Uint8List? _adminImageBytes;
 
   final _picker = ImagePicker();
   bool _updating = false;
@@ -153,32 +158,102 @@ class _FleetRequestDetailsScreenState
   }
 
   Future<void> _pickAdminImage() async {
+    final source = await _showImageSourceSheet();
+    if (source == null) return;
+
+    // Note: on web, ImageSource.camera opens the browser's webcam capture
+    // UI if a camera is available and permission is granted. It will not
+    // work on devices/browsers with no camera — gallery is the reliable
+    // fallback in that case.
     final picked = await _picker.pickImage(
-      source: ImageSource.camera,
+      source: source,
       imageQuality: 70,
     );
 
     if (picked == null) return;
 
+    // readAsBytes() works identically on web, mobile, and desktop.
+    final bytes = await picked.readAsBytes();
+
     setState(() {
-      _adminImage = File(picked.path);
+      _adminImageBytes = bytes;
     });
   }
 
+  Future<ImageSource?> _showImageSourceSheet() {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Add Garage Photo',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_rounded,
+                    color: Color(0xFFD4A017)),
+                title: const Text('Take Photo',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () =>
+                    Navigator.pop(sheetContext, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_rounded,
+                    color: Color(0xFFD4A017)),
+                title: const Text('Choose from Gallery',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () =>
+                    Navigator.pop(sheetContext, ImageSource.gallery),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _uploadAdminPhoto() async {
-    if (_adminImage == null) return;
-    
+    if (_adminImageBytes == null) return;
+
     setState(() => _updating = true);
 
     try {
       final fileName =
           'garage_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
+      // uploadBinary works with raw bytes on every platform,
+      // unlike upload() which expects a dart:io File (web-incompatible).
       await Supabase.instance.client.storage
           .from('booking-images')
-          .upload(
+          .uploadBinary(
             'garage/$fileName',
-            _adminImage!,
+            _adminImageBytes!,
+            fileOptions: const FileOptions(
+              contentType: 'image/jpeg',
+            ),
           );
 
       final imageUrl =
@@ -522,7 +597,7 @@ class _FleetRequestDetailsScreenState
                         color: const Color(0xFF2A2A2A),
                       ),
                     ),
-                    child: _adminImage == null
+                    child: _adminImageBytes == null
                         ? const Center(
                             child: Text(
                               'UPLOAD GARAGE PHOTO',
@@ -533,8 +608,8 @@ class _FleetRequestDetailsScreenState
                           )
                         : ClipRRect(
                             borderRadius: BorderRadius.circular(18),
-                            child: Image.file(
-                              _adminImage!,
+                            child: Image.memory(
+                              _adminImageBytes!,
                               fit: BoxFit.cover,
                             ),
                           ),

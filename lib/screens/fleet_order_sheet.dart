@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -26,31 +26,98 @@ class _FleetOrderSheetState
   final _carNumberController =
       TextEditingController();
 
-  File? _image;
+  // ── Web-safe image state ──
+  // dart:io File does NOT work on Flutter Web.
+  // We store raw bytes instead, which works on every platform.
+  Uint8List? _imageBytes;
 
   bool _loading = false;
 
   final _picker = ImagePicker();
 
   Future<void> _pickImage() async {
+    final source = await _showImageSourceSheet();
+    if (source == null) return;
 
+    // Note: on web, ImageSource.camera opens the browser's webcam capture
+    // UI if a camera is available and permission is granted — it does NOT
+    // crash, but it may not be available on desktop browsers without a
+    // webcam. ImageSource.gallery always works everywhere as a fallback.
     final picked = await _picker.pickImage(
-      source: ImageSource.camera,
+      source: source,
       imageQuality: 70,
     );
 
     if (picked == null) return;
 
+    // readAsBytes() works identically on web, mobile, and desktop.
+    final bytes = await picked.readAsBytes();
+
     setState(() {
-      _image = File(picked.path);
+      _imageBytes = bytes;
     });
+  }
+
+  Future<ImageSource?> _showImageSourceSheet() {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Add Vehicle Photo',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_rounded,
+                    color: Color(0xFFD4A017)),
+                title: const Text('Take Photo',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () =>
+                    Navigator.pop(sheetContext, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_rounded,
+                    color: Color(0xFFD4A017)),
+                title: const Text('Choose from Gallery',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () =>
+                    Navigator.pop(sheetContext, ImageSource.gallery),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _submit() async {
 
     if (_vehicleModelController.text.isEmpty ||
         _carNumberController.text.isEmpty ||
-        _image == null) {
+        _imageBytes == null) {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -72,11 +139,16 @@ class _FleetOrderSheetState
       final fileName =
           '${DateTime.now().millisecondsSinceEpoch}.jpg';
 
+      // uploadBinary works with raw bytes on every platform,
+      // unlike upload() which expects a dart:io File (web-incompatible).
       await Supabase.instance.client.storage
           .from('booking-images')
-          .upload(
+          .uploadBinary(
             'fleet/$fileName',
-            _image!,
+            _imageBytes!,
+            fileOptions: const FileOptions(
+              contentType: 'image/jpeg',
+            ),
           );
 
       final imageUrl =
@@ -202,7 +274,7 @@ class _FleetOrderSheetState
                         color: const Color(0xFFD4A017),
                       ),
                     ),
-                    child: _image == null
+                    child: _imageBytes == null
                         ? const Center(
                             child: Text(
                               'Click To Upload Vehicle Photo',
@@ -214,8 +286,8 @@ class _FleetOrderSheetState
                         : ClipRRect(
                             borderRadius:
                                 BorderRadius.circular(18),
-                            child: Image.file(
-                              _image!,
+                            child: Image.memory(
+                              _imageBytes!,
                               fit: BoxFit.cover,
                             ),
                           ),
