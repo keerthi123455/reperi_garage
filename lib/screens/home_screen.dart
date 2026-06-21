@@ -265,9 +265,15 @@ class _HomeScreenState extends State<HomeScreen>
         stat: '4.9 ★ Rated',
         statIcon: Icons.star_rounded,
         statColor: const Color(0xFFD4A017),
-        onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(
-          builder: (_) => CarSpaScreen(vehicle: activeVehicle!),
-        )),
+        onTap: (ctx) {
+          if (activeVehicle == null) {
+            _showNoProfileDialog(ctx);
+            return;
+          }
+          Navigator.push(ctx, MaterialPageRoute(
+            builder: (_) => CarSpaScreen(vehicle: activeVehicle!),
+          ));
+        },
       ),
       _ActionTile(
         image: 'assets/images/tile_denting.jpg',
@@ -279,9 +285,15 @@ class _HomeScreenState extends State<HomeScreen>
         stat: 'Free Pickup',
         statIcon: Icons.local_shipping_rounded,
         statColor: Colors.white70,
-        onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(
-          builder: (_) => DentingTinkeringScreen(vehicle: activeVehicle!),
-        )),
+        onTap: (ctx) {
+          if (activeVehicle == null) {
+            _showNoProfileDialog(ctx);
+            return;
+          }
+          Navigator.push(ctx, MaterialPageRoute(
+            builder: (_) => DentingTinkeringScreen(vehicle: activeVehicle!),
+          ));
+        },
       ),
       _ActionTile(
         image: 'assets/images/tile_paint.jpg',
@@ -293,9 +305,15 @@ class _HomeScreenState extends State<HomeScreen>
         stat: 'Premium',
         statIcon: Icons.auto_awesome_rounded,
         statColor: const Color(0xFFD4A017),
-        onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(
-          builder: (_) => PaintCareScreen(vehicle: activeVehicle!),
-        )),
+        onTap: (ctx) {
+          if (activeVehicle == null) {
+            _showNoProfileDialog(ctx);
+            return;
+          }
+          Navigator.push(ctx, MaterialPageRoute(
+            builder: (_) => PaintCareScreen(vehicle: activeVehicle!),
+          ));
+        },
       ),
       _ActionTile(
         image: 'assets/images/tile_tyre.jpg',
@@ -307,9 +325,15 @@ class _HomeScreenState extends State<HomeScreen>
         stat: 'Free Test',
         statIcon: Icons.shield_rounded,
         statColor: Colors.green,
-        onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(
-          builder: (_) => TyreCareScreen(vehicle: activeVehicle!),
-        )),
+        onTap: (ctx) {
+          if (activeVehicle == null) {
+            _showNoProfileDialog(ctx);
+            return;
+          }
+          Navigator.push(ctx, MaterialPageRoute(
+            builder: (_) => TyreCareScreen(vehicle: activeVehicle!),
+          ));
+        },
       ),
       _ActionTile(
         image: 'assets/images/tile_detailing.jpg',
@@ -321,6 +345,14 @@ class _HomeScreenState extends State<HomeScreen>
         stat: 'Ceramic Coat',
         statIcon: Icons.layers_rounded,
         statColor: Colors.white70,
+        onTap: (ctx) {
+          if (activeVehicle == null) {
+            _showNoProfileDialog(ctx);
+            return;
+          }
+          // No dedicated screen yet — keeping previous behavior (no navigation),
+          // but now guarded so it won't silently do nothing without explanation.
+        },
       ),
       _ActionTile(
         image: 'assets/images/tile_spare_parts.jpg',
@@ -332,6 +364,12 @@ class _HomeScreenState extends State<HomeScreen>
         stat: 'Fast Delivery',
         statIcon: Icons.local_shipping_rounded,
         statColor: Colors.white70,
+        onTap: (ctx) {
+          if (activeVehicle == null) {
+            _showNoProfileDialog(ctx);
+            return;
+          }
+        },
       ),
       _ActionTile(
         image: 'assets/images/tile_insurance.jpg',
@@ -343,6 +381,12 @@ class _HomeScreenState extends State<HomeScreen>
         stat: '24/7 Support',
         statIcon: Icons.support_agent_rounded,
         statColor: Colors.white70,
+        onTap: (ctx) {
+          if (activeVehicle == null) {
+            _showNoProfileDialog(ctx);
+            return;
+          }
+        },
       ),
     ];
 
@@ -996,6 +1040,10 @@ class _HomeScreenState extends State<HomeScreen>
               ),
               GestureDetector(
                 onTap: () {
+                  if (activeVehicle == null) {
+                    _showNoProfileDialog(context);
+                    return;
+                  }
                   showModalBottomSheet(
                     context: context,
                     isScrollControlled: true,
@@ -1085,7 +1133,7 @@ class _HomeScreenState extends State<HomeScreen>
               ),
               const SizedBox(height: 24),
               const Text(
-                'Please create profile to make bookings',
+                'Register your profile to use our products',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,
@@ -1118,7 +1166,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ).then((_) => fetchProfile());
                   },
                   child: const Text(
-                    'MAKE PROFILE',
+                    'ADD PROFILE',
                     style: TextStyle(
                       color: Colors.black,
                       fontWeight: FontWeight.w900,
@@ -1423,37 +1471,40 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _noProfileCard() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111111),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: const BoxDecoration(
-              color: Color(0xFF1A1A1A),
-              shape: BoxShape.circle,
+    return GestureDetector(
+      onTap: () => _showNoProfileDialog(context),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: const Color(0xFF111111),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: const Color(0xFF2A2A2A)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: const BoxDecoration(
+                color: Color(0xFF1A1A1A),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.directions_car_outlined,
+                  size: 42, color: Color(0xFF333333)),
             ),
-            child: const Icon(Icons.directions_car_outlined,
-                size: 42, color: Color(0xFF333333)),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'No vehicle added',
-            style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 8),
-          const Text('Add your car to get started',
-              style: TextStyle(color: Color(0xFF555555))),
-        ],
+            const SizedBox(height: 20),
+            const Text(
+              'No vehicle added',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            const Text('Add your car to get started',
+                style: TextStyle(color: Color(0xFF555555))),
+          ],
+        ),
       ),
     );
   }
@@ -1833,7 +1884,10 @@ class GarageDrawer extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const ProfileScreen()));
             }),
             _tile(context, Icons.calendar_month, 'My Bookings', () {
-              if (activeVehicle == null) return;
+              if (activeVehicle == null) {
+                Navigator.pop(context);
+                return;
+              }
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -1853,7 +1907,10 @@ class GarageDrawer extends StatelessWidget {
                       builder: (_) => const RoadsideAssistanceScreen()));
             }),
             _tile(context, Icons.auto_awesome, 'AI Advisor', () {
-              if (activeVehicle == null) return;
+              if (activeVehicle == null) {
+                Navigator.pop(context);
+                return;
+              }
               showModalBottomSheet(
                 context: context,
                 isScrollControlled: true,
