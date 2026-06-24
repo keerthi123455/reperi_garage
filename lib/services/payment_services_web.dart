@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:js_interop';
 import 'payment_service.dart';
 import 'dart:js_interop_unsafe';
+PaymentService createPaymentService() => PaymentServiceWeb();
 
 @JS('eval')
 external void _jsEval(String code);
