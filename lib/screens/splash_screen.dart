@@ -2,9 +2,10 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+import 'reset_password_screen.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
+import '../main.dart' show isPasswordRecoveryInProgress;
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -22,6 +23,8 @@ class _SplashScreenState extends State<SplashScreen>
 
   late Animation<double> _logoScale;
   late Animation<double> _logoOpacity;
+  StreamSubscription<AuthState>? _authSubscription;
+  bool _handledRecovery = false;
 
   @override
   void initState() {
@@ -69,7 +72,37 @@ class _SplashScreenState extends State<SplashScreen>
 
     _logoController.forward();
 
-    _navigate();
+// This listener handles the case where the recovery deep link arrives
+// while SplashScreen is already mounted. For app cold-starts directly
+// from the recovery link, see main.dart's listener + the
+// isPasswordRecoveryInProgress flag checked in _navigate() below —
+// that one is attached before this screen exists and can't miss it.
+_authSubscription =
+    Supabase.instance.client.auth.onAuthStateChange.listen(
+  (data) {
+    print('================================');
+    print('AUTH EVENT: ${data.event}');
+    print('SESSION: ${data.session}');
+    print('================================');
+
+    if (data.event == AuthChangeEvent.passwordRecovery) {
+      print('PASSWORD RECOVERY DETECTED');
+
+      _handledRecovery = true;
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const ResetPasswordScreen(),
+        ),
+      );
+    }
+  },
+);
+
+_navigate();
   }
 
   Future<void> _navigate() async {
@@ -77,25 +110,38 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (!mounted) return;
 
+    // The recovery flag is set in main.dart's listener, which is
+    // attached right after Supabase.initialize() resolves — before
+    // this screen even exists. That's the only listener guaranteed
+    // to catch a password-recovery deep link on a cold app start.
+    // _handledRecovery (set below) covers the case where the event
+    // arrives while this screen is already mounted and alive.
+    if (_handledRecovery || isPasswordRecoveryInProgress) return;
+
     final user = Supabase.instance.client.auth.currentUser;
 
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) =>
-            user != null ? const HomeScreen() : const LoginScreen(),
+            user != null
+                ? const HomeScreen()
+                : const LoginScreen(),
       ),
     );
   }
 
   @override
-  void dispose() {
-    _logoController.dispose();
-    _rotationController.dispose();
-    _pulseController.dispose();
-    _progressController.dispose();
-    super.dispose();
-  }
+void dispose() {
+  _authSubscription?.cancel();
+
+  _logoController.dispose();
+  _rotationController.dispose();
+  _pulseController.dispose();
+  _progressController.dispose();
+
+  super.dispose();
+}
 
   Widget buildPulseRing({
     required double size,

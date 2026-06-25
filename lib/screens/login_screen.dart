@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+import 'package:flutter/foundation.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
 import 'admin_dashboard_screen.dart';
@@ -23,6 +23,67 @@ class _LoginScreenState extends State<LoginScreen>
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+  Future<void> _forgotPassword() async {
+  final emailController = TextEditingController();
+
+  await showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: const Text('Reset Password'),
+        content: TextField(
+          controller: emailController,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            hintText: 'Enter your email',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            child: const Text('Send'),
+            onPressed: () async {
+              try {
+                final email = emailController.text.trim();
+
+                final redirectUrl = kIsWeb
+                    ? 'https://reperi.in/reset-password'
+                    : 'reperi://reset-password';
+
+                await Supabase.instance.client.auth
+                    .resetPasswordForEmail(
+                  email,
+                  redirectTo: redirectUrl,
+                );
+
+                if (!mounted) return;
+
+                Navigator.pop(context);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Password reset email sent',
+                    ),
+                  ),
+                );
+              } catch (e) {
+                Navigator.pop(context);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(e.toString())),
+                );
+              }
+            },
+          )
+        ],
+      );
+    },
+  );
+}
 
   @override
   void initState() {
@@ -350,7 +411,7 @@ class _LoginScreenState extends State<LoginScreen>
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () {},
+              onPressed: _forgotPassword,
               style: TextButton.styleFrom(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 4, vertical: 4),

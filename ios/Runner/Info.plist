@@ -75,5 +75,14 @@
   <string>paytm</string>
   <string>credpay</string>
 </array>
+<key>CFBundleURLTypes</key>
+<array>
+  <dict>
+    <key>CFBundleURLSchemes</key>
+    <array>
+      <string>reperi</string>
+    </array>
+  </dict>
+</array>
 </dict>
 </plist>
