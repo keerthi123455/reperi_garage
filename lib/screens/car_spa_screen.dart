@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
 
 class CarSpaScreen extends StatefulWidget {
 
@@ -57,7 +58,7 @@ class _CarSpaScreenState
   static const Color _cardBorder =
       Color(0xFF2A2A2A);
 
-  final List<Map<String, dynamic>>
+  List<Map<String, dynamic>>
       packages = [
 
     {
@@ -156,6 +157,36 @@ class _CarSpaScreenState
     super.initState();
 
     _startAutoScroll();
+    _fetchPackageData();
+  }
+
+  Future<void> _fetchPackageData() async {
+    try {
+      final rows = await CatalogService.fetchByCategory('Car Spa');
+      if (!mounted) return;
+
+      final byKey = {for (final row in rows) row['key'] as String: row};
+
+      setState(() {
+        if (byKey['car_spa_quick_refresh'] != null) {
+          packages[0]['price'] = byKey['car_spa_quick_refresh']!['price'];
+          packages[0]['duration'] = byKey['car_spa_quick_refresh']!['duration'];
+          packages[0]['features'] = List<String>.from(byKey['car_spa_quick_refresh']!['services']);
+        }
+        if (byKey['car_spa_premium'] != null) {
+          packages[1]['price'] = byKey['car_spa_premium']!['price'];
+          packages[1]['duration'] = byKey['car_spa_premium']!['duration'];
+          packages[1]['features'] = List<String>.from(byKey['car_spa_premium']!['services']);
+        }
+        if (byKey['car_spa_signature_plus'] != null) {
+          packages[2]['price'] = byKey['car_spa_signature_plus']!['price'];
+          packages[2]['duration'] = byKey['car_spa_signature_plus']!['duration'];
+          packages[2]['features'] = List<String>.from(byKey['car_spa_signature_plus']!['services']);
+        }
+      });
+    } catch (e) {
+      // Keep the hardcoded fallback values above if the fetch fails.
+    }
   }
 
   void _startAutoScroll() {

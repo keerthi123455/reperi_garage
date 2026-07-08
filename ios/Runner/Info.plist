@@ -8,8 +8,12 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 <string>GarageCo uses your location to dispatch roadside assistance.</string>
+	<key>NSCameraUsageDescription</key>
+<string>GarageCo uses your camera to photograph your vehicle so we can recommend the right service.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+<string>GarageCo needs access to your photos so you can attach vehicle images for diagnosis.</string>
 	<key>CFBundleDisplayName</key>
-	<string>Hello World App</string>
+	<string>Reperi Garage</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -17,7 +21,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>hello_world_app</string>
+	<string>reperi_garage</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

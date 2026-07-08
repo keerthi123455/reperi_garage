@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/app_colors.dart';
+import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -12,6 +13,62 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   List<Map<String, dynamic>> vehicles = [];
   bool loading = true;
+  bool _deletingAccount = false;
+
+  Future<void> _confirmDeleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete your account?'),
+        content: const Text(
+          'This will permanently delete your profile, vehicles, and booking history. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _deleteAccount();
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    setState(() => _deletingAccount = true);
+
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'delete-account',
+      );
+
+      if (response.status != 200) {
+        throw Exception('Failed to delete account');
+      }
+
+      await Supabase.instance.client.auth.signOut();
+
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _deletingAccount = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not delete account. Please try again or contact support.')),
+      );
+    }
+  }
 
   final brands = [
     'Hyundai', 'Tata', 'Maruti Suzuki', 'Mahindra', 'Honda',
@@ -384,7 +441,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 // ADD VEHICLE button
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 12, 22, 28),
+                  padding: const EdgeInsets.fromLTRB(22, 12, 22, 12),
                   child: GestureDetector(
                     onTap: openAddVehicleSheet,
                     child: Container(
@@ -410,6 +467,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                     ),
+                  ),
+                ),
+
+                // DELETE ACCOUNT — danger zone, deliberately understated
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 0, 22, 28),
+                  child: TextButton(
+                    onPressed: _deletingAccount ? null : _confirmDeleteAccount,
+                    child: _deletingAccount
+                        ? const SizedBox(
+                            width: 18, height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red),
+                          )
+                        : const Text(
+                            'Delete Account',
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
                 ),
               ],

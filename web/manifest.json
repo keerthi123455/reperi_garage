@@ -1,13 +1,11 @@
 {
-    "name": "hello_world_app",
-    "short_name": "hello_world_app",
+    "name": "Reperi Garage",
+    "short_name": "Reperi Garage",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
-    "prefer_related_applications": false,
+    "background_color": "#080808",
+    "theme_color": "#D4A017",
+    "description": "Book trusted vehicle servicing, car spa, tyre care, paint care, and roadside assistance — all in one app.",
     "icons": [
         {
             "src": "icons/Icon-192.png",

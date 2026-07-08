@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
 
 class BookServiceScreen extends StatefulWidget {
 
@@ -23,7 +24,7 @@ class _BookServiceScreenState
 
   int selectedIndex = 0;
 
-  final services = [
+  List<Map<String, dynamic>> services = [
 
     {
       "title": "Quick Service",
@@ -102,6 +103,42 @@ class _BookServiceScreenState
           "Advanced computer diagnostics to identify hidden engine and electrical issues.",
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchServiceData();
+  }
+
+  Future<void> _fetchServiceData() async {
+    try {
+      final rows = await CatalogService.fetchByCategory('Book Service');
+      if (!mounted) return;
+
+      final byKey = {for (final row in rows) row['key'] as String: row};
+
+      const keyOrder = [
+        'book_quick_service',
+        'book_full_service',
+        'book_ac_service',
+        'book_engine_diagnostics',
+      ];
+
+      setState(() {
+        for (var i = 0; i < keyOrder.length && i < services.length; i++) {
+          final row = byKey[keyOrder[i]];
+          if (row != null) {
+            services[i]['price'] = row['price'];
+            services[i]['time'] = row['duration'];
+            services[i]['details'] = row['details'] ?? services[i]['details'];
+            services[i]['features'] = List<String>.from(row['services']);
+          }
+        }
+      });
+    } catch (e) {
+      // Keep the hardcoded fallback values above if the fetch fails.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -473,7 +510,7 @@ class _BookServiceScreenState
 
               SizedBox(
 
-                height: 180,
+                height: 200,
 
                 child: ListView.builder(
 

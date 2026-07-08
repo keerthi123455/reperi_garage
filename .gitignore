@@ -45,3 +45,8 @@ app.*.map.json
 /android/app/release
 
 supabase/.temp/
+
+# Signing credentials — never commit these
+android/key.properties
+*.jks
+*.keystore

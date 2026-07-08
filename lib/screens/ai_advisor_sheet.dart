@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // pubspec.yaml dependencies needed:
@@ -80,7 +81,48 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
     'Brake squeaking',
   ];
 
+  // ── Catalog data (fetched from Supabase, used by getRecommendation) ──────
+  Map<String, Map<String, dynamic>> _catalogByKey = {};
+  Map<String, Map<String, dynamic>> _cheapestByCategory = {};
+
+  int _parsePrice(String price) {
+    final digitsOnly = price.replaceAll(RegExp(r'[^0-9]'), '');
+    return int.tryParse(digitsOnly) ?? 0;
+  }
+
+  Future<void> _fetchCatalogData() async {
+    try {
+      final rows = await CatalogService.fetchAll();
+      if (!mounted) return;
+
+      final byKey = {for (final row in rows) row['key'] as String: row};
+
+      final cheapest = <String, Map<String, dynamic>>{};
+      for (final row in rows) {
+        final category = row['category'] as String;
+       final existing = cheapest[category];
+        final newPrice = _parsePrice(row['price'] as String);
+        final existingPrice = existing == null ? 999999 : _parsePrice(existing['price'] as String);
+        if (existing == null || newPrice < existingPrice) {
+          cheapest[category] = row;
+        }
+
+      setState(() {
+        _catalogByKey = byKey;
+        _cheapestByCategory = cheapest;
+      });
+    } }catch (e) {
+      // Keep the hardcoded fallback values in getRecommendation if fetch fails.
+    } 
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
+  @override
+  void initState() {
+    super.initState();
+    _fetchCatalogData();
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -392,11 +434,15 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
           'issue': '🎨 Paint Damage / Surface Scratches',
           'packages': [
             {
-              'name': 'Paint Care', 'price': '₹2499 onwards', 'duration': '90 mins',
+              'name': 'Paint Care',
+              'price': '${_cheapestByCategory['Paint Care']?['price'] ?? '₹599'} onwards',
+              'duration': _cheapestByCategory['Paint Care']?['duration'] ?? '45 mins',
               'features': ['Scratch removal', 'Paint touch-up', 'Color matching', 'Clear coat protection'],
             },
             {
-              'name': 'Denting & Tinkering', 'price': '₹3999 onwards', 'duration': '120 mins',
+              'name': 'Denting & Tinkering',
+              'price': '${_cheapestByCategory['Denting & Tinkering']?['price'] ?? '₹99'} onwards',
+              'duration': _cheapestByCategory['Denting & Tinkering']?['duration'] ?? '20 mins',
               'features': ['Dent correction', 'Panel restoration', 'Body alignment', 'Premium finishing'],
             },
           ],
@@ -412,7 +458,9 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
           'issue': '🔧 Wheel / Tyre Issue',
           'packages': [
             {
-              'name': 'Tyre Care', 'price': '₹799', 'duration': '45 mins',
+              'name': 'Tyre Care',
+              'price': '${_cheapestByCategory['Tyre Care']?['price'] ?? '₹299'} onwards',
+              'duration': _cheapestByCategory['Tyre Care']?['duration'] ?? '20 mins',
               'features': ['Wheel balancing', 'Wheel alignment', 'Tyre pressure check', 'Suspension inspection'],
             },
           ],
@@ -426,11 +474,15 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
           'issue': '❄️ AC Performance Issue',
           'packages': [
             {
-              'name': 'AC Service', 'price': '₹1499', 'duration': '60 mins',
+              'name': 'AC Service',
+              'price': _catalogByKey['book_ac_service']?['price'] ?? '₹2499',
+              'duration': _catalogByKey['book_ac_service']?['duration'] ?? '2 hrs',
               'features': ['Gas pressure check', 'Cooling efficiency test', 'AC vent cleaning', 'Filter replacement'],
             },
             {
-              'name': '21 Step Inspection', 'price': '₹599', 'duration': '45 mins',
+              'name': '21 Step Inspection',
+              'price': _catalogByKey['21_step_inspection']?['price'] ?? '₹599',
+              'duration': _catalogByKey['21_step_inspection']?['duration'] ?? '45 mins',
               'features': ['Compressor inspection', 'Electrical check', 'Leak detection', 'Vehicle health report'],
             },
           ],
@@ -444,7 +496,9 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
           'issue': '🛑 Brake System Issue',
           'packages': [
             {
-              'name': 'Brake Inspection', 'price': '₹699', 'duration': '30 mins',
+              'name': 'Brake Inspection',
+              'price': _catalogByKey['brake_inspection']?['price'] ?? '₹699',
+              'duration': _catalogByKey['brake_inspection']?['duration'] ?? '30 mins',
               'features': ['Brake pad inspection', 'Disc rotor check', 'Brake fluid check', 'Road safety inspection'],
             },
           ],
@@ -458,7 +512,9 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
           'issue': '🔋 Battery / Starting Issue',
           'packages': [
             {
-              'name': 'Battery Health Check', 'price': '₹399', 'duration': '20 mins',
+              'name': 'Battery Health Check',
+              'price': _catalogByKey['battery_health_check']?['price'] ?? '₹399',
+              'duration': _catalogByKey['battery_health_check']?['duration'] ?? '20 mins',
               'features': ['Battery voltage test', 'Charging system test', 'Alternator inspection', 'Terminal cleaning'],
             },
           ],
@@ -473,11 +529,15 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
           'issue': '⚙️ Engine Performance Issue',
           'packages': [
             {
-              'name': 'Book Service', 'price': '₹1499 onwards', 'duration': '90 mins',
+              'name': 'Book Service',
+              'price': '${_cheapestByCategory['Book Service']?['price'] ?? '₹1499'} onwards',
+              'duration': _cheapestByCategory['Book Service']?['duration'] ?? '45 mins',
               'features': ['Engine oil replacement', 'Filter replacement', 'Fluid top-up', 'Engine diagnostics'],
             },
             {
-              'name': '21 Step Inspection', 'price': '₹599', 'duration': '45 mins',
+              'name': '21 Step Inspection',
+              'price': _catalogByKey['21_step_inspection']?['price'] ?? '₹599',
+              'duration': _catalogByKey['21_step_inspection']?['duration'] ?? '45 mins',
               'features': ['Engine health check', 'Leak inspection', 'Battery check', 'Brake inspection'],
             },
           ],
@@ -491,7 +551,9 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
           'issue': '🚨 Accident Damage',
           'packages': [
             {
-              'name': 'Denting & Tinkering', 'price': '₹3999 onwards', 'duration': '120 mins',
+              'name': 'Denting & Tinkering',
+              'price': '${_cheapestByCategory['Denting & Tinkering']?['price'] ?? '₹99'} onwards',
+              'duration': _cheapestByCategory['Denting & Tinkering']?['duration'] ?? '20 mins',
               'features': ['Panel replacement', 'Body repair', 'Dent removal', 'Paint restoration'],
             },
           ],
@@ -505,7 +567,9 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
           'issue': '🚿 Vehicle Cleaning',
           'packages': [
             {
-              'name': 'Car Spa', 'price': '₹399', 'duration': '30 mins',
+              'name': 'Car Spa',
+              'price': _catalogByKey['car_spa_quick_refresh']?['price'] ?? '₹399',
+              'duration': _catalogByKey['car_spa_quick_refresh']?['duration'] ?? '30 mins',
               'features': ['Exterior wash', 'Interior vacuum', 'Dashboard cleaning', 'Tyre dressing'],
             },
           ],
@@ -536,7 +600,9 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
         'issue': '🔍 General Vehicle Inspection',
         'packages': [
           {
-            'name': '21 Step Inspection', 'price': '₹599', 'duration': '45 mins',
+            'name': '21 Step Inspection',
+            'price': _catalogByKey['21_step_inspection']?['price'] ?? '₹599',
+            'duration': _catalogByKey['21_step_inspection']?['duration'] ?? '45 mins',
             'features': ['Engine inspection', 'Brake inspection', 'Battery health check', 'Complete vehicle report'],
           },
         ],

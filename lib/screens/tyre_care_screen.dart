@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
 
 class TyreCareScreen extends StatefulWidget {
   final Map<String, dynamic> vehicle;
@@ -91,7 +92,7 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
     },
   ];
 
-  final List<Map<String, dynamic>> _packages = [
+  List<Map<String, dynamic>> _packages = [
     {
       'name': 'QUICK AIR & CHECK',
       'price': '₹299',
@@ -202,6 +203,47 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
       ],
     },
   ];
+
+  // ── Bottom sheet popup ───────────────────────────────────────────
+  @override
+  void initState() {
+    super.initState();
+    _fetchPackageData();
+  }
+
+  Future<void> _fetchPackageData() async {
+    try {
+      final rows = await CatalogService.fetchByCategory('Tyre Care');
+      if (!mounted) return;
+
+      final byKey = {for (final row in rows) row['key'] as String: row};
+
+      const keyOrder = [
+        'tyre_quick_air_check',
+        'tyre_wheel_alignment',
+        'tyre_balancing_rotation',
+        'tyre_road_grip',
+        'tyre_performance',
+        'tyre_premium_wheel_care',
+        'tyre_alloy_wheel_studio',
+        'tyre_track_performance_plus',
+      ];
+
+      setState(() {
+        for (var i = 0; i < keyOrder.length && i < _packages.length; i++) {
+          final row = byKey[keyOrder[i]];
+          if (row != null) {
+            _packages[i]['price'] = row['price'];
+            _packages[i]['duration'] = row['duration'];
+            _packages[i]['description'] = row['details'] ?? _packages[i]['description'];
+            _packages[i]['features'] = List<String>.from(row['services']);
+          }
+        }
+      });
+    } catch (e) {
+      // Keep the hardcoded fallback values above if the fetch fails.
+    }
+  }
 
   // ── Bottom sheet popup ───────────────────────────────────────────
   void _showPackageSheet(Map<String, dynamic> package) {

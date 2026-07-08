@@ -9,6 +9,7 @@ import 'roadside_assistance_screen.dart';
 import 'fleet_management_screen.dart';
 import 'service_details_screen.dart';
 import 'profile_screen.dart';
+import '../services/catalog_service.dart';
 
 class ServicesScreen extends StatefulWidget {
   final Map<String, dynamic>? activeVehicle;
@@ -23,17 +24,39 @@ class _ServicesScreenState extends State<ServicesScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  Map<String, Map<String, dynamic>> _packageData = {};
+
   static const Color _gold = Color(0xFFD4A017);
   static const Color _bg = Color(0xFF121212);
   static const Color _cardBg = Color(0xFF1B1B1B);
 
-  @override
+@override
   void initState() {
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.toLowerCase());
     });
+    _fetchPackageData();
+  }
+
+  Future<void> _fetchPackageData() async {
+    try {
+      final rows = await CatalogService.fetchByKeys([
+        '21_step_inspection',
+        'quick_care',
+        'wheelzcare',
+        'car360_pack',
+      ]);
+
+      if (!mounted) return;
+
+      setState(() {
+        _packageData = {for (final row in rows) row['key'] as String: row};
+      });
+    } catch (e) {
+      // Keep default hardcoded fallback values below if fetch fails.
+    }
   }
 
   @override
@@ -154,11 +177,15 @@ class _ServicesScreenState extends State<ServicesScreen> {
             () => ServiceDetailsScreen(
               title: '21 STEP\nINSPECTION',
               image: 'assets/images/21pointinspection.JPG',
-              price: '₹599',
-              duration: '45 mins',
+              price: _packageData['21_step_inspection']?['price'] ?? '₹599',
+              duration: _packageData['21_step_inspection']?['duration'] ?? '45 mins',
               vehicleId: widget.activeVehicle?['id'] ?? '',
-              services: ['Engine Check', 'Brake Inspection', 'Battery Health'],
-              benefits: ['Prevent breakdowns', 'Vehicle health report'],
+              services: _packageData['21_step_inspection'] != null
+                  ? List<String>.from(_packageData['21_step_inspection']!['services'])
+                  : ['Engine Check', 'Brake Inspection', 'Battery Health'],
+              benefits: _packageData['21_step_inspection'] != null
+                  ? List<String>.from(_packageData['21_step_inspection']!['benefits'])
+                  : ['Prevent breakdowns', 'Vehicle health report'],
             ),
           ),
         ),
@@ -171,11 +198,15 @@ class _ServicesScreenState extends State<ServicesScreen> {
             () => ServiceDetailsScreen(
               title: 'QUICK CARE',
               image: 'assets/images/quickcare.JPG',
-              price: '₹399',
-              duration: '30 mins',
+              price: _packageData['quick_care']?['price'] ?? '₹399',
+              duration: _packageData['quick_care']?['duration'] ?? '30 mins',
               vehicleId: widget.activeVehicle?['id'] ?? '',
-              services: ['Exterior Wash', 'Interior Vacuum'],
-              benefits: ['Cleaner interiors', 'Quick refresh'],
+              services: _packageData['quick_care'] != null
+                  ? List<String>.from(_packageData['quick_care']!['services'])
+                  : ['Exterior Wash', 'Interior Vacuum'],
+              benefits: _packageData['quick_care'] != null
+                  ? List<String>.from(_packageData['quick_care']!['benefits'])
+                  : ['Cleaner interiors', 'Quick refresh'],
             ),
           ),
         ),
@@ -198,11 +229,15 @@ class _ServicesScreenState extends State<ServicesScreen> {
             () => ServiceDetailsScreen(
               title: 'CAR360 PACK',
               image: 'assets/images/car360.JPG',
-              price: '₹1599',
-              duration: '3 hrs',
+              price: _packageData['car360_pack']?['price'] ?? '₹1599',
+              duration: _packageData['car360_pack']?['duration'] ?? '3 hrs',
               vehicleId: widget.activeVehicle?['id'] ?? '',
-              services: ['Detailing', 'Paint Protection'],
-              benefits: ['Showroom finish', 'Premium shine'],
+              services: _packageData['car360_pack'] != null
+                  ? List<String>.from(_packageData['car360_pack']!['services'])
+                  : ['Detailing', 'Paint Protection'],
+              benefits: _packageData['car360_pack'] != null
+                  ? List<String>.from(_packageData['car360_pack']!['benefits'])
+                  : ['Showroom finish', 'Premium shine'],
             ),
           ),
         ),
@@ -233,11 +268,15 @@ class _ServicesScreenState extends State<ServicesScreen> {
             () => ServiceDetailsScreen(
               title: 'WHEELZCARE',
               image: 'assets/images/WheelzCare.JPG',
-              price: '₹599',
-              duration: '45 mins',
+              price: _packageData['wheelzcare']?['price'] ?? '₹599',
+              duration: _packageData['wheelzcare']?['duration'] ?? '45 mins',
               vehicleId: widget.activeVehicle?['id'] ?? '',
-              services: ['Wheel Alignment', 'Wheel Balancing'],
-              benefits: ['Smoother driving', 'Longer tyre life'],
+              services: _packageData['wheelzcare'] != null
+                  ? List<String>.from(_packageData['wheelzcare']!['services'])
+                  : ['Wheel Alignment', 'Wheel Balancing'],
+              benefits: _packageData['wheelzcare'] != null
+                  ? List<String>.from(_packageData['wheelzcare']!['benefits'])
+                  : ['Smoother driving', 'Longer tyre life'],
             ),
           ),
         ),

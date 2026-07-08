@@ -20,6 +20,7 @@ import 'roadside_assistance_screen.dart';
 import 'fleet_login_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
+import '../services/catalog_service.dart';
 import 'profile_screen.dart';
 import 'service_details_screen.dart';
 
@@ -39,6 +40,9 @@ class _HomeScreenState extends State<HomeScreen>
   bool hasNewUpdate = false;
   bool loading = true;
   int _navIndex = 0;
+
+  List<Map<String, dynamic>> sliderItems = [];
+  bool loadingSliderItems = true;
 
   // ── Shimmer (vehicle card border) every 3s ──
   late AnimationController _shimmerController;
@@ -83,6 +87,7 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     fetchProfile();
+    _fetchSliderItems();
 
     // ── Shimmer: loops every 3s ──
     _shimmerController = AnimationController(
@@ -135,6 +140,35 @@ class _HomeScreenState extends State<HomeScreen>
     _idleTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
+  }
+Future<void> _fetchSliderItems() async {
+    try {
+      final rows = await CatalogService.fetchByKeys([
+        '21_step_inspection',
+        'quick_care',
+        'wheelzcare',
+        'car360_pack',
+      ]);
+
+      if (!mounted) return;
+
+      setState(() {
+        sliderItems = rows.map((row) {
+          return {
+            'image': row['image_asset'],
+            'title': row['title'],
+            'price': row['price'],
+            'duration': row['duration'],
+            'services': row['services'],
+            'benefits': row['benefits'],
+          };
+        }).toList();
+        loadingSliderItems = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => loadingSliderItems = false);
+    }
   }
 
   Future<void> fetchProfile() async {
@@ -199,41 +233,7 @@ class _HomeScreenState extends State<HomeScreen>
     final hasProfile = profileData != null;
     final hasVehicle = activeVehicle != null;
 
-    final sliderItems = [
-      {
-        'image': 'assets/images/21pointinspection.JPG',
-        'title': '21 STEP\nINSPECTION',
-        'price': '₹599',
-        'duration': '45 mins',
-        'services': ['Engine Check', 'Brake Inspection', 'Battery Health'],
-        'benefits': ['Prevent breakdowns', 'Vehicle health report'],
-      },
-      {
-        'image': 'assets/images/quickcare.JPG',
-        'title': 'QUICK CARE',
-        'price': '₹399',
-        'duration': '30 mins',
-        'services': ['Exterior Wash', 'Interior Vacuum'],
-        'benefits': ['Cleaner interiors', 'Quick refresh'],
-      },
-      {
-        'image': 'assets/images/WheelzCare.JPG',
-        'title': 'WHEELZCARE',
-        'price': '₹599',
-        'duration': '45 mins',
-        'services': ['Wheel Alignment', 'Wheel Balancing'],
-        'benefits': ['Smoother driving', 'Longer tyre life'],
-      },
-      {
-        'image': 'assets/images/car360.JPG',
-        'title': 'CAR360 PACK',
-        'price': '₹1599',
-        'duration': '3 hrs',
-        'services': ['Detailing', 'Paint Protection'],
-        'benefits': ['Showroom finish', 'Premium shine'],
-      },
-    ];
-
+    
     final quickActions = [
       _ActionTile(
         image: 'assets/images/tile_book_service.jpg',
@@ -1924,6 +1924,14 @@ class GarageDrawer extends StatelessWidget {
               );
             }),
             _tile(context, Icons.card_giftcard, 'Offers & Referrals', () {}),
+            _tile(context, Icons.privacy_tip_outlined, 'Privacy Policy', () async {
+              final uri = Uri.parse('https://reperi.in/privacy-policy.html');
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }),
+            _tile(context, Icons.description_outlined, 'Terms & Conditions', () async {
+              final uri = Uri.parse('https://reperi.in/terms.html');
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }),
             _tile(context, Icons.phone, 'Contact Us', () async {
               final uri = Uri(scheme: 'tel', path: '9353094672');
               await launchUrl(uri);

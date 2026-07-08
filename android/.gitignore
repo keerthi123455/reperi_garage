@@ -12,3 +12,8 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Signing credentials — never commit these
+android/key.properties
+*.jks
+*.keystore

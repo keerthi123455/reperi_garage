@@ -1,6 +1,6 @@
-
 import 'package:flutter/material.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
 
 class PaintCareScreen extends StatefulWidget {
 
@@ -39,7 +39,7 @@ class _PaintCareScreenState
 
   int selectedPackage = -1;
 
-  final List<Map<String, dynamic>>
+List<Map<String, dynamic>>
       packages = [
 
     {
@@ -250,8 +250,46 @@ class _PaintCareScreenState
 
       'details':
           'Ultimate luxury package delivering showroom-level shine, protection and exterior perfection.',
-    },
+},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPackageData();
+  }
+
+  Future<void> _fetchPackageData() async {
+    try {
+      final rows = await CatalogService.fetchByCategory('Paint Care');
+      if (!mounted) return;
+
+      final byKey = {for (final row in rows) row['key'] as String: row};
+
+      const keyOrder = [
+        'paint_quick_polish',
+        'paint_scratch_control',
+        'paint_rust_control',
+        'paint_premium_restore',
+        'paint_vinyl_wrap_studio',
+        'paint_showroom_shine_plus',
+      ];
+
+      setState(() {
+        for (var i = 0; i < keyOrder.length && i < packages.length; i++) {
+          final row = byKey[keyOrder[i]];
+          if (row != null) {
+            packages[i]['price'] = row['price'];
+            packages[i]['duration'] = row['duration'];
+            packages[i]['details'] = row['details'] ?? packages[i]['details'];
+            packages[i]['features'] = List<String>.from(row['services']);
+          }
+        }
+      });
+    } catch (e) {
+      // Keep the hardcoded fallback values above if the fetch fails.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
