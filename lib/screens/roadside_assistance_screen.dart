@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
@@ -23,22 +24,29 @@ class _RoadsideAssistanceScreenState
 
   Future<void> _getLocation() async {
     try {
-      LocationPermission permission =
-          await Geolocator.checkPermission();
+      // Web (especially Safari) doesn't reliably support the Permissions
+      // API that checkPermission()/requestPermission() depend on, so we
+      // skip straight to getCurrentPosition() on web — the browser shows
+      // its own native "Allow location" prompt automatically, and denial
+      // throws an error we catch below instead.
+      if (!kIsWeb) {
+        LocationPermission permission =
+            await Geolocator.checkPermission();
 
-      if (permission == LocationPermission.denied) {
-        permission =
-            await Geolocator.requestPermission();
-      }
+        if (permission == LocationPermission.denied) {
+          permission =
+              await Geolocator.requestPermission();
+        }
 
-      if (permission ==
-              LocationPermission.denied ||
-          permission ==
-              LocationPermission.deniedForever) {
-        setState(() {
-          address = "Location unavailable";
-        });
-        return;
+        if (permission ==
+                LocationPermission.denied ||
+            permission ==
+                LocationPermission.deniedForever) {
+          setState(() {
+            address = "Location unavailable";
+          });
+          return;
+        }
       }
 
       final position =

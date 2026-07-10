@@ -9,12 +9,28 @@ class PaymentScreen extends StatefulWidget {
   final String duration;
   final String vehicleId;
 
+  /// Optional — when provided, shows an itemized bill breakdown instead of
+  /// a single price row. Used by the fleet "Pay Now" flow.
+  final List<Map<String, dynamic>>? billItems;
+
+  /// Optional — when provided, called instead of inserting into `bookings`
+  /// after a verified payment. Used by the fleet flow to update
+  /// `fleet_pickup_requests` instead. Receives (orderId, paymentId).
+  final Future<void> Function(String orderId, String paymentId)? onSuccess;
+
+  /// When true, hides the "Cash on Pickup" option — used for fleet payments,
+  /// which are always online-only.
+  final bool onlineOnly;
+
   const PaymentScreen({
     super.key,
     required this.title,
     required this.price,
     required this.duration,
     required this.vehicleId,
+    this.billItems,
+    this.onSuccess,
+    this.onlineOnly = false,
   });
 
   @override
@@ -80,7 +96,10 @@ class _PaymentScreenState
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
 
-    if (user == null) return;
+    // Fleet payments don't use Supabase Auth (fleet operators log in via
+    // a separate table-based system), so only require a signed-in consumer
+    // user for the default (non-fleet) booking flow.
+    if (widget.onSuccess == null && user == null) return;
 
     setState(() {
       isProcessing = true;
@@ -120,9 +139,9 @@ class _PaymentScreenState
         orderId: orderId,
         keyId: keyId,
         amountInPaise: amountInPaise,
-        name: user.userMetadata?['full_name'] ?? 'Customer',
-        email: user.email ?? '',
-        contact: user.phone ?? '',
+        name: user?.userMetadata?['full_name'] ?? widget.title,
+        email: user?.email ?? '',
+        contact: user?.phone ?? '',
       );
 
       if (!result.success) {
@@ -153,17 +172,23 @@ class _PaymentScreenState
         throw Exception('Payment verification failed');
       }
 
-      // STEP 4: Only now insert the booking, since payment is confirmed real
-      await supabase.from('bookings').insert({
-        'user_id': user.id,
-        'vehicle_id': widget.vehicleId,
-        'package_name': widget.title,
-        'package_price': widget.price,
-        'assigned_admin': 'admin@gmail.com',
-        'razorpay_order_id': result.orderId,
-        'razorpay_payment_id': result.paymentId,
-        'payment_status': 'paid',
-      });
+      // STEP 4: Only now record the payment, since it's confirmed real.
+      // Fleet payments use the custom callback; consumer bookings use the
+      // default insert into `bookings`.
+      if (widget.onSuccess != null) {
+        await widget.onSuccess!(result.orderId!, result.paymentId!);
+      } else {
+        await supabase.from('bookings').insert({
+          'user_id': user!.id,
+          'vehicle_id': widget.vehicleId,
+          'package_name': widget.title,
+          'package_price': widget.price,
+          'assigned_admin': 'admin@gmail.com',
+          'razorpay_order_id': result.orderId,
+          'razorpay_payment_id': result.paymentId,
+          'payment_status': 'paid',
+        });
+      }
 
       await _showSuccessAndGoHome();
     } catch (e) {
@@ -539,6 +564,36 @@ class _PaymentScreenState
                               ],
                             ),
                           ),
+                          if (widget.billItems != null) ...[
+                            const SizedBox(height: 20),
+                            Container(
+                              padding: const EdgeInsets.all(18),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF141414),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Column(
+                                children: widget.billItems!
+                                    .map((item) => Padding(
+                                          padding: const EdgeInsets.only(bottom: 8),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  item['name']?.toString() ?? '',
+                                                  style: const TextStyle(color: Colors.white70),
+                                                ),
+                                              ),
+                                              Text('₹${item['price']}',
+                                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                                            ],
+                                          ),
+                                        ))
+                                    .toList(),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -618,6 +673,7 @@ class _PaymentScreenState
                       ),
                     ),
 
+                    if (!widget.onlineOnly) ...[
                     const SizedBox(
                         height: 16),
 
@@ -659,6 +715,7 @@ class _PaymentScreenState
 
                     const SizedBox(
                         height: 40),
+                    ],
                       ],
                     ),
                   ),

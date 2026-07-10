@@ -50,12 +50,21 @@ class _FleetRequestDetailsScreenState
     'Completed',
   ];
 
+  late String _paymentStatus;
+  List<Map<String, dynamic>>? _billItems;
+  num? _totalAmount;
+
   @override
   void initState() {
     super.initState();
     _currentStatus = widget.fleetRequest['status'] ?? 'Pending';
     _pendingStatus = _currentStatus;
     _hasUnreadChat = widget.fleetRequest['admin_has_unread_chat'] == true;
+    _paymentStatus = widget.fleetRequest['payment_status'] ?? 'unpaid';
+    _billItems = widget.fleetRequest['bill_items'] != null
+        ? List<Map<String, dynamic>>.from(widget.fleetRequest['bill_items'])
+        : null;
+    _totalAmount = widget.fleetRequest['total_amount'];
 
     Future.microtask(() async {
       await Supabase.instance.client
@@ -489,6 +498,242 @@ _sheetSetState?.call(() {});
       );
     } finally {
       if (mounted) setState(() => _updating = false);
+    }
+  }
+
+  void _showChargeFleetSheet() {
+    final items = <Map<String, TextEditingController>>[
+      {
+        'name': TextEditingController(text: '21 Step Inspection'),
+        'price': TextEditingController(text: '2999'),
+      },
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            num total = 0;
+            for (final item in items) {
+              total += num.tryParse(item['price']!.text.trim()) ?? 0;
+            }
+
+            return Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
+              ),
+              decoration: const BoxDecoration(
+                color: Color(0xFF111111),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 24,
+                  right: 24,
+                  top: 24,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 20),
+                          decoration: BoxDecoration(
+                            color: Colors.white24,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const Text(
+                        'Charge Fleet',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Add each billable item and its price.',
+                        style: TextStyle(color: Colors.white54, fontSize: 13),
+                      ),
+                      const SizedBox(height: 20),
+
+                      ...items.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final item = entry.value;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: TextField(
+                                  controller: item['name'],
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: InputDecoration(
+                                    labelText: 'Item ${index + 1}',
+                                    labelStyle: const TextStyle(color: Colors.white54),
+                                    filled: true,
+                                    fillColor: const Color(0xFF1A1A1A),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                flex: 2,
+                                child: TextField(
+                                  controller: item['price'],
+                                  keyboardType: TextInputType.number,
+                                  style: const TextStyle(color: Colors.white),
+                                  onChanged: (_) => setSheetState(() {}),
+                                  decoration: InputDecoration(
+                                    labelText: '₹ Price',
+                                    labelStyle: const TextStyle(color: Colors.white54),
+                                    filled: true,
+                                    fillColor: const Color(0xFF1A1A1A),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              if (items.length > 1)
+                                IconButton(
+                                  icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                                  onPressed: () => setSheetState(() => items.removeAt(index)),
+                                ),
+                            ],
+                          ),
+                        );
+                      }),
+
+                      TextButton.icon(
+                        onPressed: () => setSheetState(() {
+                          items.add({
+                            'name': TextEditingController(),
+                            'price': TextEditingController(),
+                          });
+                        }),
+                        icon: const Icon(Icons.add, color: Color(0xFFD4A017)),
+                        label: const Text('Add Item', style: TextStyle(color: Color(0xFFD4A017))),
+                      ),
+
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A1A1A),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('TOTAL',
+                                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                            Text(
+                              '₹${total.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                color: Color(0xFFD4A017),
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFD4A017),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          onPressed: total <= 0
+                              ? null
+                              : () async {
+                                  final finalItems = items
+                                      .where((i) => i['name']!.text.trim().isNotEmpty &&
+                                          num.tryParse(i['price']!.text.trim()) != null)
+                                      .map((i) => {
+                                            'name': i['name']!.text.trim(),
+                                            'price': num.parse(i['price']!.text.trim()),
+                                          })
+                                      .toList();
+
+                                  Navigator.pop(sheetContext);
+                                  await _submitCharge(finalItems, total);
+                                },
+                          child: Text(
+                            'CHARGE ₹${total.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _submitCharge(List<Map<String, dynamic>> items, num total) async {
+    setState(() => _updating = true);
+    try {
+      await Supabase.instance.client.from('fleet_pickup_requests').update({
+        'bill_items': items,
+        'total_amount': total,
+        'payment_status': 'awaiting_payment',
+        'billed_at': DateTime.now().toIso8601String(),
+        'has_unread_update': true,
+        'latest_update_type': 'CHARGED',
+      }).eq('id', widget.fleetRequest['id']);
+
+      if (!mounted) return;
+      setState(() {
+        _billItems = items;
+        _totalAmount = total;
+        _paymentStatus = 'awaiting_payment';
+        _updating = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Fleet charged ₹${total.toStringAsFixed(0)}'),
+          backgroundColor: const Color(0xFFD4A017),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _updating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to charge: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -941,6 +1186,67 @@ _sheetSetState?.call(() {});
                       : const SizedBox(
                           key: ValueKey('no-confirm')),
                 ),
+
+                const SizedBox(height: 20),
+
+                // ── Charge Fleet ──
+                if (_currentStatus == 'Completed' && _paymentStatus == 'unpaid')
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton.icon(
+                      onPressed: _showChargeFleetSheet,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFD4A017),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      icon: const Icon(Icons.receipt_long_rounded, color: Colors.black),
+                      label: const Text(
+                        'CHARGE FLEET',
+                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 1),
+                      ),
+                    ),
+                  )
+                else if (_paymentStatus == 'awaiting_payment')
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD4A017).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.hourglass_top_rounded, color: Color(0xFFD4A017), size: 18),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Charged ₹${_totalAmount?.toStringAsFixed(0) ?? ''} — awaiting fleet payment',
+                          style: const TextStyle(color: Color(0xFFD4A017), fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_paymentStatus == 'paid')
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.green.withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_rounded, color: Colors.green, size: 18),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Paid ₹${_totalAmount?.toStringAsFixed(0) ?? ''}',
+                          style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
 
                 const SizedBox(height: 32),
 

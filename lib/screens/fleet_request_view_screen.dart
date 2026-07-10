@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'payment_screen.dart';
 
 class FleetRequestViewScreen extends StatefulWidget {
   final Map request;
@@ -727,6 +728,118 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
 
                 const SizedBox(height: 24),
                 _Divider(),
+
+                if (req['payment_status'] == 'awaiting_payment' ||
+                    req['payment_status'] == 'paid') ...[
+                  const SizedBox(height: 20),
+                  const _Label('SERVICE BILL'),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF141414),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.25)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ...List<Map<String, dynamic>>.from(req['bill_items'] ?? []).map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    item['name']?.toString() ?? '',
+                                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                                  ),
+                                ),
+                                Text(
+                                  '₹${item['price']}',
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: Divider(color: Color(0xFF2A2A2A), height: 1),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('TOTAL',
+                                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                            Text(
+                              '₹${req['total_amount']}',
+                              style: const TextStyle(
+                                color: Color(0xFFD4A017),
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        if (req['payment_status'] == 'awaiting_payment')
+                          SizedBox(
+                            width: double.infinity,
+                            height: 54,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFD4A017),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              ),
+                              onPressed: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => PaymentScreen(
+                                      title: 'Fleet Service — ${req['company_name'] ?? ''}',
+                                      price: '₹${req['total_amount']}',
+                                      duration: '',
+                                      vehicleId: '',
+                                      billItems: List<Map<String, dynamic>>.from(req['bill_items'] ?? []),
+                                      onlineOnly: true,
+                                      onSuccess: (orderId, paymentId) async {
+                                        await Supabase.instance.client
+                                            .from('fleet_pickup_requests')
+                                            .update({
+                                              'payment_status': 'paid',
+                                              'razorpay_order_id': orderId,
+                                              'razorpay_payment_id': paymentId,
+                                            })
+                                            .eq('id', req['id']);
+                                      },
+                                    ),
+                                  ),
+                                );
+                                if (mounted) setState(() {});
+                              },
+                              child: const Text(
+                                'PAY NOW',
+                                style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 1),
+                              ),
+                            ),
+                          )
+                        else
+                          Row(
+                            children: const [
+                              Icon(Icons.check_circle_rounded, color: Colors.green, size: 18),
+                              SizedBox(width: 8),
+                              Text('Paid', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w700)),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  _Divider(),
+                ],
 
                 if (statuses.isNotEmpty) ...[
                   const SizedBox(height: 20),
