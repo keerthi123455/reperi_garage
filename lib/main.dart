@@ -47,6 +47,12 @@ class GarageApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      theme: ThemeData(
+        appBarTheme: const AppBarTheme(
+          iconTheme: IconThemeData(color: Color(0xFFD4A017)),
+          actionsIconTheme: IconThemeData(color: Color(0xFFD4A017)),
+        ),
+      ),
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       home: const SplashScreen(),
