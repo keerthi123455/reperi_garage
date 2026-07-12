@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'booking_details_screen.dart';
 import 'fleet_request_details_screen.dart';
+import 'login_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -75,6 +76,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
   }
 
+  void _logout() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filteredBookings = bookings.where((booking) {
@@ -107,6 +116,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             letterSpacing: 2,
           ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Color(0xFFD4A017)),
+            onPressed: _logout,
+            tooltip: 'Log out',
+          ),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: Colors.black,
@@ -208,7 +224,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final hasUnread =
         unreadBookingIds.contains(booking['id'].toString());
 
-    return GestureDetector(
+    return _TappableScale(
       onTap: () {
         Navigator.push(
           context,
@@ -388,7 +404,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         statusColor = const Color(0xFFD4A017);
     }
 
-    return GestureDetector(
+    return _TappableScale(
       onTap: () {
         Navigator.push(
           context,
@@ -521,6 +537,48 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Reusable tap feedback wrapper ─────────────────────────────
+// Scales the child down slightly while pressed, and back up on
+// release, so cards give a visible "clicked" response.
+class _TappableScale extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final double pressedScale;
+
+  const _TappableScale({
+    required this.child,
+    this.onTap,
+    this.pressedScale = 0.97,
+  });
+
+  @override
+  State<_TappableScale> createState() => _TappableScaleState();
+}
+
+class _TappableScaleState extends State<_TappableScale> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed != value) setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      child: AnimatedScale(
+        scale: _pressed ? widget.pressedScale : 1.0,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.easeOut,
+        child: widget.child,
       ),
     );
   }

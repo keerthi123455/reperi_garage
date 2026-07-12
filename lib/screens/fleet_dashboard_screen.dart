@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fleet_order_sheet.dart';
 import 'fleet_request_view_screen.dart';
+import 'login_screen.dart';
 
 class FleetDashboardScreen extends StatefulWidget {
   final Map<String, dynamic> fleetUser;
@@ -52,6 +54,20 @@ class _FleetDashboardScreenState
     });
   }
 
+  Future<void> _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('fleet_logged_in');
+    await prefs.remove('fleet_user_id');
+    await prefs.remove('fleet_company');
+    await prefs.remove('fleet_username');
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+  }
+
   Color _statusColor(String status) {
 
     switch (status.toUpperCase()) {
@@ -83,6 +99,13 @@ class _FleetDashboardScreenState
         title: Text(
           widget.fleetUser['company_name'],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Color(0xFFD4A017)),
+            onPressed: _logout,
+            tooltip: 'Log out',
+          ),
+        ],
       ),
 
       floatingActionButton:
@@ -165,7 +188,7 @@ class _FleetDashboardScreenState
                           request['status'] ??
                               'Pending';
 
-                      return GestureDetector(
+                      return _TappableScale(
 
                         onTap: () {
 
@@ -310,6 +333,48 @@ class _FleetDashboardScreenState
                 ),
                   ),
               ),
+    );
+  }
+}
+
+// ── Reusable tap feedback wrapper ─────────────────────────────
+// Scales the child down slightly while pressed, and back up on
+// release, so cards give a visible "clicked" response.
+class _TappableScale extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final double pressedScale;
+
+  const _TappableScale({
+    required this.child,
+    this.onTap,
+    this.pressedScale = 0.97,
+  });
+
+  @override
+  State<_TappableScale> createState() => _TappableScaleState();
+}
+
+class _TappableScaleState extends State<_TappableScale> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed != value) setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      child: AnimatedScale(
+        scale: _pressed ? widget.pressedScale : 1.0,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
     );
   }
 }
