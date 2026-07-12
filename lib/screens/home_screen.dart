@@ -63,6 +63,10 @@ class _HomeScreenState extends State<HomeScreen>
   // for the purpose of suppressing the scroll hint.
   static const double _bottomThreshold = 150;
 
+  // ── Two-wheeler speech-bubble popup ──
+  bool _showTwoWheelerBubble = false;
+  Timer? _bubbleTimer;
+
   final List<String> _tips = [
     'Your engine suffers more damage in the first 10 minutes after a cold start than during hours of highway driving.',
     'A tyre that\'s 20% underinflated can lose up to 10% of its lifespan.',
@@ -148,12 +152,23 @@ class _HomeScreenState extends State<HomeScreen>
     _startIdleTimer();
   }
 
+  // Shows the small speech-bubble message above the two-wheeler button,
+  // and auto-hides it after a few seconds.
+  void _showTwoWheelerBubbleMessage() {
+    _bubbleTimer?.cancel();
+    setState(() => _showTwoWheelerBubble = true);
+    _bubbleTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _showTwoWheelerBubble = false);
+    });
+  }
+
   @override
   void dispose() {
     _shimmerController.dispose();
     _orbController.dispose();
     _tipTimer?.cancel();
     _idleTimer?.cancel();
+    _bubbleTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -381,7 +396,7 @@ Future<void> _fetchSliderItems() async {
         stat: 'Fast Delivery',
         statIcon: Icons.local_shipping_rounded,
         statColor: Colors.white70,
-       onTap: (ctx) {
+        onTap: (ctx) {
           if (activeVehicle == null) {
             _showNoProfileDialog(ctx);
             return;
@@ -419,40 +434,6 @@ Future<void> _fetchSliderItems() async {
         profileData: profileData,
         activeVehicle: activeVehicle,
       ),
-
-      // ── Two-wheeler "coming soon" floating button ──
-      // Sits above the bottom nav bar automatically (Scaffold default
-      // FAB location). Just shows a quick heads-up message for now.
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'twoWheelerComingSoonFab',
-        backgroundColor: const Color(0xFF8ECFF5),
-        elevation: 4,
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                'Hey! Two wheeler services will begin shortly',
-                style: TextStyle(
-                  color: Color(0xFF0A2A3D),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              backgroundColor: const Color(0xFFB3E5FC),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              margin: const EdgeInsets.only(bottom: 110, left: 20, right: 20),
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        },
-        child: const Icon(
-          Icons.two_wheeler_rounded,
-          color: Color(0xFF0A2A3D),
-        ),
-      ),
-
       body: Stack(
         children: [
           // ── Breathing orb — top right ──
@@ -533,7 +514,7 @@ Future<void> _fetchSliderItems() async {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Builder(
-                                  builder: (ctx) => GestureDetector(
+                                  builder: (ctx) => _TappableScale(
                                     onTap: () =>
                                         Scaffold.of(ctx).openDrawer(),
                                     child: _darkIcon(Icons.menu_rounded),
@@ -544,7 +525,7 @@ Future<void> _fetchSliderItems() async {
                                   height: 110,
                                   fit: BoxFit.contain,
                                 ),
-                                GestureDetector(
+                                _TappableScale(
                                   onTap: () async {
                                     final prefs =
                                         await SharedPreferences.getInstance();
@@ -689,7 +670,7 @@ Future<void> _fetchSliderItems() async {
                               items: sliderItems.map((item) {
                                 return Builder(
                                   builder: (context) {
-                                    return GestureDetector(
+                                    return _TappableScale(
                                       onTap: () {
                                         if (activeVehicle == null) {
                                           _showNoProfileDialog(context);
@@ -819,7 +800,7 @@ Future<void> _fetchSliderItems() async {
                             const SizedBox(height: 20),
 
                             // ── ROADSIDE ASSISTANCE BANNER ──
-                            GestureDetector(
+                            _TappableScale(
                               onTap: () {
                                 Navigator.push(
                                   context,
@@ -1074,6 +1055,101 @@ Future<void> _fetchSliderItems() async {
                 ),
               ),
             ),
+
+          // ── TWO-WHEELER SPEECH BUBBLE ──
+          // Anchored just above the button below. Fades and scales in/out
+          // rather than showing as a generic centered snackbar.
+          if (!loading)
+            Positioned(
+              right: 12,
+              bottom: 88,
+              child: IgnorePointer(
+                ignoring: !_showTwoWheelerBubble,
+                child: AnimatedOpacity(
+                  opacity: _showTwoWheelerBubble ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: AnimatedScale(
+                    scale: _showTwoWheelerBubble ? 1.0 : 0.85,
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOut,
+                    alignment: Alignment.bottomRight,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          constraints: const BoxConstraints(maxWidth: 220),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFB3E5FC),
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.25),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const Text(
+                            'Hey! Two wheeler services will begin shortly',
+                            style: TextStyle(
+                              color: Color(0xFF0A2A3D),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12.5,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                        // Small tail pointing down to the button
+                        Padding(
+                          padding: const EdgeInsets.only(right: 18),
+                          child: Transform.rotate(
+                            angle: pi / 4,
+                            child: Container(
+                              width: 12,
+                              height: 12,
+                              color: const Color(0xFFB3E5FC),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // ── TWO-WHEELER BUTTON ──
+          // Sits above the bottom nav bar. Tapping it shows the speech
+          // bubble above, rather than a snackbar in the middle of the screen.
+          if (!loading)
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: _TappableScale(
+                onTap: _showTwoWheelerBubbleMessage,
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF8ECFF5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.two_wheeler_rounded,
+                    color: Color(0xFF0A2A3D),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
 
@@ -1101,7 +1177,7 @@ Future<void> _fetchSliderItems() async {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _navItem(Icons.home, 'Home', 0),
-              GestureDetector(
+              _TappableScale(
                 onTap: () {
                   if (activeVehicle == null) {
                     _showNoProfileDialog(context);
@@ -1121,7 +1197,7 @@ Future<void> _fetchSliderItems() async {
                 },
                 child: _navItem(Icons.calendar_month, 'Bookings', 1),
               ),
-              GestureDetector(
+              _TappableScale(
                 onTap: () {
                   if (activeVehicle == null) {
                     _showNoProfileDialog(context);
@@ -1163,7 +1239,7 @@ Future<void> _fetchSliderItems() async {
                   },
                 ),
               ),
-              GestureDetector(
+              _TappableScale(
                 onTap: () {
                   Navigator.push(
                     context,
@@ -1175,7 +1251,7 @@ Future<void> _fetchSliderItems() async {
                 },
                 child: _navItem(Icons.handyman_rounded, 'Services', 2),
               ),
-              GestureDetector(
+              _TappableScale(
                 onTap: () async {
                   await Navigator.push(
                     context,
@@ -1352,7 +1428,7 @@ Future<void> _fetchSliderItems() async {
               child: child,
             );
           },
-          child: GestureDetector(
+          child: _TappableScale(
             onTap: () {
               Navigator.push(
                 context,
@@ -1554,7 +1630,7 @@ Future<void> _fetchSliderItems() async {
   }
 
   Widget _noProfileCard() {
-    return GestureDetector(
+    return _TappableScale(
       onTap: () => _showNoProfileDialog(context),
       child: Container(
         padding: const EdgeInsets.all(24),
@@ -1621,6 +1697,48 @@ Future<void> _fetchSliderItems() async {
             ),
           ),
       ],
+    );
+  }
+}
+
+// ── Reusable tap feedback wrapper ─────────────────────────────
+// Scales the child down slightly while pressed, and back up on
+// release, so every tile/button gives a visible "clicked" response.
+class _TappableScale extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final double pressedScale;
+
+  const _TappableScale({
+    required this.child,
+    this.onTap,
+    this.pressedScale = 0.94,
+  });
+
+  @override
+  State<_TappableScale> createState() => _TappableScaleState();
+}
+
+class _TappableScaleState extends State<_TappableScale> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed != value) setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      child: AnimatedScale(
+        scale: _pressed ? widget.pressedScale : 1.0,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
     );
   }
 }
@@ -1779,7 +1897,7 @@ class _ActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return _TappableScale(
       onTap: onTap,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
