@@ -70,12 +70,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  final brands = [
-    'Hyundai', 'Tata', 'Maruti Suzuki', 'Mahindra', 'Honda',
-    'Toyota', 'Kia', 'MG', 'Volkswagen', 'Skoda', 'Renault',
-    'Nissan', 'Ford', 'BMW', 'Mercedes', 'Audi', 'Jeep',
-    'Volvo', 'Lexus', 'Porsche',
-  ];
+  final Map<String, List<String>> brandsByType = {
+    'four_wheeler': [
+      'Hyundai', 'Tata', 'Maruti Suzuki', 'Mahindra', 'Honda',
+      'Toyota', 'Kia', 'MG', 'Volkswagen', 'Skoda', 'Renault',
+      'Nissan', 'Ford', 'BMW', 'Mercedes', 'Audi', 'Jeep',
+      'Volvo', 'Lexus', 'Porsche',
+    ],
+    'two_wheeler': [
+      'Honda', 'Hero', 'Bajaj', 'TVS', 'Royal Enfield', 'Yamaha',
+      'Suzuki', 'KTM', 'Ather', 'Ola Electric', 'Vespa', 'Jawa',
+    ],
+  };
+
+  final vehicleTypeLabels = {
+    'four_wheeler': 'Four Wheeler',
+    'two_wheeler': 'Two Wheeler',
+  };
 
   @override
   void initState() {
@@ -113,7 +124,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final nameController = TextEditingController();
     final carModelController = TextEditingController();
     final carNumberController = TextEditingController();
-    String selectedBrand = brands.first;
+    String selectedVehicleType = 'four_wheeler';
+    String selectedBrand = brandsByType[selectedVehicleType]!.first;
     bool saving = false;
 
     showModalBottomSheet(
@@ -150,7 +162,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
                   ),
                   const SizedBox(height: 24),
-                  _sheetField(nameController, 'Your Name', Icons.person_outline),
+                   _sheetField(nameController, 'Your Name', Icons.person_outline),
+                  const SizedBox(height: 16),
+                  // Vehicle Type Dropdown
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: selectedVehicleType,
+                        isExpanded: true,
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                        items: vehicleTypeLabels.entries.map((e) => DropdownMenuItem(
+                          value: e.key, child: Text(e.value),
+                        )).toList(),
+                        onChanged: (v) => setSheetState(() {
+                          selectedVehicleType = v!;
+                          selectedBrand = brandsByType[selectedVehicleType]!.first;
+                        }),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   // Brand Dropdown
                   Container(
@@ -164,7 +199,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         value: selectedBrand,
                         isExpanded: true,
                         icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                        items: brands.map((b) => DropdownMenuItem(
+                        items: brandsByType[selectedVehicleType]!.map((b) => DropdownMenuItem(
                           value: b, child: Text(b),
                         )).toList(),
                         onChanged: (v) => setSheetState(() => selectedBrand = v!),
@@ -194,8 +229,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       if (user == null) return;
 
                       try {
-                        final inserted = await supabase.from('vehicles').insert({
+                         final inserted = await supabase.from('vehicles').insert({
                           'user_id': user.id,
+                          'vehicle_type': selectedVehicleType,
                           'car_brand': selectedBrand,
                           'car_model': carModelController.text.trim(),
                           'car_number': carNumberController.text.trim(),
@@ -407,7 +443,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             color: AppColors.yellow.withOpacity(0.15),
                                             borderRadius: BorderRadius.circular(18),
                                           ),
-                                          child: const Icon(Icons.directions_car_rounded, size: 30),
+                                          child: Icon(
+                                            v['vehicle_type'] == 'two_wheeler'
+                                                ? Icons.two_wheeler_rounded
+                                                : Icons.directions_car_rounded,
+                                            size: 30,
+                                          ),
                                         ),
                                         const SizedBox(width: 16),
                                         // Details

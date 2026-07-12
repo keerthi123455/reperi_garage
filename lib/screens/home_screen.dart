@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:hello_world_app/screens/ai_advisor_sheet.dart';
-import 'package:hello_world_app/screens/fleet_dashboard_screen.dart';
+import 'package:reperi_garage/screens/ai_advisor_sheet.dart';
+import 'package:reperi_garage/screens/fleet_dashboard_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'vehicle_bookings_screen.dart';
@@ -58,6 +58,10 @@ class _HomeScreenState extends State<HomeScreen>
   bool _showScrollHint = false;
   Timer? _idleTimer;
   final ScrollController _scrollController = ScrollController();
+
+  // How close to the bottom (in pixels) counts as "already at the bottom"
+  // for the purpose of suppressing the scroll hint.
+  static const double _bottomThreshold = 150;
 
   final List<String> _tips = [
     'Your engine suffers more damage in the first 10 minutes after a cold start than during hours of highway driving.',
@@ -118,15 +122,27 @@ class _HomeScreenState extends State<HomeScreen>
     _scrollController.addListener(_onScroll);
   }
 
+  // Whether the scroll view is already close enough to the bottom that
+  // the "scroll to view services" hint wouldn't add anything useful.
+  bool get _isNearBottom {
+    if (!_scrollController.hasClients) return false;
+    final position = _scrollController.position;
+    return (position.maxScrollExtent - position.pixels) < _bottomThreshold;
+  }
+
   void _startIdleTimer() {
     _idleTimer?.cancel();
     _idleTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted) setState(() => _showScrollHint = true);
+      if (!mounted) return;
+      // Don't show the hint if the user is already at (or almost at)
+      // the bottom of the page — there's nothing left to scroll to.
+      if (_isNearBottom) return;
+      setState(() => _showScrollHint = true);
     });
   }
 
   void _onScroll() {
-    if (_showScrollHint) {
+    if (_showScrollHint || _isNearBottom) {
       setState(() => _showScrollHint = false);
     }
     _startIdleTimer();
@@ -350,8 +366,9 @@ Future<void> _fetchSliderItems() async {
             _showNoProfileDialog(ctx);
             return;
           }
-          // No dedicated screen yet — keeping previous behavior (no navigation),
-          // but now guarded so it won't silently do nothing without explanation.
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            const SnackBar(content: Text('This service is coming soon')),
+          );
         },
       ),
       _ActionTile(
@@ -364,17 +381,20 @@ Future<void> _fetchSliderItems() async {
         stat: 'Fast Delivery',
         statIcon: Icons.local_shipping_rounded,
         statColor: Colors.white70,
-        onTap: (ctx) {
+       onTap: (ctx) {
           if (activeVehicle == null) {
             _showNoProfileDialog(ctx);
             return;
           }
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            const SnackBar(content: Text('This service is coming soon')),
+          );
         },
       ),
       _ActionTile(
         image: 'assets/images/tile_insurance.jpg',
         icon: Icons.shield_rounded,
-        title: 'Insurance\nClaims',
+        title: 'Claims',
         subtitle: 'Accident Assistance',
         badge: 'CASHLESS',
         badgeColor: Colors.teal,
@@ -386,6 +406,9 @@ Future<void> _fetchSliderItems() async {
             _showNoProfileDialog(ctx);
             return;
           }
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            const SnackBar(content: Text('This service is coming soon')),
+          );
         },
       ),
     ];
@@ -396,6 +419,40 @@ Future<void> _fetchSliderItems() async {
         profileData: profileData,
         activeVehicle: activeVehicle,
       ),
+
+      // ── Two-wheeler "coming soon" floating button ──
+      // Sits above the bottom nav bar automatically (Scaffold default
+      // FAB location). Just shows a quick heads-up message for now.
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'twoWheelerComingSoonFab',
+        backgroundColor: const Color(0xFF8ECFF5),
+        elevation: 4,
+        onPressed: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Hey! Two wheeler services will begin shortly',
+                style: TextStyle(
+                  color: Color(0xFF0A2A3D),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              backgroundColor: const Color(0xFFB3E5FC),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              margin: const EdgeInsets.only(bottom: 110, left: 20, right: 20),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        },
+        child: const Icon(
+          Icons.two_wheeler_rounded,
+          color: Color(0xFF0A2A3D),
+        ),
+      ),
+
       body: Stack(
         children: [
           // ── Breathing orb — top right ──
@@ -941,7 +998,33 @@ Future<void> _fetchSliderItems() async {
                               }).toList(),
                             ),
 
-                            const SizedBox(height: 120),
+                            const SizedBox(height: 40),
+                            Center(
+                              child: Column(
+                                children: [
+                                  Text(
+                                    'Proudly made in India 🇮🇳',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.3),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Happy Servicing',
+                                    style: TextStyle(
+                                      color: const Color(0xFFD4A017)
+                                          .withOpacity(0.35),
+                                      fontSize: 11,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 40),
                           ],
                         ),
                       ),
@@ -1918,12 +2001,6 @@ class GarageDrawer extends StatelessWidget {
                 builder: (_) => AiAdvisorSheet(vehicle: activeVehicle!),
               );
             }),
-            _tile(context, Icons.shield, 'Insurance Claims', () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Insurance screen coming soon')),
-              );
-            }),
-            _tile(context, Icons.card_giftcard, 'Offers & Referrals', () {}),
             _tile(context, Icons.privacy_tip_outlined, 'Privacy Policy', () async {
               final uri = Uri.parse('https://reperi.in/privacy-policy.html');
               await launchUrl(uri, mode: LaunchMode.externalApplication);
