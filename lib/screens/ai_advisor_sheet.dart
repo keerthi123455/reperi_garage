@@ -523,7 +523,9 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
     }
 
     if (q.contains('engine') || q.contains('noise') ||
-        q.contains('pickup') || q.contains('power')) {
+        q.contains('pickup') || q.contains('power') ||
+        q.contains('book service') || q.contains('general service') ||
+        q.contains('maintenance')) {
       return {
         'recommendation': {
           'issue': '⚙️ Engine Performance Issue',
