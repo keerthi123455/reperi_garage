@@ -35,6 +35,9 @@ dependencies:
   geocoding: ^4.0.0
   razorpay_flutter: ^1.4.5
 
+  ## PUSH NOTIFICATIONS
+  onesignal_flutter: ^5.3.5
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -35,6 +36,12 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
   bool _chatLoading = false;
   bool _chatSending = false;
   RealtimeChannel? _chatChannel;
+
+  // ── Typing indicator ──
+  RealtimeChannel? _typingChannel;
+  bool _otherTyping = false;
+  Timer? _typingClearTimer;
+  DateTime? _lastTypingSentAt;
 
   // ── Sheet setState handle ──
   StateSetter? _sheetSetState;
@@ -92,6 +99,8 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
     _chatController.dispose();
     _chatScrollController.dispose();
     _chatChannel?.unsubscribe();
+    _typingChannel?.unsubscribe();
+    _typingClearTimer?.cancel();
     _requestWatchChannel?.unsubscribe();
     super.dispose();
   }
@@ -111,22 +120,13 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
             value: widget.request['id'],
           ),
           callback: (payload) {
-  if (!mounted) return;
-
-  final msg = payload.newRecord;
-
-  final exists = _chatMessages.any(
-    (m) =>
-        m['message'] == msg['message'] &&
-        m['sender_type'] == msg['sender_type'],
-  );
-
-  if (exists) return;
-
-  _chatMessages.add(msg);
-  _sheetSetState?.call(() {});
-  _scrollChatToBottom();
-},
+            if (!mounted) return;
+            final updated = payload.newRecord;
+            final unread = updated['fleet_has_unread_chat'] == true;
+            if (unread != _hasUnreadChat) {
+              setState(() => _hasUnreadChat = unread);
+            }
+          },
         )
         .subscribe();
   }
@@ -163,11 +163,23 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
         _chatMessages = List<Map<String, dynamic>>.from(rows);
         _sheetSetState?.call(() {});
         _scrollChatToBottom();
+        _markAdminMessagesReadByFleet();
       }
     } catch (_) {}
     if (mounted) {
       _sheetSetState?.call(() => _chatLoading = false);
     }
+  }
+
+  Future<void> _markAdminMessagesReadByFleet() async {
+    try {
+      await Supabase.instance.client
+          .from('fleet_chat_messages')
+          .update({'is_read_by_fleet': true})
+          .eq('request_id', widget.request['id'].toString())
+          .eq('sender_type', 'admin')
+          .eq('is_read_by_fleet', false);
+    } catch (_) {}
   }
 
   void _subscribeToChat() {
@@ -178,18 +190,97 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
           schema: 'public',
           table: 'fleet_chat_messages',
           filter: PostgresChangeFilter(
-  type: PostgresChangeFilterType.eq,
-  column: 'request_id',
-  value: widget.request['id'],
-),
+            type: PostgresChangeFilterType.eq,
+            column: 'request_id',
+            value: widget.request['id'],
+          ),
           callback: (payload) {
             if (!mounted) return;
-            _chatMessages.add(payload.newRecord);
+            final incoming = payload.newRecord;
+
+            final confirmedIdx = _chatMessages.indexWhere(
+              (m) => m['id'] != null && m['id'] == incoming['id'],
+            );
+            if (confirmedIdx != -1) return;
+
+            final optimisticIdx = _chatMessages.indexWhere(
+              (m) =>
+                  m['id'] == null &&
+                  m['sender_type'] == incoming['sender_type'] &&
+                  m['message'] == incoming['message'],
+            );
+
+            if (optimisticIdx != -1) {
+              _chatMessages[optimisticIdx] = incoming;
+            } else {
+              _chatMessages.add(incoming);
+            }
             _sheetSetState?.call(() {});
             _scrollChatToBottom();
+
+            if (incoming['sender_type'] == 'admin') {
+              _markAdminMessagesReadByFleet();
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'fleet_chat_messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'request_id',
+            value: widget.request['id'],
+          ),
+          callback: (payload) {
+            if (!mounted) return;
+            final updated = payload.newRecord;
+            final idx =
+                _chatMessages.indexWhere((m) => m['id'] == updated['id']);
+            if (idx == -1) return;
+            _chatMessages[idx] = updated;
+            _sheetSetState?.call(() {});
           },
         )
         .subscribe();
+  }
+
+  // ── Typing indicator (ephemeral broadcast, not stored in DB) ──
+  void _subscribeToTyping() {
+    _typingChannel = Supabase.instance.client
+        .channel('fleet_typing_view_${widget.request['id']}')
+        .onBroadcast(
+          event: 'typing',
+          callback: (payload) {
+            if (!mounted) return;
+            if (payload['sender'] == 'fleet') return; // ignore self
+
+            _typingClearTimer?.cancel();
+            _otherTyping = true;
+            _sheetSetState?.call(() {});
+            _typingClearTimer = Timer(const Duration(seconds: 3), () {
+              if (mounted) {
+                _otherTyping = false;
+                _sheetSetState?.call(() {});
+              }
+            });
+          },
+        )
+        .subscribe();
+  }
+
+  void _handleChatTyping(String _) {
+    final now = DateTime.now();
+    if (_lastTypingSentAt != null &&
+        now.difference(_lastTypingSentAt!) <
+            const Duration(milliseconds: 1200)) {
+      return;
+    }
+    _lastTypingSentAt = now;
+    _typingChannel?.sendBroadcastMessage(
+      event: 'typing',
+      payload: {'sender': 'fleet'},
+    );
   }
 
   void _scrollChatToBottom() {
@@ -210,31 +301,48 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
 
   _chatController.clear();
 
+  final optimisticMsg = {
+    'request_id': widget.request['id'].toString(),
+    'sender_type': 'fleet',
+    'sender_name': widget.request['company_name'] ?? 'Fleet Operator',
+    'message': text,
+    'created_at': DateTime.now().toIso8601String(),
+    'is_read_by_fleet': true,
+    'is_read_by_admin': false,
+  };
+
   _sheetSetState?.call(() {
     _chatSending = true;
-
-    // Show message immediately
-    _chatMessages.add({
-      'sender_type': 'fleet',
-      'message': text,
-    });
+    _chatMessages.add(optimisticMsg);
   });
 
   _scrollChatToBottom();
 
   try {
-    await Supabase.instance.client.from('fleet_chat_messages').insert({
-      'request_id': widget.request['id'].toString(),
-      'sender_type': 'fleet',
-      'sender_name': widget.request['company_name'] ?? 'Fleet Operator',
-      'message': text,
-    });
+    final inserted = await Supabase.instance.client
+        .from('fleet_chat_messages')
+        .insert({
+          'request_id': widget.request['id'].toString(),
+          'sender_type': 'fleet',
+          'sender_name': widget.request['company_name'] ?? 'Fleet Operator',
+          'message': text,
+          'is_read_by_fleet': true,
+          'is_read_by_admin': false,
+        })
+        .select()
+        .single();
+
+    final idx = _chatMessages.indexOf(optimisticMsg);
+    if (idx != -1) {
+      _sheetSetState?.call(() => _chatMessages[idx] = inserted);
+    }
 
     await Supabase.instance.client
         .from('fleet_pickup_requests')
         .update({'admin_has_unread_chat': true})
         .eq('id', widget.request['id']);
   } catch (e) {
+    _sheetSetState?.call(() => _chatMessages.remove(optimisticMsg));
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -260,9 +368,11 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
     // Reset chat state before opening
     _chatMessages = [];
     _chatLoading = true;
+    _otherTyping = false;
     _sheetSetState = null;
 
     _subscribeToChat();
+    _subscribeToTyping();
 
     showModalBottomSheet(
       context: context,
@@ -278,6 +388,9 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
       _sheetSetState = null;
       _chatChannel?.unsubscribe();
       _chatChannel = null;
+      _typingChannel?.unsubscribe();
+      _typingChannel = null;
+      _typingClearTimer?.cancel();
     });
 
     // Load after sheet is open so spinner shows, then updates via _sheetSetState
@@ -378,10 +491,41 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                         itemBuilder: (_, i) {
                           final msg = _chatMessages[i];
                           final isFleet = msg['sender_type'] == 'fleet';
-                          return _chatBubble(msg['message'] ?? '', isFleet);
+                          final seen = isFleet
+                              ? msg['is_read_by_admin'] == true
+                              : msg['is_read_by_fleet'] == true;
+                          return _chatBubble(
+                              msg['message'] ?? '', isFleet, seen);
                         },
                       ),
           ),
+
+          if (_otherTyping)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, bottom: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: Color(0xFFD4A017),
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'Garage Admin is typing…',
+                    style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           Padding(
             padding:
@@ -397,6 +541,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                     ),
                     child: TextField(
                       controller: _chatController,
+                      onChanged: _handleChatTyping,
                       style:
                           const TextStyle(color: Colors.white, fontSize: 14),
                       maxLines: null,
@@ -442,37 +587,67 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
     );
   }
 
-  Widget _chatBubble(String message, bool isFleet) {
+  Widget _chatBubble(String message, bool isFleet, bool seen) {
     return Align(
       alignment: isFleet ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        constraints: const BoxConstraints(maxWidth: 280),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isFleet
-              ? const Color(0xFFD4A017).withOpacity(0.15)
-              : const Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isFleet ? 16 : 4),
-            bottomRight: Radius.circular(isFleet ? 4 : 16),
+      child: Column(
+        crossAxisAlignment:
+            isFleet ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(bottom: 2),
+            constraints: const BoxConstraints(maxWidth: 280),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: isFleet
+                  ? const Color(0xFFD4A017).withOpacity(0.15)
+                  : const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(16),
+                topRight: const Radius.circular(16),
+                bottomLeft: Radius.circular(isFleet ? 16 : 4),
+                bottomRight: Radius.circular(isFleet ? 4 : 16),
+              ),
+              border: isFleet
+                  ? Border.all(
+                      color: const Color(0xFFD4A017).withOpacity(0.25))
+                  : Border.all(color: const Color(0xFF2A2A2A)),
+            ),
+            child: Text(
+              message,
+              style: TextStyle(
+                color:
+                    isFleet ? const Color(0xFFE8C84A) : Colors.white,
+                fontSize: 13.5,
+              ),
+            ),
           ),
-          border: isFleet
-              ? Border.all(
-                  color: const Color(0xFFD4A017).withOpacity(0.25))
-              : Border.all(color: const Color(0xFF2A2A2A)),
-        ),
-        child: Text(
-          message,
-          style: TextStyle(
-            color:
-                isFleet ? const Color(0xFFE8C84A) : Colors.white,
-            fontSize: 13.5,
-          ),
-        ),
+          if (isFleet)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10, right: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    seen ? Icons.remove_red_eye : Icons.remove_red_eye_outlined,
+                    size: 11,
+                    color: seen ? const Color(0xFFD4A017) : Colors.white24,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    seen ? 'Seen' : 'Sent',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: seen ? const Color(0xFFD4A017) : Colors.white24,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            const SizedBox(height: 10),
+        ],
       ),
     );
   }

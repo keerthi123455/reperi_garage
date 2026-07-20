@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -35,6 +36,12 @@ class _FleetRequestDetailsScreenState
   bool _chatLoading = false;
   bool _chatSending = false;
   RealtimeChannel? _chatChannel;
+
+  // ── Typing indicator ──
+  RealtimeChannel? _typingChannel;
+  bool _otherTyping = false;
+  Timer? _typingClearTimer;
+  DateTime? _lastTypingSentAt;
 
   // ── Sheet setState handle ──
   StateSetter? _sheetSetState;
@@ -82,6 +89,8 @@ class _FleetRequestDetailsScreenState
     _chatController.dispose();
     _chatScrollController.dispose();
     _chatChannel?.unsubscribe();
+    _typingChannel?.unsubscribe();
+    _typingClearTimer?.cancel();
     _requestWatchChannel?.unsubscribe();
     super.dispose();
   }
@@ -126,11 +135,23 @@ class _FleetRequestDetailsScreenState
         _chatMessages = List<Map<String, dynamic>>.from(rows);
         _sheetSetState?.call(() {});
         _scrollChatToBottom();
+        _markFleetMessagesReadByAdmin();
       }
     } catch (_) {}
     if (mounted) {
       _sheetSetState?.call(() => _chatLoading = false);
     }
+  }
+
+  Future<void> _markFleetMessagesReadByAdmin() async {
+    try {
+      await Supabase.instance.client
+          .from('fleet_chat_messages')
+          .update({'is_read_by_admin': true})
+          .eq('request_id', widget.fleetRequest['id'].toString())
+          .eq('sender_type', 'fleet')
+          .eq('is_read_by_admin', false);
+    } catch (_) {}
   }
 
   void _subscribeToChat() {
@@ -148,17 +169,92 @@ class _FleetRequestDetailsScreenState
           callback: (payload) {
             if (!mounted) return;
             final incoming = payload.newRecord;
-            // Skip if we already have this row (optimistic insert matched by id)
-            final alreadyExists = _chatMessages.any(
+
+            final confirmedIdx = _chatMessages.indexWhere(
               (m) => m['id'] != null && m['id'] == incoming['id'],
             );
-            if (alreadyExists) return;
-            _chatMessages.add(incoming);
+            if (confirmedIdx != -1) return;
+
+            // Confirm one of our own not-yet-confirmed optimistic sends
+            // instead of adding a duplicate.
+            final optimisticIdx = _chatMessages.indexWhere(
+              (m) =>
+                  m['id'] == null &&
+                  m['sender_type'] == incoming['sender_type'] &&
+                  m['message'] == incoming['message'],
+            );
+
+            if (optimisticIdx != -1) {
+              _chatMessages[optimisticIdx] = incoming;
+            } else {
+              _chatMessages.add(incoming);
+            }
             _sheetSetState?.call(() {});
             _scrollChatToBottom();
+
+            if (incoming['sender_type'] == 'fleet') {
+              _markFleetMessagesReadByAdmin();
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'fleet_chat_messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'request_id',
+            value: widget.fleetRequest['id'],
+          ),
+          callback: (payload) {
+            if (!mounted) return;
+            final updated = payload.newRecord;
+            final idx =
+                _chatMessages.indexWhere((m) => m['id'] == updated['id']);
+            if (idx == -1) return;
+            _chatMessages[idx] = updated;
+            _sheetSetState?.call(() {});
           },
         )
         .subscribe();
+  }
+
+  // ── Typing indicator (ephemeral broadcast, not stored in DB) ──
+  void _subscribeToTyping() {
+    _typingChannel = Supabase.instance.client
+        .channel('fleet_typing_${widget.fleetRequest['id']}')
+        .onBroadcast(
+          event: 'typing',
+          callback: (payload) {
+            if (!mounted) return;
+            if (payload['sender'] == 'admin') return; // ignore self
+
+            _typingClearTimer?.cancel();
+            _otherTyping = true;
+            _sheetSetState?.call(() {});
+            _typingClearTimer = Timer(const Duration(seconds: 3), () {
+              if (mounted) {
+                _otherTyping = false;
+                _sheetSetState?.call(() {});
+              }
+            });
+          },
+        )
+        .subscribe();
+  }
+
+  void _handleChatTyping(String _) {
+    final now = DateTime.now();
+    if (_lastTypingSentAt != null &&
+        now.difference(_lastTypingSentAt!) <
+            const Duration(milliseconds: 1200)) {
+      return;
+    }
+    _lastTypingSentAt = now;
+    _typingChannel?.sendBroadcastMessage(
+      event: 'typing',
+      payload: {'sender': 'admin'},
+    );
   }
 
   void _scrollChatToBottom() {
@@ -187,6 +283,8 @@ _sheetSetState?.call(() {});
       'sender_name': 'Garage Admin',
       'message': text,
       'created_at': DateTime.now().toIso8601String(),
+      'is_read_by_admin': true,
+      'is_read_by_fleet': false,
     };
     _chatMessages.add(optimisticMsg);
     _sheetSetState?.call(() {});
@@ -200,6 +298,8 @@ _sheetSetState?.call(() {});
             'sender_type': 'admin',
             'sender_name': 'Garage Admin',
             'message': text,
+            'is_read_by_admin': true,
+            'is_read_by_fleet': false,
           })
           .select()
           .single();
@@ -240,9 +340,11 @@ _sheetSetState?.call(() {});
     // Reset chat state before opening
     _chatMessages = [];
     _chatLoading = true;
+    _otherTyping = false;
     _sheetSetState = null;
 
     _subscribeToChat();
+    _subscribeToTyping();
 
     showModalBottomSheet(
       context: context,
@@ -258,6 +360,9 @@ _sheetSetState?.call(() {});
       _sheetSetState = null;
       _chatChannel?.unsubscribe();
       _chatChannel = null;
+      _typingChannel?.unsubscribe();
+      _typingChannel = null;
+      _typingClearTimer?.cancel();
     });
 
     // Load after sheet is open so spinner shows, then updates via _sheetSetState
@@ -359,10 +464,41 @@ _sheetSetState?.call(() {});
                         itemBuilder: (_, i) {
                           final msg = _chatMessages[i];
                           final isAdmin = msg['sender_type'] == 'admin';
-                          return _chatBubble(msg['message'] ?? '', isAdmin);
+                          final seen = isAdmin
+                              ? msg['is_read_by_fleet'] == true
+                              : msg['is_read_by_admin'] == true;
+                          return _chatBubble(
+                              msg['message'] ?? '', isAdmin, seen);
                         },
                       ),
           ),
+
+          if (_otherTyping)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, bottom: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: Color(0xFFD4A017),
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'Fleet operator is typing…',
+                    style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           Padding(
             padding:
@@ -378,6 +514,7 @@ _sheetSetState?.call(() {});
                     ),
                     child: TextField(
                       controller: _chatController,
+                      onChanged: _handleChatTyping,
                       style:
                           const TextStyle(color: Colors.white, fontSize: 14),
                       maxLines: null,
@@ -423,36 +560,66 @@ _sheetSetState?.call(() {});
     );
   }
 
-  Widget _chatBubble(String message, bool isAdmin) {
+  Widget _chatBubble(String message, bool isAdmin, bool seen) {
     return Align(
       alignment: isAdmin ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        constraints: const BoxConstraints(maxWidth: 280),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isAdmin
-              ? const Color(0xFFD4A017).withOpacity(0.15)
-              : const Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isAdmin ? 16 : 4),
-            bottomRight: Radius.circular(isAdmin ? 4 : 16),
+      child: Column(
+        crossAxisAlignment:
+            isAdmin ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(bottom: 2),
+            constraints: const BoxConstraints(maxWidth: 280),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: isAdmin
+                  ? const Color(0xFFD4A017).withOpacity(0.15)
+                  : const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(16),
+                topRight: const Radius.circular(16),
+                bottomLeft: Radius.circular(isAdmin ? 16 : 4),
+                bottomRight: Radius.circular(isAdmin ? 4 : 16),
+              ),
+              border: isAdmin
+                  ? Border.all(
+                      color: const Color(0xFFD4A017).withOpacity(0.25))
+                  : Border.all(color: const Color(0xFF2A2A2A)),
+            ),
+            child: Text(
+              message,
+              style: TextStyle(
+                color: isAdmin ? const Color(0xFFE8C84A) : Colors.white,
+                fontSize: 13.5,
+              ),
+            ),
           ),
-          border: isAdmin
-              ? Border.all(
-                  color: const Color(0xFFD4A017).withOpacity(0.25))
-              : Border.all(color: const Color(0xFF2A2A2A)),
-        ),
-        child: Text(
-          message,
-          style: TextStyle(
-            color: isAdmin ? const Color(0xFFE8C84A) : Colors.white,
-            fontSize: 13.5,
-          ),
-        ),
+          if (isAdmin)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10, right: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    seen ? Icons.remove_red_eye : Icons.remove_red_eye_outlined,
+                    size: 11,
+                    color: seen ? const Color(0xFFD4A017) : Colors.white24,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    seen ? 'Seen' : 'Sent',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: seen ? const Color(0xFFD4A017) : Colors.white24,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            const SizedBox(height: 10),
+        ],
       ),
     );
   }

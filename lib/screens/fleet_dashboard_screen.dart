@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'fleet_order_sheet.dart';
 import 'fleet_request_view_screen.dart';
 import 'login_screen.dart';
+import '../services/push_notification_service.dart';
 
 class FleetDashboardScreen extends StatefulWidget {
   final Map<String, dynamic> fleetUser;
@@ -28,6 +29,7 @@ class _FleetDashboardScreenState
   @override
   void initState() {
     super.initState();
+    PushNotificationService.loginAsFleet(widget.fleetUser['id'].toString());
     fetchRequests();
   }
 
@@ -55,6 +57,7 @@ class _FleetDashboardScreenState
   }
 
   Future<void> _logout() async {
+    PushNotificationService.logout();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('fleet_logged_in');
     await prefs.remove('fleet_user_id');

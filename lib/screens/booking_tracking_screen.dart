@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -336,18 +338,137 @@ class _ChatSheetState extends State<ChatSheet> {
   bool loading = true;
   bool sending = false;
 
+  // ── Realtime ──
+  RealtimeChannel? _chatChannel;
+  RealtimeChannel? _typingChannel;
+
+  // ── Typing indicator ──
+  bool _otherTyping = false;
+  Timer? _typingClearTimer;
+  DateTime? _lastTypingSentAt;
+
   @override
   void initState() {
     super.initState();
     fetchMessages();
     markMessagesRead();
+    _subscribeToChatChanges();
+    _subscribeToTyping();
   }
 
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _typingClearTimer?.cancel();
+    _chatChannel?.unsubscribe();
+    _typingChannel?.unsubscribe();
     super.dispose();
+  }
+
+  // ── Live message sync (insert + read-status updates) ──
+  void _subscribeToChatChanges() {
+    final supabase = Supabase.instance.client;
+
+    _chatChannel = supabase
+        .channel('booking_chat_${widget.bookingId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'booking_chats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'booking_id',
+            value: widget.bookingId,
+          ),
+          callback: (payload) {
+            if (!mounted) return;
+            final incoming = payload.newRecord;
+
+            final confirmedIdx = messages.indexWhere(
+              (m) => m['id'] != null && m['id'] == incoming['id'],
+            );
+            if (confirmedIdx != -1) return; // already have the confirmed row
+
+            // If this confirms one of our own not-yet-confirmed optimistic
+            // sends (no id yet), replace it instead of adding a duplicate.
+            final optimisticIdx = messages.indexWhere(
+              (m) =>
+                  m['id'] == null &&
+                  m['sender'] == incoming['sender'] &&
+                  m['message'] == incoming['message'],
+            );
+
+            setState(() {
+              if (optimisticIdx != -1) {
+                messages[optimisticIdx] = incoming;
+              } else {
+                messages.add(incoming);
+              }
+            });
+            _scrollToBottom();
+
+            // A message just arrived from the other side while the sheet
+            // is open — mark it read immediately so they see the seen tick.
+            if (incoming['sender'] != widget.sender) {
+              markMessagesRead();
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'booking_chats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'booking_id',
+            value: widget.bookingId,
+          ),
+          callback: (payload) {
+            if (!mounted) return;
+            final updated = payload.newRecord;
+            final idx = messages.indexWhere((m) => m['id'] == updated['id']);
+            if (idx == -1) return;
+            setState(() => messages[idx] = updated);
+          },
+        )
+        .subscribe();
+  }
+
+  // ── Typing indicator (ephemeral broadcast, not stored in DB) ──
+  void _subscribeToTyping() {
+    final supabase = Supabase.instance.client;
+
+    _typingChannel = supabase
+        .channel('booking_typing_${widget.bookingId}')
+        .onBroadcast(
+          event: 'typing',
+          callback: (payload) {
+            if (!mounted) return;
+            if (payload['sender'] == widget.sender) return; // ignore self
+
+            _typingClearTimer?.cancel();
+            setState(() => _otherTyping = true);
+            _typingClearTimer = Timer(const Duration(seconds: 3), () {
+              if (mounted) setState(() => _otherTyping = false);
+            });
+          },
+        )
+        .subscribe();
+  }
+
+  void _handleTyping(String _) {
+    final now = DateTime.now();
+    if (_lastTypingSentAt != null &&
+        now.difference(_lastTypingSentAt!) <
+            const Duration(milliseconds: 1200)) {
+      return; // throttle so we don't flood the channel on every keystroke
+    }
+    _lastTypingSentAt = now;
+    _typingChannel?.sendBroadcastMessage(
+      event: 'typing',
+      payload: {'sender': widget.sender},
+    );
   }
 
   Future<void> fetchMessages() async {
@@ -397,17 +518,40 @@ class _ChatSheetState extends State<ChatSheet> {
 
     final supabase = Supabase.instance.client;
 
-    await supabase.from('booking_chats').insert({
+    // Show it immediately rather than waiting on the round trip.
+    final optimisticMsg = {
       'booking_id': widget.bookingId,
       'message': text,
       'sender': widget.sender,
       'is_read_by_admin': widget.sender == 'admin',
       'is_read_by_consumer': widget.sender == 'consumer',
-    });
+    };
+    setState(() => messages.add(optimisticMsg));
+    _scrollToBottom();
 
-    await fetchMessages();
+    try {
+      final inserted = await supabase
+          .from('booking_chats')
+          .insert(optimisticMsg)
+          .select()
+          .single();
 
-    setState(() => sending = false);
+      if (mounted) {
+        final idx = messages.indexOf(optimisticMsg);
+        if (idx != -1) {
+          setState(() => messages[idx] = inserted);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => messages.remove(optimisticMsg));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Send failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+
+    if (mounted) setState(() => sending = false);
   }
 
   void _scrollToBottom() {
@@ -502,44 +646,119 @@ class _ChatSheetState extends State<ChatSheet> {
                           final msg = messages[index];
                           final isMe = msg['sender'] == widget.sender;
 
+                          // Has the OTHER party read this message of mine?
+                          final seen = widget.sender == 'consumer'
+                              ? msg['is_read_by_admin'] == true
+                              : msg['is_read_by_consumer'] == true;
+
                           return Align(
                             alignment: isMe
                                 ? Alignment.centerRight
                                 : Alignment.centerLeft,
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
-                              constraints: BoxConstraints(
-                                maxWidth:
-                                    MediaQuery.of(context).size.width * 0.72,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isMe
-                                    ? const Color(0xFFD4A017)
-                                    : const Color(0xFF1E1E1E),
-                                borderRadius: BorderRadius.only(
-                                  topLeft: const Radius.circular(18),
-                                  topRight: const Radius.circular(18),
-                                  bottomLeft: Radius.circular(isMe ? 18 : 4),
-                                  bottomRight: Radius.circular(isMe ? 4 : 18),
+                            child: Column(
+                              crossAxisAlignment: isMe
+                                  ? CrossAxisAlignment.end
+                                  : CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 12),
+                                  constraints: BoxConstraints(
+                                    maxWidth: MediaQuery.of(context).size.width *
+                                        0.72,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isMe
+                                        ? const Color(0xFFD4A017)
+                                        : const Color(0xFF1E1E1E),
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: const Radius.circular(18),
+                                      topRight: const Radius.circular(18),
+                                      bottomLeft:
+                                          Radius.circular(isMe ? 18 : 4),
+                                      bottomRight:
+                                          Radius.circular(isMe ? 4 : 18),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    msg['message'],
+                                    style: TextStyle(
+                                      color: isMe ? Colors.black : Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: isMe
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              child: Text(
-                                msg['message'],
-                                style: TextStyle(
-                                  color: isMe ? Colors.black : Colors.white,
-                                  fontSize: 15,
-                                  fontWeight: isMe
-                                      ? FontWeight.w600
-                                      : FontWeight.normal,
-                                ),
-                              ),
+                                if (isMe)
+                                  Padding(
+                                    padding:
+                                        const EdgeInsets.only(bottom: 10, right: 4),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          seen
+                                              ? Icons.remove_red_eye
+                                              : Icons.remove_red_eye_outlined,
+                                          size: 12,
+                                          color: seen
+                                              ? const Color(0xFFD4A017)
+                                              : Colors.white24,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          seen ? 'Seen' : 'Sent',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: seen
+                                                ? const Color(0xFFD4A017)
+                                                : Colors.white24,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                else
+                                  const SizedBox(height: 10),
+                              ],
                             ),
                           );
                         },
                       ),
           ),
+
+          // ── Typing indicator ──
+          if (_otherTyping)
+            Padding(
+              padding: const EdgeInsets.only(left: 20, bottom: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: Color(0xFFD4A017),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.sender == 'consumer'
+                        ? 'Garage is typing…'
+                        : 'Customer is typing…',
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           // ── Input ──
           Container(
@@ -553,6 +772,7 @@ class _ChatSheetState extends State<ChatSheet> {
                 Expanded(
                   child: TextField(
                     controller: _controller,
+                    onChanged: _handleTyping,
                     style: const TextStyle(color: Colors.white),
                     maxLines: null,
                     textCapitalization: TextCapitalization.sentences,
