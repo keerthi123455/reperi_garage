@@ -24,6 +24,12 @@ class PushNotificationService {
 
   /// Call once, early in main(), before runApp().
   static Future<void> init() async {
+    // The onesignal_flutter package does not support Flutter Web — calling
+    // OneSignal.initialize() there throws and crashes app startup. Until
+    // the dedicated web implementation (via OneSignal's JS SDK) is built,
+    // this is a safe no-op on web so the app still loads normally there.
+    if (kIsWeb) return;
+
     if (_initialized) return;
     _initialized = true;
 
@@ -40,20 +46,24 @@ class PushNotificationService {
   }
 
   static void loginAsCustomer(String supabaseUserId) {
+    if (kIsWeb) return;
     OneSignal.login('customer_$supabaseUserId');
   }
 
   static void loginAsFleet(String fleetUserId) {
+    if (kIsWeb) return;
     OneSignal.login('fleet_$fleetUserId');
   }
 
   static void loginAsAdmin() {
+    if (kIsWeb) return;
     OneSignal.login('admin');
   }
 
   /// Call on logout for any of the three roles, so this device stops
   /// being targeted as that identity once they've signed out.
   static void logout() {
+    if (kIsWeb) return;
     OneSignal.logout();
   }
 }
