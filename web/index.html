@@ -15,6 +15,20 @@
     the `--base-href` argument provided to `flutter build`.
   -->
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(async function(OneSignal) {
+        await OneSignal.init({
+          appId: "6bc39a67-c05a-4ba4-b950-9ccfc8e9b9b6",
+          safari_web_id: "web.onesignal.auto.195e7e66-9dea-4e11-b56c-b4a654da5ab7",
+          notifyButton: {
+            enable: true,
+          },
+          allowLocalhostAsSecureOrigin: true,
+        });
+      });
+    </script>
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">

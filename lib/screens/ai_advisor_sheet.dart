@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -50,7 +50,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
   // ── State ──────────────────────────────────────────────────────────────────
   bool _isTyping = false;
   bool _showChips = true;
-  File? _attachedImage;
+  Uint8List? _attachedImage;
 
   // ── Theme ──────────────────────────────────────────────────────────────────
   static const Color _bg         = Color(0xFF080808);
@@ -247,7 +247,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
         imageQuality: 80,
         maxWidth: 1200,
       );
-      if (file != null) setState(() => _attachedImage = File(file.path));
+      if (file != null) {
+        final bytes = await file.readAsBytes();
+        setState(() => _attachedImage = bytes);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -839,7 +842,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
             if (msg['image'] != null)
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: Image.file(msg['image'] as File,
+                child: Image.memory(msg['image'] as Uint8List,
                     width: 220, height: 160, fit: BoxFit.cover),
               ),
             if (msg['image'] != null &&
@@ -1126,7 +1129,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: Image.file(_attachedImage!,
+            child: Image.memory(_attachedImage!,
                 width: 52, height: 52, fit: BoxFit.cover),
           ),
           const SizedBox(width: 12),

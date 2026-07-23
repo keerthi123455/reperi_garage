@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -22,7 +22,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   final descController = TextEditingController();
 
   String selectedStage = 'Car Picked Up';
-  File? selectedImage;
+  Uint8List? selectedImageBytes;
   bool loading = false;
   bool hasUnreadMessages = false;
 
@@ -86,11 +86,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       imageQuality: 70,
     );
     if (image == null) return;
-    setState(() => selectedImage = File(image.path));
+    final bytes = await image.readAsBytes();
+    setState(() => selectedImageBytes = bytes);
   }
 
   Future<void> uploadUpdate() async {
-    if (selectedImage == null) {
+    if (selectedImageBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please upload image')),
       );
@@ -107,7 +108,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
 
       await supabase.storage
           .from('booking-images')
-          .upload(fileName, selectedImage!);
+          .uploadBinary(fileName, selectedImageBytes!);
 
       final imageUrl = supabase.storage
           .from('booking-images')
@@ -253,7 +254,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                       color: const Color(0xFF111111),
                       borderRadius: BorderRadius.circular(24),
                     ),
-                    child: selectedImage == null
+                    child: selectedImageBytes == null
                         ? const Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -268,8 +269,8 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                           )
                         : ClipRRect(
                             borderRadius: BorderRadius.circular(24),
-                            child: Image.file(
-                              selectedImage!,
+                            child: Image.memory(
+                              selectedImageBytes!,
                               fit: BoxFit.cover,
                             ),
                           ),
