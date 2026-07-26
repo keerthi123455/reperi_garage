@@ -6,10 +6,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 class BookingTrackingScreen extends StatefulWidget {
   final Map booking;
+  final bool autoOpenChat;
 
   const BookingTrackingScreen({
     super.key,
     required this.booking,
+    this.autoOpenChat = false,
   });
 
   @override
@@ -26,6 +28,21 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     super.initState();
     fetchUpdates();
     checkUnreadMessages();
+    _markUpdateAsRead();
+    if (widget.autoOpenChat) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => openChat());
+    }
+  }
+
+  Future<void> _markUpdateAsRead() async {
+    try {
+      await Supabase.instance.client
+          .from('bookings')
+          .update({'has_unread_update': false}).eq('id', widget.booking['id']);
+    } catch (_) {
+      // Non-fatal — worst case the home screen badge stays lit one
+      // extra visit.
+    }
   }
 
   Future<void> fetchUpdates() async {

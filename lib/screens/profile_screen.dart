@@ -436,19 +436,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           ),
                                         ),
                                         const SizedBox(width: 16),
-                                        // Car icon
+                                        // Car photo (or icon placeholder)
                                         Container(
                                           width: 56, height: 56,
                                           decoration: BoxDecoration(
                                             color: AppColors.yellow.withOpacity(0.15),
                                             borderRadius: BorderRadius.circular(18),
                                           ),
-                                          child: Icon(
-                                            v['vehicle_type'] == 'two_wheeler'
-                                                ? Icons.two_wheeler_rounded
-                                                : Icons.directions_car_rounded,
-                                            size: 30,
-                                          ),
+                                          clipBehavior: Clip.antiAlias,
+                                          child: (v['photo_url'] as String?)
+                                                      ?.isNotEmpty ==
+                                                  true
+                                              ? Image.network(
+                                                  v['photo_url'] as String,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, __, ___) => Icon(
+                                                    v['vehicle_type'] ==
+                                                            'two_wheeler'
+                                                        ? Icons.two_wheeler_rounded
+                                                        : Icons.directions_car_rounded,
+                                                    size: 30,
+                                                  ),
+                                                )
+                                              : Icon(
+                                                  v['vehicle_type'] == 'two_wheeler'
+                                                      ? Icons.two_wheeler_rounded
+                                                      : Icons.directions_car_rounded,
+                                                  size: 30,
+                                                ),
                                         ),
                                         const SizedBox(width: 16),
                                         // Details
@@ -456,15 +471,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Text(v['car_model'] ?? '',
+                                              Text((v['car_model'] ?? '').toString().toUpperCase(),
                                                 style: const TextStyle(
                                                   fontSize: 18, fontWeight: FontWeight.w800)),
                                               const SizedBox(height: 4),
-                                              Text(v['car_brand'] ?? '',
+                                              Text((v['car_brand'] ?? '').toString().toUpperCase(),
                                                 style: TextStyle(
                                                   color: Colors.grey.shade500, fontSize: 14)),
                                               const SizedBox(height: 2),
-                                              Text(v['car_number'] ?? '',
+                                              Text((v['car_number'] ?? '').toString().toUpperCase(),
                                                 style: TextStyle(
                                                   color: Colors.grey.shade400, fontSize: 13)),
                                             ],

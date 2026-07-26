@@ -8,10 +8,12 @@ import 'booking_tracking_screen.dart'; // imports ChatSheet
 
 class BookingDetailsScreen extends StatefulWidget {
   final Map booking;
+  final bool autoOpenChat;
 
   const BookingDetailsScreen({
     super.key,
     required this.booking,
+    this.autoOpenChat = false,
   });
 
   @override
@@ -39,6 +41,9 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   void initState() {
     super.initState();
     checkUnreadMessages();
+    if (widget.autoOpenChat) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => openChat());
+    }
   }
 
   @override
@@ -121,10 +126,10 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
         'image_url': imageUrl,
       });
 
-      await supabase
-          .from('bookings')
-          .update({'booking_status': selectedStage}).eq(
-              'id', widget.booking['id']);
+      await supabase.from('bookings').update({
+        'booking_status': selectedStage,
+        'has_unread_update': true,
+      }).eq('id', widget.booking['id']);
 
       if (!mounted) return;
 

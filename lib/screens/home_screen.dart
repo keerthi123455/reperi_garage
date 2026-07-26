@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:typed_data';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:reperi_garage/screens/ai_advisor_sheet.dart';
 import 'package:reperi_garage/screens/fleet_dashboard_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -23,6 +26,10 @@ import '../constants/app_colors.dart';
 import '../services/catalog_service.dart';
 import 'profile_screen.dart';
 import 'service_details_screen.dart';
+import 'servicing_package_screen.dart';
+import 'washing_package_screen.dart';
+import 'wheel_management_package_screen.dart';
+import 'paint_care_package_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -35,6 +42,11 @@ class _HomeScreenState extends State<HomeScreen>
     with TickerProviderStateMixin {
   Map<String, dynamic>? profileData;
   Map<String, dynamic>? activeVehicle;
+  List<Map<String, dynamic>> vehicles = [];
+
+  late final PageController _vehiclePageController =
+      PageController(viewportFraction: 0.94);
+  int _vehiclePageIndex = 0;
 
   bool hasActiveService = false;
   bool hasNewUpdate = false;
@@ -58,6 +70,7 @@ class _HomeScreenState extends State<HomeScreen>
   bool _showScrollHint = false;
   Timer? _idleTimer;
   final ScrollController _scrollController = ScrollController();
+  final GlobalKey _otherOfferingsKey = GlobalKey();
 
   // How close to the bottom (in pixels) counts as "already at the bottom"
   // for the purpose of suppressing the scroll hint.
@@ -66,6 +79,11 @@ class _HomeScreenState extends State<HomeScreen>
   // ── Two-wheeler speech-bubble popup ──
   bool _showTwoWheelerBubble = false;
   Timer? _bubbleTimer;
+
+  // ── Search overlay ──
+  bool _searchOpen = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
 
   final List<String> _tips = [
     'Your engine suffers more damage in the first 10 minutes after a cold start than during hours of highway driving.',
@@ -134,19 +152,30 @@ class _HomeScreenState extends State<HomeScreen>
     return (position.maxScrollExtent - position.pixels) < _bottomThreshold;
   }
 
+  // Whether the "Other Offerings" section has scrolled up to (or past)
+  // the top of the visible screen — once the user's reached that far,
+  // the hint has done its job and shouldn't keep appearing.
+  bool get _reachedOtherOfferings {
+    final renderObject = _otherOfferingsKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.attached) return false;
+    final topPadding = MediaQuery.of(context).padding.top;
+    return renderObject.localToGlobal(Offset.zero).dy <= topPadding + 40;
+  }
+
   void _startIdleTimer() {
     _idleTimer?.cancel();
-    _idleTimer = Timer(const Duration(seconds: 4), () {
+    _idleTimer = Timer(const Duration(milliseconds: 200), () {
       if (!mounted) return;
       // Don't show the hint if the user is already at (or almost at)
-      // the bottom of the page — there's nothing left to scroll to.
-      if (_isNearBottom) return;
+      // the bottom of the page, or has already scrolled past the
+      // point the hint is trying to point them toward.
+      if (_isNearBottom || _reachedOtherOfferings) return;
       setState(() => _showScrollHint = true);
     });
   }
 
   void _onScroll() {
-    if (_showScrollHint || _isNearBottom) {
+    if (_showScrollHint || _isNearBottom || _reachedOtherOfferings) {
       setState(() => _showScrollHint = false);
     }
     _startIdleTimer();
@@ -170,9 +199,27 @@ class _HomeScreenState extends State<HomeScreen>
     _idleTimer?.cancel();
     _bubbleTimer?.cancel();
     _scrollController.dispose();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    _vehiclePageController.dispose();
     super.dispose();
   }
-Future<void> _fetchSliderItems() async {
+void _openSearch() {
+    setState(() => _searchOpen = true);
+    // Wait a frame so the overlay/TextField actually exists before
+    // trying to focus it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _searchFocusNode.requestFocus();
+    });
+  }
+
+  void _closeSearch() {
+    _searchController.clear();
+    _searchFocusNode.unfocus();
+    setState(() => _searchOpen = false);
+  }
+
+  Future<void> _fetchSliderItems() async {
     try {
       final rows = await CatalogService.fetchByKeys([
         '21_step_inspection',
@@ -186,6 +233,7 @@ Future<void> _fetchSliderItems() async {
       setState(() {
         sliderItems = rows.map((row) {
           return {
+            'key': row['key'],
             'image': row['image_asset'],
             'title': row['title'],
             'price': row['price'],
@@ -214,48 +262,115 @@ Future<void> _fetchSliderItems() async {
           .eq('id', user.id)
           .maybeSingle();
 
+      final vehiclesResponse = await supabase
+          .from('vehicles')
+          .select()
+          .eq('user_id', user.id)
+          .order('created_at', ascending: true);
+
+      final allVehicles =
+          List<Map<String, dynamic>>.from(vehiclesResponse);
+
+      // Resume on whichever vehicle was active last time; fall back to
+      // the first one if that vehicle's since been removed, or if
+      // nothing was ever set.
       Map<String, dynamic>? vehicle;
+      int pageIndex = 0;
+      if (allVehicles.isNotEmpty) {
+        final activeId = profile?['active_vehicle_id'];
+        final matchIndex =
+            allVehicles.indexWhere((v) => v['id'] == activeId);
+        pageIndex = matchIndex != -1 ? matchIndex : 0;
+        vehicle = allVehicles[pageIndex];
+      }
+
       bool serviceExists = false;
       bool updateExists = false;
 
-      if (profile != null && profile['active_vehicle_id'] != null) {
-        final vResponse = await supabase
-            .from('vehicles')
-            .select()
-            .eq('id', profile['active_vehicle_id'])
-            .maybeSingle();
-
-        vehicle = vResponse;
-
+      if (vehicle != null) {
         final bookingResponse = await supabase
             .from('bookings')
             .select()
-            .eq('vehicle_id', vehicle!['id']);
+            .eq('vehicle_id', vehicle['id'])
+            .order('created_at', ascending: false);
 
         serviceExists = bookingResponse.isNotEmpty;
-
-        if (bookingResponse.isNotEmpty) {
-          final bookingId = bookingResponse[0]['id'];
-          final updates = await supabase
-              .from('booking_updates')
-              .select()
-              .eq('booking_id', bookingId);
-          updateExists = updates.isNotEmpty;
-        }
+        updateExists = bookingResponse.isNotEmpty &&
+            bookingResponse[0]['has_unread_update'] == true;
       }
 
       if (!mounted) return;
 
       setState(() {
         profileData = profile;
+        vehicles = allVehicles;
         activeVehicle = vehicle;
         hasActiveService = serviceExists;
         hasNewUpdate = updateExists;
         loading = false;
+        _vehiclePageIndex = pageIndex;
+      });
+
+      // Land the PageView on the resumed vehicle's page once it's built.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_vehiclePageController.hasClients && pageIndex != 0) {
+          _vehiclePageController.jumpToPage(pageIndex);
+        }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() => loading = false);
+    }
+  }
+
+  // Called whenever the user swipes to a different vehicle in the
+  // horizontal vehicle carousel. Whichever vehicle is currently in
+  // view becomes the one quick actions/bookings act on, and that
+  // choice is remembered for next time they open the app.
+  Future<void> _onVehiclePageChanged(int index) async {
+    if (index < 0 || index >= vehicles.length) return;
+    final vehicle = vehicles[index];
+
+    setState(() {
+      _vehiclePageIndex = index;
+      activeVehicle = vehicle;
+    });
+
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    if (user != null) {
+      try {
+        await supabase
+            .from('profiles')
+            .update({'active_vehicle_id': vehicle['id']}).eq('id', user.id);
+      } catch (_) {
+        // Not fatal — worst case, next login resumes on the previous
+        // vehicle instead of this one.
+      }
+    }
+
+    try {
+      final bookingResponse = await supabase
+          .from('bookings')
+          .select()
+          .eq('vehicle_id', vehicle['id'])
+          .order('created_at', ascending: false);
+
+      bool serviceExists = bookingResponse.isNotEmpty;
+      bool updateExists = bookingResponse.isNotEmpty &&
+          bookingResponse[0]['has_unread_update'] == true;
+
+      if (!mounted) return;
+      // Only apply if the user hasn't already swiped past this page
+      // again while this query was in flight.
+      if (_vehiclePageIndex == index) {
+        setState(() {
+          hasActiveService = serviceExists;
+          hasNewUpdate = updateExists;
+        });
+      }
+    } catch (_) {
+      // Non-fatal — the badges just won't update for this swipe.
     }
   }
 
@@ -428,11 +543,19 @@ Future<void> _fetchSliderItems() async {
       ),
     ];
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_searchOpen,
+      onPopInvoked: (didPop) {
+        if (!didPop && _searchOpen) {
+          _closeSearch();
+        }
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       drawer: GarageDrawer(
         profileData: profileData,
         activeVehicle: activeVehicle,
+        onBookingsViewed: fetchProfile,
       ),
       body: Stack(
         children: [
@@ -501,15 +624,15 @@ Future<void> _fetchSliderItems() async {
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 600),
                       child: SingleChildScrollView(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 8),
+  controller: _scrollController,
+  padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),  // top padding down to 4
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      // remove or shrink this
+      // const SizedBox(height: 8),
 
-                            // ── TOP BAR ──
+      // ── TOP BAR ──
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -522,43 +645,11 @@ Future<void> _fetchSliderItems() async {
                                 ),
                                 Image.asset(
                                   'assets/images/login.png',
-                                  height: 110,
+                                  height: 140,
                                   fit: BoxFit.contain,
                                 ),
                                 _TappableScale(
-                                  onTap: () async {
-                                    final prefs =
-                                        await SharedPreferences.getInstance();
-                                    final isFleetLoggedIn =
-                                        prefs.getBool('fleet_logged_in') ??
-                                            false;
-                                    if (isFleetLoggedIn) {
-                                      final fleetId =
-                                          prefs.getString('fleet_user_id');
-                                      final fleetUser =
-                                          await Supabase.instance.client
-                                              .from('fleet_users')
-                                              .select()
-                                              .eq('id', fleetId!)
-                                              .single();
-                                      if (!context.mounted) return;
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => FleetDashboardScreen(
-                                              fleetUser: fleetUser),
-                                        ),
-                                      );
-                                    } else {
-                                      showModalBottomSheet(
-                                        context: context,
-                                        isScrollControlled: true,
-                                        backgroundColor: Colors.transparent,
-                                        builder: (_) =>
-                                            const FleetLoginSheet(),
-                                      );
-                                    }
-                                  },
+                                  onTap: _openSearch,
                                   child: Container(
                                     width: 48,
                                     height: 48,
@@ -569,7 +660,7 @@ Future<void> _fetchSliderItems() async {
                                           color: const Color(0xFFD4A017)),
                                     ),
                                     child: const Icon(
-                                      Icons.local_shipping_rounded,
+                                      Icons.search_rounded,
                                       color: Color(0xFFD4A017),
                                       size: 22,
                                     ),
@@ -578,82 +669,69 @@ Future<void> _fetchSliderItems() async {
                               ],
                             ),
 
-                            const SizedBox(height: 34),
+                            const SizedBox(height: 4),
 
                             // ── GREETING ──
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Good day 👋',
-                                      style: TextStyle(
-                                          color: Color(0xFFD4A017),
-                                          fontSize: 16),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      hasProfile
-                                          ? profileData!['name'].toString()
-                                          : 'Complete Profile',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 34,
-                                        letterSpacing: -0.8,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    const Text(
-                                      'What does your car need today?',
-                                      style: TextStyle(
-                                          color: Color(0xFF555555),
-                                          fontSize: 14),
-                                    ),
-                                  ],
-                                ),
-                                Container(
-                                  width: 52,
-                                  height: 52,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFD4A017),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      hasProfile
-                                          ? profileData!['name'][0]
-                                              .toUpperCase()
-                                          : 'G',
-                                      style: const TextStyle(
-                                        color: Colors.black,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 22,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            const Text(
+                              'What does your car need today?',
+                              style: TextStyle(
+                                  color: Color(0xFF555555),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500),
                             ),
 
-                            const SizedBox(height: 30),
+                            const SizedBox(height: 16),
 
-                            // ── VEHICLE CARD ──
+                            // ── VEHICLE CARD(S) ──
                             hasVehicle
-                                ? _vehicleCard(activeVehicle!)
+                                ? Column(
+                                    children: [
+                                      SizedBox(
+                                        height: 150,
+                                        child: PageView.builder(
+                                          controller: _vehiclePageController,
+                                          itemCount: vehicles.length,
+                                          onPageChanged: _onVehiclePageChanged,
+                                          itemBuilder: (_, index) => Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                                4, 14, 4, 4),
+                                            child: _vehicleCard(vehicles[index]),
+                                          ),
+                                        ),
+                                      ),
+                                      if (vehicles.length > 1) ...[
+                                        const SizedBox(height: 10),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: List.generate(
+                                            vehicles.length,
+                                            (i) => AnimatedContainer(
+                                              duration: const Duration(
+                                                  milliseconds: 200),
+                                              margin: const EdgeInsets.symmetric(
+                                                  horizontal: 3),
+                                              width:
+                                                  i == _vehiclePageIndex ? 18 : 6,
+                                              height: 6,
+                                              decoration: BoxDecoration(
+                                                color: i == _vehiclePageIndex
+                                                    ? const Color(0xFFD4A017)
+                                                    : const Color(0xFF2A2A2A),
+                                                borderRadius:
+                                                    BorderRadius.circular(3),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  )
                                 : _noProfileCard(),
 
-                            const SizedBox(height: 20),
+                            
 
-                            // ── CAR TIP CARD ──
-                            _TipCard(
-                              tip: _tips[_tipIndex],
-                              tipIndex: _tipIndex,
-                            ),
-
-                            const SizedBox(height: 34),
+                            const SizedBox(height: 8),
 
                             _goldSeparator(),
                             _sectionTitle('Our Packages'),
@@ -664,8 +742,8 @@ Future<void> _fetchSliderItems() async {
                               options: CarouselOptions(
                                 height: 230,
                                 autoPlay: true,
-                                enlargeCenterPage: true,
-                                viewportFraction: 0.9,
+                                enlargeCenterPage: false,
+                                viewportFraction: 1.0,
                               ),
                               items: sliderItems.map((item) {
                                 return Builder(
@@ -674,6 +752,59 @@ Future<void> _fetchSliderItems() async {
                                       onTap: () {
                                         if (activeVehicle == null) {
                                           _showNoProfileDialog(context);
+                                          return;
+                                        }
+                                        if (item['key'] ==
+                                            '21_step_inspection') {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  ServicingPackageScreen(
+                                                vehicleId:
+                                                    activeVehicle!['id'],
+                                              ),
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                        if (item['key'] == 'quick_care') {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  WashingPackageScreen(
+                                                vehicleId:
+                                                    activeVehicle!['id'],
+                                              ),
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                        if (item['key'] == 'wheelzcare') {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  WheelManagementPackageScreen(
+                                                vehicleId:
+                                                    activeVehicle!['id'],
+                                              ),
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                        if (item['key'] == 'car360_pack') {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  PaintCarePackageScreen(
+                                                vehicleId:
+                                                    activeVehicle!['id'],
+                                              ),
+                                            ),
+                                          );
                                           return;
                                         }
                                         Navigator.push(
@@ -697,10 +828,15 @@ Future<void> _fetchSliderItems() async {
                                       },
                                       child: Container(
                                         margin: const EdgeInsets.symmetric(
-                                            horizontal: 4),
+                                            horizontal: 0),
                                         decoration: BoxDecoration(
                                           borderRadius:
                                               BorderRadius.circular(28),
+                                          border: Border.all(
+                                            color: const Color(0xFFD4A017)
+                                                .withOpacity(0.5),
+                                            width: 1.5,
+                                          ),
                                           boxShadow: [
                                             BoxShadow(
                                               color: const Color(0xFFD4A017)
@@ -713,77 +849,11 @@ Future<void> _fetchSliderItems() async {
                                         child: ClipRRect(
                                           borderRadius:
                                               BorderRadius.circular(28),
-                                          child: Stack(
-                                            fit: StackFit.expand,
-                                            children: [
-                                              Image.asset(
-                                                  item['image'] as String,
-                                                  fit: BoxFit.cover),
-                                              Container(
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(
-                                                    begin: Alignment.bottomLeft,
-                                                    end: Alignment.topRight,
-                                                    colors: [
-                                                      Colors.black
-                                                          .withOpacity(0.88),
-                                                      Colors.black
-                                                          .withOpacity(0.18),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                              Padding(
-                                                padding:
-                                                    const EdgeInsets.all(24),
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.end,
-                                                  children: [
-                                                    Text(
-                                                      item['title'] as String,
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 30,
-                                                        fontWeight:
-                                                            FontWeight.w900,
-                                                        height: 1,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 10),
-                                                    Text(
-                                                      item['price'] as String,
-                                                      style: const TextStyle(
-                                                        color:
-                                                            Color(0xFFF5C842),
-                                                        fontSize: 34,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 8),
-                                                    Row(
-                                                      children: [
-                                                        const Icon(Icons.timer,
-                                                            color: Colors.white70,
-                                                            size: 18),
-                                                        const SizedBox(
-                                                            width: 6),
-                                                        Text(
-                                                          item['duration']
-                                                              as String,
-                                                          style: const TextStyle(
-                                                              color: Colors
-                                                                  .white70),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
+                                          child: Image.asset(
+                                            item['image'] as String,
+                                            fit: BoxFit.cover,
+                                            width: double.infinity,
+                                            height: double.infinity,
                                           ),
                                         ),
                                       ),
@@ -853,10 +923,21 @@ Future<void> _fetchSliderItems() async {
                               },
                             ),
 
+                            const SizedBox(height: 20),
+
+                            // ── CAR TIP CARD ──
+                            _TipCard(
+                              tip: _tips[_tipIndex],
+                              tipIndex: _tipIndex,
+                            ),
+
                             const SizedBox(height: 34),
 
                             _goldSeparator(),
-                            _sectionTitle('Other Offerings'),
+                            KeyedSubtree(
+                              key: _otherOfferingsKey,
+                              child: _sectionTitle('Other Offerings'),
+                            ),
                             const SizedBox(height: 20),
 
                             // ── OTHER OFFERINGS CAROUSEL ──
@@ -865,7 +946,7 @@ Future<void> _fetchSliderItems() async {
                                 height: 220,
                                 autoPlay: true,
                                 enlargeCenterPage: true,
-                                viewportFraction: 0.9,
+                                viewportFraction: 0.94,
                               ),
                               items: [
                                 {
@@ -885,7 +966,7 @@ Future<void> _fetchSliderItems() async {
                                   builder: (context) {
                                     return Container(
                                       margin: const EdgeInsets.symmetric(
-                                          horizontal: 4),
+                                          horizontal: 2),
                                       child: ClipRRect(
                                         borderRadius:
                                             BorderRadius.circular(28),
@@ -1029,10 +1110,10 @@ Future<void> _fetchSliderItems() async {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.08),
+                        color: Colors.white.withOpacity(0.75),
                         borderRadius: BorderRadius.circular(30),
                         border: Border.all(
-                            color: Colors.white.withOpacity(0.15)),
+                            color: const Color(0xFFD4A017).withOpacity(0.5)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1150,6 +1231,166 @@ Future<void> _fetchSliderItems() async {
                 ),
               ),
             ),
+
+          // ── SEARCH OVERLAY ──
+          if (_searchOpen)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  // Only retract on tap if nothing's been typed —
+                  // once there's a query, tapping the blurred backdrop
+                  // (outside the search bar / results list, both of
+                  // which absorb their own taps below) does nothing.
+                  if (_searchController.text.trim().isEmpty) {
+                    _closeSearch();
+                  }
+                },
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Container(
+                    color: Colors.black.withOpacity(0.6),
+                    child: SafeArea(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                            child: GestureDetector(
+                              onTap: () {}, // absorb — the bar itself shouldn't retract on tap
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF141414),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: const Color(0xFFD4A017).withOpacity(0.5),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.search_rounded,
+                                        color: Color(0xFFD4A017)),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _searchController,
+                                        focusNode: _searchFocusNode,
+                                        style: const TextStyle(
+                                            color: Colors.white, fontSize: 16),
+                                        cursorColor: const Color(0xFFD4A017),
+                                        decoration: const InputDecoration(
+                                          hintText: 'Search services...',
+                                          hintStyle:
+                                              TextStyle(color: Colors.white38),
+                                          border: InputBorder.none,
+                                          isDense: true,
+                                          contentPadding:
+                                              EdgeInsets.symmetric(vertical: 14),
+                                        ),
+                                        onChanged: (_) => setState(() {}),
+                                      ),
+                                    ),
+                                    _TappableScale(
+                                      onTap: _closeSearch,
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(6),
+                                        child: Icon(Icons.close_rounded,
+                                            color: Colors.white54),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          if (_searchController.text.trim().isNotEmpty)
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {}, // absorb taps within the results panel
+                                child: Builder(
+                                  builder: (_) {
+                                    final query = _searchController.text
+                                        .trim()
+                                        .toLowerCase();
+                                    final results = quickActions.where((t) {
+                                      return t.title
+                                              .toLowerCase()
+                                              .contains(query) ||
+                                          t.subtitle
+                                              .toLowerCase()
+                                              .contains(query);
+                                    }).toList();
+
+                                    if (results.isEmpty) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(top: 40),
+                                        child: Center(
+                                          child: Text(
+                                            'No matching services',
+                                            style: TextStyle(
+                                                color: Colors.white
+                                                    .withOpacity(0.5)),
+                                          ),
+                                        ),
+                                      );
+                                    }
+
+                                    return ListView.builder(
+                                      padding:
+                                          const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                                      itemCount: results.length,
+                                      itemBuilder: (_, index) {
+                                        final tile = results[index];
+                                        return Container(
+                                          margin: const EdgeInsets.only(bottom: 10),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF141414)
+                                                .withOpacity(0.92),
+                                            borderRadius:
+                                                BorderRadius.circular(16),
+                                            border: Border.all(
+                                                color: const Color(0xFF2A2A2A)),
+                                          ),
+                                          child: ListTile(
+                                            leading: Icon(tile.icon,
+                                                color: const Color(0xFFD4A017)),
+                                            title: Text(
+                                              tile.title.replaceAll('\n', ' '),
+                                              style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold),
+                                            ),
+                                            subtitle: Text(
+                                              tile.subtitle,
+                                              style: const TextStyle(
+                                                  color: Colors.white60),
+                                            ),
+                                            trailing: const Icon(
+                                                Icons.chevron_right,
+                                                color: Colors.white24),
+                                            onTap: () {
+                                              _closeSearch();
+                                              if (tile.onTap != null) {
+                                                tile.onTap!(context);
+                                              }
+                                            },
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
 
@@ -1178,12 +1419,12 @@ Future<void> _fetchSliderItems() async {
             children: [
               _navItem(Icons.home, 'Home', 0),
               _TappableScale(
-                onTap: () {
+                onTap: () async {
                   if (activeVehicle == null) {
                     _showNoProfileDialog(context);
                     return;
                   }
-                  Navigator.push(
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => VehicleBookingsScreen(
@@ -1194,6 +1435,7 @@ Future<void> _fetchSliderItems() async {
                       ),
                     ),
                   );
+                  fetchProfile();
                 },
                 child: _navItem(Icons.calendar_month, 'Bookings', 1),
               ),
@@ -1264,6 +1506,7 @@ Future<void> _fetchSliderItems() async {
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -1408,7 +1651,7 @@ Future<void> _fetchSliderItems() async {
             return Container(
               padding: const EdgeInsets.all(1.5),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(30),
+                borderRadius: BorderRadius.circular(24),
                 gradient: SweepGradient(
                   center: Alignment.center,
                   startAngle: 0,
@@ -1429,8 +1672,8 @@ Future<void> _fetchSliderItems() async {
             );
           },
           child: _TappableScale(
-            onTap: () {
-              Navigator.push(
+            onTap: () async {
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (_) => VehicleBookingsScreen(
@@ -1441,151 +1684,137 @@ Future<void> _fetchSliderItems() async {
                   ),
                 ),
               );
+              fetchProfile();
             },
             child: Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [Color(0xFF161616), Color(0xFF0C0C0C)],
                 ),
-                borderRadius: BorderRadius.circular(28),
+                borderRadius: BorderRadius.circular(22),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const Text(
-                    'ACTIVE VEHICLE',
-                    style: TextStyle(
-                      color: Color(0xFFD4A017),
-                      fontSize: 10,
-                      letterSpacing: 2.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              v['car_brand'] ?? '',
-                              style: const TextStyle(
-                                color: Color(0xFF666666),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 1,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              v['car_model'] ?? '',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 32,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.5,
-                                height: 1,
-                              ),
-                            ),
-                          ],
+                  // ── Bigger DP on the left ──
+                  _vehicleDpCircle(v, size: 76),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          (v['car_brand'] ?? '').toString().toUpperCase(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.8,
+                          ),
                         ),
-                      ),
-                      Icon(
-                        Icons.directions_car_rounded,
-                        size: 64,
-                        color: const Color(0xFFD4A017).withOpacity(0.15),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Container(height: 1, color: const Color(0xFF222222)),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                              color: const Color(0xFF0033A0), width: 3),
+                        const SizedBox(height: 2),
+                        Text(
+                          (v['car_model'] ?? '').toString().toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 19,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.3,
+                            height: 1,
+                          ),
                         ),
-                        child: Row(
+                        const SizedBox(height: 8),
+                        Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Container(
-                              width: 6,
-                              height: 22,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 9, vertical: 5),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF0033A0),
-                                borderRadius: BorderRadius.circular(3),
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(6),
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              v['car_number'] ?? '',
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 3,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 3,
+                                    height: 12,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0033A0),
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    (v['car_number'] ?? '')
+                                        .toString()
+                                        .toUpperCase(),
+                                    style: const TextStyle(
+                                      color: Colors.black,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color:
-                              const Color(0xFFD4A017).withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.arrow_forward_ios_rounded,
-                            color: Color(0xFFD4A017), size: 14),
-                      ),
-                    ],
-                  ),
-                  if (hasActiveService) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD4A017).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                            color:
-                                const Color(0xFFD4A017).withOpacity(0.4)),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.build_circle_rounded,
-                              color: Color(0xFFD4A017), size: 16),
-                          SizedBox(width: 10),
-                          Text(
-                            'SERVICE IN PROGRESS',
-                            style: TextStyle(
-                              color: Color(0xFFD4A017),
-                              fontWeight: FontWeight.w800,
-                              fontSize: 12,
-                              letterSpacing: 1,
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: hasActiveService
+                                    ? const Color(0xFFD4A017)
+                                    : const Color(0xFF444444),
+                              ),
                             ),
-                          ),
-                          Spacer(),
-                          _PulseDot(),
-                        ],
-                      ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                hasActiveService
+                                    ? 'SERVICE IN PROGRESS'
+                                    : 'NO ACTIVE SERVICE',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: hasActiveService
+                                      ? const Color(0xFFD4A017)
+                                      : const Color(0xFF666666),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 10,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ),
+                            if (hasActiveService) const _PulseDot(),
+                          ],
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD4A017).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: const Icon(Icons.arrow_forward_ios_rounded,
+                        color: Color(0xFFD4A017), size: 12),
+                  ),
                 ],
               ),
             ),
@@ -1598,27 +1827,27 @@ Future<void> _fetchSliderItems() async {
             right: 12,
             child: Container(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
               decoration: BoxDecoration(
                 color: Colors.red,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.red.withOpacity(0.5), blurRadius: 10)
+                      color: Colors.red.withOpacity(0.35), blurRadius: 6)
                 ],
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.circle, color: Colors.white, size: 7),
-                  SizedBox(width: 5),
+                  Icon(Icons.circle, color: Colors.white, size: 6),
+                  SizedBox(width: 4),
                   Text(
                     'NEW UPDATE',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.8,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
                     ),
                   ),
                 ],
@@ -1627,6 +1856,185 @@ Future<void> _fetchSliderItems() async {
           ),
       ],
     );
+  }
+
+  // ── Vehicle DP (display picture) ──────────────────────────────
+  // `size` controls the diameter of the circle; the "+" badge and
+  // icon/spinner sizes scale proportionally with it.
+  Widget _vehicleDpCircle(Map<String, dynamic> v, {double size = 52}) {
+    final photoUrl = v['photo_url'] as String?;
+    final badgeSize = size * 0.34;
+
+    return GestureDetector(
+      onTap: () => _showVehiclePhotoSourceSheet(v),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF1A1A1A),
+                border: Border.all(
+                    color: const Color(0xFFD4A017).withOpacity(0.4),
+                    width: 2),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: photoUrl != null && photoUrl.isNotEmpty
+                  ? Image.network(
+                      photoUrl,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (_, child, progress) =>
+                          progress == null
+                              ? child
+                              : Center(
+                                  child: SizedBox(
+                                    width: size * 0.27,
+                                    height: size * 0.27,
+                                    child: const CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Color(0xFFD4A017),
+                                    ),
+                                  ),
+                                ),
+                      errorBuilder: (_, __, ___) => Icon(
+                        Icons.directions_car_rounded,
+                        color: const Color(0xFFD4A017),
+                        size: size * 0.42,
+                      ),
+                    )
+                  : Icon(
+                      Icons.directions_car_rounded,
+                      color: const Color(0xFFD4A017),
+                      size: size * 0.42,
+                    ),
+            ),
+            Positioned(
+              bottom: -2,
+              right: -2,
+              child: Container(
+                width: badgeSize,
+                height: badgeSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFD4A017),
+                  border: Border.all(color: const Color(0xFF0C0C0C), width: 2),
+                ),
+                child: Icon(Icons.add,
+                    color: Colors.black, size: badgeSize * 0.6),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showVehiclePhotoSourceSheet(Map<String, dynamic> v) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF111111),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 24),
+                decoration: BoxDecoration(
+                    color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+              ),
+              const Text(
+                'VEHICLE PHOTO',
+                style: TextStyle(
+                    color: Color(0xFFD4A017),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2.5),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_rounded,
+                    color: Color(0xFFD4A017)),
+                title: const Text('Take Photo',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickVehiclePhoto(v, ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_rounded,
+                    color: Color(0xFFD4A017)),
+                title: const Text('Choose from Album',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickVehiclePhoto(v, ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickVehiclePhoto(
+      Map<String, dynamic> v, ImageSource source) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: source,
+      imageQuality: 80,
+      maxWidth: 1000,
+    );
+    if (picked == null) return;
+
+    try {
+      // Bytes work on every platform (Android, iOS, web) — unlike
+      // wrapping the path in a dart:io File, which crashes on web.
+      final Uint8List bytes = await picked.readAsBytes();
+      final supabase = Supabase.instance.client;
+      final fileName =
+          '${v['id']}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      await supabase.storage
+          .from('vehicle-photos')
+          .uploadBinary(
+            fileName,
+            bytes,
+            fileOptions: const FileOptions(upsert: true),
+          );
+
+      final publicUrl =
+          supabase.storage.from('vehicle-photos').getPublicUrl(fileName);
+
+      await supabase
+          .from('vehicles')
+          .update({'photo_url': publicUrl}).eq('id', v['id']);
+
+      if (!mounted) return;
+      setState(() {
+        v['photo_url'] = publicUrl;
+        if (activeVehicle != null && activeVehicle!['id'] == v['id']) {
+          activeVehicle!['photo_url'] = publicUrl;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not upload photo: $e')),
+      );
+    }
   }
 
   Widget _noProfileCard() {
@@ -2009,11 +2417,13 @@ class _ActionCard extends StatelessWidget {
 class GarageDrawer extends StatelessWidget {
   final Map<String, dynamic>? profileData;
   final Map<String, dynamic>? activeVehicle;
+  final VoidCallback onBookingsViewed;
 
   const GarageDrawer({
     super.key,
     required this.profileData,
     required this.activeVehicle,
+    required this.onBookingsViewed,
   });
 
   @override
@@ -2027,28 +2437,52 @@ class GarageDrawer extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               child: Row(
                 children: [
-                  Container(
-                    width: 64,
-                    height: 64,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFD4A017),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        profileData?['name']
-                                ?.toString()
-                                .substring(0, 1)
-                                .toUpperCase() ??
-                            'G',
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 26,
+                  Builder(builder: (_) {
+                    final photoUrl = activeVehicle?['photo_url'] as String?;
+                    if (photoUrl != null && photoUrl.isNotEmpty) {
+                      return Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border:
+                              Border.all(color: const Color(0xFFD4A017), width: 2),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Image.network(
+                          photoUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: const Color(0xFFD4A017),
+                            child: const Icon(Icons.directions_car_rounded,
+                                color: Colors.black),
+                          ),
+                        ),
+                      );
+                    }
+                    return Container(
+                      width: 64,
+                      height: 64,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFD4A017),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          profileData?['name']
+                                  ?.toString()
+                                  .substring(0, 1)
+                                  .toUpperCase() ??
+                              'G',
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 26,
+                          ),
                         ),
                       ),
-                    ),
-                  ),
+                    );
+                  }),
                   const SizedBox(width: 15),
                   Expanded(
                     child: Column(
@@ -2084,12 +2518,12 @@ class GarageDrawer extends StatelessWidget {
               Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const ProfileScreen()));
             }),
-            _tile(context, Icons.calendar_month, 'My Bookings', () {
+            _tile(context, Icons.calendar_month, 'My Bookings', () async {
               if (activeVehicle == null) {
                 Navigator.pop(context);
                 return;
               }
-              Navigator.push(
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (_) => VehicleBookingsScreen(
@@ -2100,6 +2534,7 @@ class GarageDrawer extends StatelessWidget {
                   ),
                 ),
               );
+              onBookingsViewed();
             }),
             _tile(context, Icons.emergency, 'Roadside Assistance', () {
               Navigator.push(
@@ -2118,6 +2553,33 @@ class GarageDrawer extends StatelessWidget {
                 backgroundColor: Colors.transparent,
                 builder: (_) => AiAdvisorSheet(vehicle: activeVehicle!),
               );
+            }),
+            _tile(context, Icons.local_shipping_rounded, 'Fleet Login', () async {
+              final prefs = await SharedPreferences.getInstance();
+              final isFleetLoggedIn =
+                  prefs.getBool('fleet_logged_in') ?? false;
+              if (isFleetLoggedIn) {
+                final fleetId = prefs.getString('fleet_user_id');
+                final fleetUser = await Supabase.instance.client
+                    .from('fleet_users')
+                    .select()
+                    .eq('id', fleetId!)
+                    .single();
+                if (!context.mounted) return;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => FleetDashboardScreen(fleetUser: fleetUser),
+                  ),
+                );
+              } else {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => const FleetLoginSheet(),
+                );
+              }
             }),
             _tile(context, Icons.privacy_tip_outlined, 'Privacy Policy', () async {
               final uri = Uri.parse('https://reperi.in/privacy-policy.html');
