@@ -23,7 +23,6 @@ import 'roadside_assistance_screen.dart';
 import 'fleet_login_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
-import '../services/catalog_service.dart';
 import 'profile_screen.dart';
 import 'service_details_screen.dart';
 import 'servicing_package_screen.dart';
@@ -53,8 +52,47 @@ class _HomeScreenState extends State<HomeScreen>
   bool loading = true;
   int _navIndex = 0;
 
-  List<Map<String, dynamic>> sliderItems = [];
-  bool loadingSliderItems = true;
+  // Static, hardcoded — same "not from Supabase" approach used by the 4
+  // dedicated package screens. Fixes "Our Packages" occasionally showing
+  // empty (previously depended on a live `service_packages` fetch).
+  final List<Map<String, dynamic>> sliderItems = [
+    {
+      'key': '21_step_inspection',
+      'image': 'assets/images/21pointinspection.jpg',
+      'title': 'Servicing',
+      'price': 'From ₹999',
+      'duration': '3-4 hrs',
+      'services': <String>[],
+      'benefits': <String>[],
+    },
+    {
+      'key': 'quick_care',
+      'image': 'assets/images/quickcare.jpg',
+      'title': 'Washing',
+      'price': 'From ₹299',
+      'duration': '1-2 hrs',
+      'services': <String>[],
+      'benefits': <String>[],
+    },
+    {
+      'key': 'wheelzcare',
+      'image': 'assets/images/WheelzCare.jpg',
+      'title': 'Wheel Management',
+      'price': 'From ₹999',
+      'duration': '1-2 hrs',
+      'services': <String>[],
+      'benefits': <String>[],
+    },
+    {
+      'key': 'car360_pack',
+      'image': 'assets/images/car360.jpg',
+      'title': 'Paint Care',
+      'price': 'From ₹1,999',
+      'duration': '2-3 hrs',
+      'services': <String>[],
+      'benefits': <String>[],
+    },
+  ];
 
   // ── Shimmer (vehicle card border) every 3s ──
   late AnimationController _shimmerController;
@@ -113,7 +151,6 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     fetchProfile();
-    _fetchSliderItems();
 
     // ── Shimmer: loops every 3s ──
     _shimmerController = AnimationController(
@@ -217,37 +254,6 @@ void _openSearch() {
     _searchController.clear();
     _searchFocusNode.unfocus();
     setState(() => _searchOpen = false);
-  }
-
-  Future<void> _fetchSliderItems() async {
-    try {
-      final rows = await CatalogService.fetchByKeys([
-        '21_step_inspection',
-        'quick_care',
-        'wheelzcare',
-        'car360_pack',
-      ]);
-
-      if (!mounted) return;
-
-      setState(() {
-        sliderItems = rows.map((row) {
-          return {
-            'key': row['key'],
-            'image': row['image_asset'],
-            'title': row['title'],
-            'price': row['price'],
-            'duration': row['duration'],
-            'services': row['services'],
-            'benefits': row['benefits'],
-          };
-        }).toList();
-        loadingSliderItems = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => loadingSliderItems = false);
-    }
   }
 
   Future<void> fetchProfile() async {
@@ -543,6 +549,472 @@ void _openSearch() {
       ),
     ];
 
+    // ── Wide-screen (laptop/desktop) layout ──
+    // Only used above a ~900px width breakpoint (see the LayoutBuilder
+    // below) — reuses the exact same widgets/state as the mobile layout,
+    // just arranged into 3 columns instead of one. Mobile/tablet/narrow
+    // web all continue to use the untouched single-column layout further
+    // down, completely unaffected by any of this.
+    Widget buildWideHomeLayout(BuildContext ctx) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── TOP BAR ──
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Builder(
+                    builder: (c) => _TappableScale(
+                      onTap: () => Scaffold.of(c).openDrawer(),
+                      child: _darkIcon(Icons.menu_rounded),
+                    ),
+                  ),
+                  Image.asset(
+                    'assets/images/login.png',
+                    height: 110,
+                    fit: BoxFit.contain,
+                  ),
+                  _TappableScale(
+                    onTap: _openSearch,
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A1A),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFD4A017)),
+                      ),
+                      child: const Icon(Icons.search_rounded,
+                          color: Color(0xFFD4A017), size: 22),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'What does your car need today?',
+                style: TextStyle(
+                    color: Color(0xFF555555),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 24),
+
+              // ── 3-COLUMN SPLIT ──
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── LEFT: vehicle ──
+                    SizedBox(
+                      width: 320,
+                      child: SingleChildScrollView(
+                        child: hasVehicle
+                            ? Column(
+                                children: [
+                                  SizedBox(
+                                    height: 150,
+                                    child: PageView.builder(
+                                      controller: _vehiclePageController,
+                                      itemCount: vehicles.length,
+                                      onPageChanged: _onVehiclePageChanged,
+                                      itemBuilder: (_, index) => Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                            4, 14, 4, 4),
+                                        child:
+                                            _vehicleCard(vehicles[index]),
+                                      ),
+                                    ),
+                                  ),
+                                  if (vehicles.length > 1) ...[
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: List.generate(
+                                        vehicles.length,
+                                        (i) => AnimatedContainer(
+                                          duration: const Duration(
+                                              milliseconds: 200),
+                                          margin: const EdgeInsets
+                                              .symmetric(horizontal: 3),
+                                          width: i == _vehiclePageIndex
+                                              ? 18
+                                              : 6,
+                                          height: 6,
+                                          decoration: BoxDecoration(
+                                            color: i == _vehiclePageIndex
+                                                ? const Color(0xFFD4A017)
+                                                : const Color(0xFF2A2A2A),
+                                            borderRadius:
+                                                BorderRadius.circular(3),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              )
+                            : _noProfileCard(),
+                      ),
+                    ),
+
+                    const SizedBox(width: 28),
+
+                    // ── CENTER: packages + services ──
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _goldSeparator(),
+                            _sectionTitle('Our Packages'),
+                            const SizedBox(height: 20),
+                            CarouselSlider(
+                              options: CarouselOptions(
+                                height: 230,
+                                autoPlay: true,
+                                enlargeCenterPage: false,
+                                viewportFraction: 1.0,
+                              ),
+                              items: sliderItems.map((item) {
+                                return Builder(builder: (context) {
+                                  return _TappableScale(
+                                    onTap: () {
+                                      if (activeVehicle == null) {
+                                        _showNoProfileDialog(context);
+                                        return;
+                                      }
+                                      if (item['key'] ==
+                                          '21_step_inspection') {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                ServicingPackageScreen(
+                                              vehicleId:
+                                                  activeVehicle!['id'],
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      if (item['key'] == 'quick_care') {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                WashingPackageScreen(
+                                              vehicleId:
+                                                  activeVehicle!['id'],
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      if (item['key'] == 'wheelzcare') {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                WheelManagementPackageScreen(
+                                              vehicleId:
+                                                  activeVehicle!['id'],
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      if (item['key'] == 'car360_pack') {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                PaintCarePackageScreen(
+                                              vehicleId:
+                                                  activeVehicle!['id'],
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                    },
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius:
+                                            BorderRadius.circular(28),
+                                        border: Border.all(
+                                          color: const Color(0xFFD4A017)
+                                              .withOpacity(0.5),
+                                          width: 1.5,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFFD4A017)
+                                                .withOpacity(0.08),
+                                            blurRadius: 22,
+                                            offset: const Offset(0, 10),
+                                          ),
+                                        ],
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius:
+                                            BorderRadius.circular(28),
+                                        child: Image.asset(
+                                          item['image'] as String,
+                                          fit: BoxFit.cover,
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                });
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 34),
+                            _goldSeparator(),
+                            _sectionTitle('Our Services'),
+                            const SizedBox(height: 20),
+                            _TappableScale(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const RoadsideAssistanceScreen(),
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                height: 180,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: Image.asset(
+                                    'assets/images/roadside_assistance_banner.jpg',
+                                    fit: BoxFit.cover,
+                                    alignment: Alignment.centerRight,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            GridView.builder(
+                              shrinkWrap: true,
+                              physics:
+                                  const NeverScrollableScrollPhysics(),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                crossAxisSpacing: 14,
+                                mainAxisSpacing: 14,
+                                childAspectRatio: 0.85,
+                              ),
+                              itemCount: quickActions.length,
+                              itemBuilder: (context, index) {
+                                return _ActionCard(
+                                  tile: quickActions[index],
+                                  onTap: () {
+                                    if (quickActions[index].onTap !=
+                                        null) {
+                                      quickActions[index]
+                                          .onTap!(context);
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 28),
+
+                    // ── RIGHT: tips + other offerings ──
+                    SizedBox(
+                      width: 340,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _TipCard(
+                              tip: _tips[_tipIndex],
+                              tipIndex: _tipIndex,
+                            ),
+                            const SizedBox(height: 28),
+                            _goldSeparator(),
+                            KeyedSubtree(
+                              key: _otherOfferingsKey,
+                              child: _sectionTitle('Other Offerings'),
+                            ),
+                            const SizedBox(height: 20),
+                            CarouselSlider(
+                              options: CarouselOptions(
+                                height: 220,
+                                autoPlay: true,
+                                enlargeCenterPage: true,
+                                viewportFraction: 0.94,
+                              ),
+                              items: [
+                                {
+                                  'image': 'assets/images/fleet.jpg',
+                                  'type': 'fleet'
+                                },
+                                {
+                                  'image': 'assets/images/battery.jpg',
+                                  'type': 'battery'
+                                },
+                                {
+                                  'image': 'assets/images/garage.jpg',
+                                  'type': 'garage'
+                                },
+                              ].map((item) {
+                                return Builder(builder: (context) {
+                                  return Container(
+                                    margin: const EdgeInsets.symmetric(
+                                        horizontal: 2),
+                                    child: ClipRRect(
+                                      borderRadius:
+                                          BorderRadius.circular(28),
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          Image.asset(
+                                            item['image'] as String,
+                                            fit: BoxFit.cover,
+                                          ),
+                                          Container(
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                begin: Alignment
+                                                    .bottomCenter,
+                                                end: Alignment.topCenter,
+                                                colors: [
+                                                  Colors.black
+                                                      .withOpacity(0.55),
+                                                  Colors.transparent,
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          Positioned(
+                                            right: 18,
+                                            bottom: 18,
+                                            child: ElevatedButton(
+                                              style: ElevatedButton
+                                                  .styleFrom(
+                                                backgroundColor:
+                                                    const Color(
+                                                        0xFF6C3FD4),
+                                                foregroundColor:
+                                                    Colors.white,
+                                                elevation: 8,
+                                                padding: const EdgeInsets
+                                                    .symmetric(
+                                                    horizontal: 18,
+                                                    vertical: 12),
+                                                shape:
+                                                    RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius
+                                                          .circular(14),
+                                                ),
+                                              ),
+                                              onPressed: () {
+                                                if (item['type'] ==
+                                                    'fleet') {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          const FleetManagementScreen(),
+                                                    ),
+                                                  );
+                                                } else if (item['type'] ==
+                                                    'battery') {
+                                                  ScaffoldMessenger.of(
+                                                          context)
+                                                      .showSnackBar(
+                                                    const SnackBar(
+                                                        content: Text(
+                                                            'Battery Management coming soon')),
+                                                  );
+                                                } else if (item['type'] ==
+                                                    'garage') {
+                                                  ScaffoldMessenger.of(
+                                                          context)
+                                                      .showSnackBar(
+                                                    const SnackBar(
+                                                        content: Text(
+                                                            'Partner Garage Program coming soon')),
+                                                  );
+                                                }
+                                              },
+                                              child: const Text(
+                                                'LEARN MORE',
+                                                style: TextStyle(
+                                                  fontWeight:
+                                                      FontWeight.w900,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                });
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 40),
+                            Center(
+                              child: Column(
+                                children: [
+                                  Text(
+                                    'Proudly made in India 🇮🇳',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.3),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Happy Servicing',
+                                    style: TextStyle(
+                                      color: const Color(0xFFD4A017)
+                                          .withOpacity(0.35),
+                                      fontSize: 11,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return PopScope(
       canPop: !_searchOpen,
       onPopInvoked: (didPop) {
@@ -619,7 +1091,12 @@ void _openSearch() {
               ? const Center(
                   child: CircularProgressIndicator(color: Color(0xFFD4A017)),
                 )
-              : SafeArea(
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (constraints.maxWidth >= 900) {
+                      return buildWideHomeLayout(context);
+                    }
+                    return SafeArea(
                   child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 600),
@@ -1092,6 +1569,8 @@ void _openSearch() {
                       ),
                     ),
                   ),
+                    );
+                  },
                 ),
 
           // ── SCROLL HINT BUTTON ──
