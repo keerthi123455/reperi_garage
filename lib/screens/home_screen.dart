@@ -549,6 +549,88 @@ void _openSearch() {
       ),
     ];
 
+    // Package tiles (Servicing/Washing/Wheel Management/Paint Care) as
+    // searchable entries too, routed the same way the "Our Packages"
+    // carousel tap handler already does.
+    final packageSearchTiles = sliderItems.map((item) {
+      IconData icon;
+      switch (item['key']) {
+        case '21_step_inspection':
+          icon = Icons.checklist_rounded;
+          break;
+        case 'quick_care':
+          icon = Icons.local_car_wash_rounded;
+          break;
+        case 'wheelzcare':
+          icon = Icons.tire_repair_rounded;
+          break;
+        case 'car360_pack':
+          icon = Icons.format_paint_rounded;
+          break;
+        default:
+          icon = Icons.build_rounded;
+      }
+      return _ActionTile(
+        image: item['image'] as String,
+        icon: icon,
+        title: item['title'] as String,
+        subtitle: item['price'] as String,
+        badge: 'PACKAGE',
+        badgeColor: const Color(0xFFD4A017),
+        stat: item['duration'] as String,
+        statIcon: Icons.schedule_rounded,
+        statColor: const Color(0xFFD4A017),
+        onTap: (ctx) {
+          if (activeVehicle == null) {
+            _showNoProfileDialog(ctx);
+            return;
+          }
+          if (item['key'] == '21_step_inspection') {
+            Navigator.push(
+              ctx,
+              MaterialPageRoute(
+                builder: (_) =>
+                    ServicingPackageScreen(vehicleId: activeVehicle!['id']),
+              ),
+            );
+            return;
+          }
+          if (item['key'] == 'quick_care') {
+            Navigator.push(
+              ctx,
+              MaterialPageRoute(
+                builder: (_) =>
+                    WashingPackageScreen(vehicleId: activeVehicle!['id']),
+              ),
+            );
+            return;
+          }
+          if (item['key'] == 'wheelzcare') {
+            Navigator.push(
+              ctx,
+              MaterialPageRoute(
+                builder: (_) => WheelManagementPackageScreen(
+                    vehicleId: activeVehicle!['id']),
+              ),
+            );
+            return;
+          }
+          if (item['key'] == 'car360_pack') {
+            Navigator.push(
+              ctx,
+              MaterialPageRoute(
+                builder: (_) =>
+                    PaintCarePackageScreen(vehicleId: activeVehicle!['id']),
+              ),
+            );
+            return;
+          }
+        },
+      );
+    }).toList();
+
+    final searchableTiles = [...quickActions, ...packageSearchTiles];
+
     // ── Wide-screen (laptop/desktop) layout ──
     // Only used above a ~900px width breakpoint (see the LayoutBuilder
     // below) — reuses the exact same widgets/state as the mobile layout,
@@ -950,13 +1032,11 @@ void _openSearch() {
                                                   );
                                                 } else if (item['type'] ==
                                                     'garage') {
-                                                  ScaffoldMessenger.of(
-                                                          context)
-                                                      .showSnackBar(
-                                                    const SnackBar(
-                                                        content: Text(
-                                                            'Partner Garage Program coming soon')),
-                                                  );
+                                                  final uri = Uri.parse(
+                                                      'https://trustkon.com/');
+                                                  launchUrl(uri,
+                                                      mode: LaunchMode
+                                                          .externalApplication);
                                                 }
                                               },
                                               child: const Text(
@@ -1510,13 +1590,11 @@ void _openSearch() {
                                                     );
                                                   } else if (item['type'] ==
                                                       'garage') {
-                                                    ScaffoldMessenger.of(
-                                                            context)
-                                                        .showSnackBar(
-                                                      const SnackBar(
-                                                          content: Text(
-                                                              'Partner Garage Program coming soon')),
-                                                    );
+                                                    final uri = Uri.parse(
+                                                        'https://trustkon.com/');
+                                                    launchUrl(uri,
+                                                        mode: LaunchMode
+                                                            .externalApplication);
                                                   }
                                                 },
                                                 child: const Text(
@@ -1793,7 +1871,7 @@ void _openSearch() {
                                     final query = _searchController.text
                                         .trim()
                                         .toLowerCase();
-                                    final results = quickActions.where((t) {
+                                    final results = searchableTiles.where((t) {
                                       return t.title
                                               .toLowerCase()
                                               .contains(query) ||
@@ -3059,6 +3137,10 @@ class GarageDrawer extends StatelessWidget {
                   builder: (_) => const FleetLoginSheet(),
                 );
               }
+            }),
+            _tile(context, Icons.handshake_rounded, 'Be a Partner', () async {
+              final uri = Uri.parse('https://trustkon.com/');
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
             }),
             _tile(context, Icons.privacy_tip_outlined, 'Privacy Policy', () async {
               final uri = Uri.parse('https://reperi.in/privacy-policy.html');
