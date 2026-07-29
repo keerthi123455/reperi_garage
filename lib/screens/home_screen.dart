@@ -712,7 +712,7 @@ void _openSearch() {
                                     ),
                                   ),
                                   if (vehicles.length > 1) ...[
-                                    const SizedBox(height: 10),
+                                    const SizedBox(height: 6),
                                     Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.center,
@@ -754,7 +754,7 @@ void _openSearch() {
                           children: [
                             _goldSeparator(),
                             _sectionTitle('Our Packages'),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 10),
                             CarouselSlider(
                               options: CarouselOptions(
                                 height: 230,
@@ -857,10 +857,10 @@ void _openSearch() {
                                 });
                               }).toList(),
                             ),
-                            const SizedBox(height: 34),
+                            const SizedBox(height: 14),
                             _goldSeparator(),
                             _sectionTitle('Our Services'),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 12),
                             _TappableScale(
                               onTap: () {
                                 Navigator.push(
@@ -932,13 +932,13 @@ void _openSearch() {
                               tip: _tips[_tipIndex],
                               tipIndex: _tipIndex,
                             ),
-                            const SizedBox(height: 28),
+                            const SizedBox(height: 14),
                             _goldSeparator(),
                             KeyedSubtree(
                               key: _otherOfferingsKey,
                               child: _sectionTitle('Other Offerings'),
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 12),
                             CarouselSlider(
                               options: CarouselOptions(
                                 height: 220,
@@ -1056,7 +1056,7 @@ void _openSearch() {
                                 });
                               }).toList(),
                             ),
-                            const SizedBox(height: 40),
+                            const SizedBox(height: 20),
                             Center(
                               child: Column(
                                 children: [
@@ -1286,13 +1286,11 @@ void _openSearch() {
                                   )
                                 : _noProfileCard(),
 
-                            
-
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 4),
 
                             _goldSeparator(),
                             _sectionTitle('Our Packages'),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 10),
 
                             // ── PACKAGES CAROUSEL ──
                             CarouselSlider(
@@ -1420,11 +1418,11 @@ void _openSearch() {
                               }).toList(),
                             ),
 
-                            const SizedBox(height: 34),
+                            const SizedBox(height: 14),
 
                             _goldSeparator(),
                             _sectionTitle('Our Services'),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 12),
 
                             // ── ROADSIDE ASSISTANCE BANNER ──
                             _TappableScale(
@@ -1454,7 +1452,7 @@ void _openSearch() {
                               ),
                             ),
 
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 8),
 
                             // ── ACTION GRID ──
                             GridView.builder(
@@ -1480,7 +1478,7 @@ void _openSearch() {
                               },
                             ),
 
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 10),
 
                             // ── CAR TIP CARD ──
                             _TipCard(
@@ -1488,14 +1486,14 @@ void _openSearch() {
                               tipIndex: _tipIndex,
                             ),
 
-                            const SizedBox(height: 34),
+                            const SizedBox(height: 14),
 
                             _goldSeparator(),
                             KeyedSubtree(
                               key: _otherOfferingsKey,
                               child: _sectionTitle('Other Offerings'),
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 12),
 
                             // ── OTHER OFFERINGS CAROUSEL ──
                             CarouselSlider(
@@ -1615,7 +1613,7 @@ void _openSearch() {
                               }).toList(),
                             ),
 
-                            const SizedBox(height: 40),
+                            const SizedBox(height: 20),
                             Center(
                               child: Column(
                                 children: [
@@ -1641,7 +1639,7 @@ void _openSearch() {
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 40),
+                            const SizedBox(height: 20),
                           ],
                         ),
                       ),
@@ -1678,7 +1676,7 @@ void _openSearch() {
                           const Text(
                             'scroll to view services',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: Colors.black,
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                               letterSpacing: 0.3,
@@ -2820,7 +2818,7 @@ class _BouncingArrowState extends State<_BouncingArrow>
       builder: (_, __) => Transform.translate(
         offset: Offset(0, _a.value),
         child: const Icon(Icons.keyboard_arrow_down_rounded,
-            color: Colors.white, size: 16),
+            color: Colors.black, size: 16),
       ),
     );
   }

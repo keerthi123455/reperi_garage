@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
 import 'admin_dashboard_screen.dart';
+import 'package:reperi_garage/services/error_handler.dart';
+import 'package:reperi_garage/widgets/error_display.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -49,6 +51,23 @@ class _LoginScreenState extends State<LoginScreen>
               try {
                 final email = emailController.text.trim();
 
+                // Validate email
+                if (email.isEmpty) {
+                  ErrorDisplay.showErrorSnackBar(
+                    context,
+                    message: 'Please enter your email address.',
+                  );
+                  return;
+                }
+
+                if (!email.contains('@')) {
+                  ErrorDisplay.showErrorSnackBar(
+                    context,
+                    message: 'Please enter a valid email address.',
+                  );
+                  return;
+                }
+
                 final redirectUrl = kIsWeb
                     ? 'https://reperi.in/reset-password'
                     : 'reperi://reset-password';
@@ -64,17 +83,35 @@ class _LoginScreenState extends State<LoginScreen>
                 Navigator.pop(context);
 
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Password reset email sent',
+                  SnackBar(
+                    content: const Row(
+                      children: [
+                        Icon(Icons.check_circle_outline_rounded, color: Colors.green),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Password reset email sent to your inbox. Please check and follow the link to reset your password.',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
                     ),
+                    backgroundColor: Colors.green.shade700,
+                    elevation: 6,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    margin: const EdgeInsets.all(16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 5),
                   ),
                 );
               } catch (e) {
-                Navigator.pop(context);
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(e.toString())),
+                if (!context.mounted) return;
+                
+                final errorMessage = ErrorHandler.getUserMessage(e);
+                ErrorDisplay.showErrorSnackBar(
+                  context,
+                  message: errorMessage,
                 );
               }
             },
@@ -111,9 +148,35 @@ class _LoginScreenState extends State<LoginScreen>
     final email = usernameController.text.trim();
     final password = passwordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all fields')),
+    // ── Client-side validation ──
+    if (email.isEmpty) {
+      ErrorDisplay.showErrorSnackBar(
+        context,
+        message: 'Please enter your email address.',
+      );
+      return;
+    }
+
+    if (!email.contains('@') || !email.contains('.')) {
+      ErrorDisplay.showErrorSnackBar(
+        context,
+        message: 'Please enter a valid email address.',
+      );
+      return;
+    }
+
+    if (password.isEmpty) {
+      ErrorDisplay.showErrorSnackBar(
+        context,
+        message: 'Please enter your password.',
+      );
+      return;
+    }
+
+    if (password.length < 6) {
+      ErrorDisplay.showErrorSnackBar(
+        context,
+        message: 'Password must be at least 6 characters long.',
       );
       return;
     }
@@ -124,6 +187,7 @@ class _LoginScreenState extends State<LoginScreen>
       final supabase = Supabase.instance.client;
 
       if (isClient) {
+        // Client login via Supabase Auth
         await supabase.auth.signInWithPassword(
           email: email,
           password: password,
@@ -136,6 +200,7 @@ class _LoginScreenState extends State<LoginScreen>
           MaterialPageRoute(builder: (_) => const HomeScreen()),
         );
       } else {
+        // Admin login via local database
         final response = await supabase
             .from('admin')
             .select()
@@ -150,17 +215,25 @@ class _LoginScreenState extends State<LoginScreen>
             MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
           );
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Invalid admin credentials')),
+          ErrorDisplay.showErrorSnackBar(
+            context,
+            message: 'Admin email or password is incorrect. Please try again.',
           );
           setState(() => _isLoading = false);
         }
       }
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+      if (!context.mounted) return;
+
+      // Map technical error to user-friendly message
+      final errorMessage = ErrorHandler.getUserMessage(e);
+
+      ErrorDisplay.showErrorSnackBar(
+        context,
+        message: errorMessage,
+        onRetry: _handleLogin,
       );
+
       setState(() => _isLoading = false);
     }
   }

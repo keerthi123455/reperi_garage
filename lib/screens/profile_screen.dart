@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/app_colors.dart';
 import 'login_screen.dart';
+import '../services/error_handler.dart';
+import '../widgets/error_display.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -64,8 +66,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _deletingAccount = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not delete account. Please try again or contact support.')),
+      
+      ErrorDisplay.showErrorDialog(
+        context,
+        title: 'Failed to Delete Account',
+        message: 'We could not delete your account. Please try again or contact support if the problem persists.',
+        actionLabel: 'OK',
+        onRetry: _deleteAccount,
       );
     }
   }
@@ -114,8 +121,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+      
+      final errorMessage = ErrorHandler.getUserMessage(e);
+      ErrorDisplay.showErrorSnackBar(
+        context,
+        message: errorMessage,
+        onRetry: fetchVehicles,
       );
     }
   }
@@ -259,14 +270,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         if (!mounted) return;
                         Navigator.pop(ctx);
                         fetchVehicles();
+                        
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Vehicle added!')),
+                          SnackBar(
+                            content: const Row(
+                              children: [
+                                Icon(Icons.check_circle_outline_rounded, color: Colors.green),
+                                SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Vehicle added successfully!',
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            backgroundColor: Colors.green.shade700,
+                            elevation: 6,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            margin: const EdgeInsets.all(16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 3),
+                          ),
                         );
                       } catch (e) {
                         if (!mounted) return;
                         setSheetState(() => saving = false);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(e.toString())),
+                        
+                        final errorMessage = ErrorHandler.getUserMessage(e);
+                        ErrorDisplay.showErrorSnackBar(
+                          context,
+                          message: errorMessage,
                         );
                       }
                     },
@@ -328,8 +363,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+      
+      final errorMessage = ErrorHandler.getUserMessage(e);
+      ErrorDisplay.showErrorSnackBar(
+        context,
+        message: errorMessage,
       );
     }
   }
