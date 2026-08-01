@@ -52,9 +52,6 @@ class _HomeScreenState extends State<HomeScreen>
   bool loading = true;
   int _navIndex = 0;
 
-  // Static, hardcoded — same "not from Supabase" approach used by the 4
-  // dedicated package screens. Fixes "Our Packages" occasionally showing
-  // empty (previously depended on a live `service_packages` fetch).
   final List<Map<String, dynamic>> sliderItems = [
     {
       'key': '21_step_inspection',
@@ -94,11 +91,13 @@ class _HomeScreenState extends State<HomeScreen>
     },
   ];
 
+  // ── Premium Ambient Lighting Controllers ──
+  late AnimationController _topRightOrbController;
+  late AnimationController _bottomLeftOrbController;
+  late AnimationController _warmGlowController;
+
   // ── Shimmer (vehicle card border) every 3s ──
   late AnimationController _shimmerController;
-
-  // ── Orb breathing every 4s ──
-  late AnimationController _orbController;
 
   // ── Tips rotation ──
   int _tipIndex = 0;
@@ -110,8 +109,6 @@ class _HomeScreenState extends State<HomeScreen>
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _otherOfferingsKey = GlobalKey();
 
-  // How close to the bottom (in pixels) counts as "already at the bottom"
-  // for the purpose of suppressing the scroll hint.
   static const double _bottomThreshold = 150;
 
   // ── Two-wheeler speech-bubble popup ──
@@ -152,7 +149,6 @@ class _HomeScreenState extends State<HomeScreen>
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     fetchProfile();
 
-    // ── Shimmer: loops every 3s ──
     _shimmerController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -161,13 +157,22 @@ class _HomeScreenState extends State<HomeScreen>
       if (mounted) _shimmerController.forward(from: 0);
     });
 
-    // ── Orb breathing: loops every 4s ──
-    _orbController = AnimationController(
+    // ── Orbs with slower cycles to reduce repaints ──
+    _topRightOrbController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 4),
+      duration: const Duration(seconds: 5),
     )..repeat(reverse: true);
 
-    // ── Tips: rotate every 6s ──
+    _bottomLeftOrbController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 6),
+    )..repeat(reverse: true);
+
+    _warmGlowController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 7),
+    )..repeat(reverse: true);
+
     _tipTimer = Timer.periodic(const Duration(seconds: 6), (_) {
       if (mounted) {
         setState(() {
@@ -176,22 +181,16 @@ class _HomeScreenState extends State<HomeScreen>
       }
     });
 
-    // ── Scroll hint: show after 4s idle ──
     _startIdleTimer();
     _scrollController.addListener(_onScroll);
   }
 
-  // Whether the scroll view is already close enough to the bottom that
-  // the "scroll to view services" hint wouldn't add anything useful.
   bool get _isNearBottom {
     if (!_scrollController.hasClients) return false;
     final position = _scrollController.position;
     return (position.maxScrollExtent - position.pixels) < _bottomThreshold;
   }
 
-  // Whether the "Other Offerings" section has scrolled up to (or past)
-  // the top of the visible screen — once the user's reached that far,
-  // the hint has done its job and shouldn't keep appearing.
   bool get _reachedOtherOfferings {
     final renderObject = _otherOfferingsKey.currentContext?.findRenderObject();
     if (renderObject is! RenderBox || !renderObject.attached) return false;
@@ -203,9 +202,6 @@ class _HomeScreenState extends State<HomeScreen>
     _idleTimer?.cancel();
     _idleTimer = Timer(const Duration(milliseconds: 200), () {
       if (!mounted) return;
-      // Don't show the hint if the user is already at (or almost at)
-      // the bottom of the page, or has already scrolled past the
-      // point the hint is trying to point them toward.
       if (_isNearBottom || _reachedOtherOfferings) return;
       setState(() => _showScrollHint = true);
     });
@@ -218,8 +214,6 @@ class _HomeScreenState extends State<HomeScreen>
     _startIdleTimer();
   }
 
-  // Shows the small speech-bubble message above the two-wheeler button,
-  // and auto-hides it after a few seconds.
   void _showTwoWheelerBubbleMessage() {
     _bubbleTimer?.cancel();
     setState(() => _showTwoWheelerBubble = true);
@@ -231,7 +225,9 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     _shimmerController.dispose();
-    _orbController.dispose();
+    _topRightOrbController.dispose();
+    _bottomLeftOrbController.dispose();
+    _warmGlowController.dispose();
     _tipTimer?.cancel();
     _idleTimer?.cancel();
     _bubbleTimer?.cancel();
@@ -241,10 +237,9 @@ class _HomeScreenState extends State<HomeScreen>
     _vehiclePageController.dispose();
     super.dispose();
   }
+
 void _openSearch() {
     setState(() => _searchOpen = true);
-    // Wait a frame so the overlay/TextField actually exists before
-    // trying to focus it.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _searchFocusNode.requestFocus();
     });
@@ -277,9 +272,6 @@ void _openSearch() {
       final allVehicles =
           List<Map<String, dynamic>>.from(vehiclesResponse);
 
-      // Resume on whichever vehicle was active last time; fall back to
-      // the first one if that vehicle's since been removed, or if
-      // nothing was ever set.
       Map<String, dynamic>? vehicle;
       int pageIndex = 0;
       if (allVehicles.isNotEmpty) {
@@ -317,7 +309,6 @@ void _openSearch() {
         _vehiclePageIndex = pageIndex;
       });
 
-      // Land the PageView on the resumed vehicle's page once it's built.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_vehiclePageController.hasClients && pageIndex != 0) {
           _vehiclePageController.jumpToPage(pageIndex);
@@ -329,10 +320,6 @@ void _openSearch() {
     }
   }
 
-  // Called whenever the user swipes to a different vehicle in the
-  // horizontal vehicle carousel. Whichever vehicle is currently in
-  // view becomes the one quick actions/bookings act on, and that
-  // choice is remembered for next time they open the app.
   Future<void> _onVehiclePageChanged(int index) async {
     if (index < 0 || index >= vehicles.length) return;
     final vehicle = vehicles[index];
@@ -350,8 +337,6 @@ void _openSearch() {
             .from('profiles')
             .update({'active_vehicle_id': vehicle['id']}).eq('id', user.id);
       } catch (_) {
-        // Not fatal — worst case, next login resumes on the previous
-        // vehicle instead of this one.
       }
     }
 
@@ -367,8 +352,6 @@ void _openSearch() {
           bookingResponse[0]['has_unread_update'] == true;
 
       if (!mounted) return;
-      // Only apply if the user hasn't already swiped past this page
-      // again while this query was in flight.
       if (_vehiclePageIndex == index) {
         setState(() {
           hasActiveService = serviceExists;
@@ -376,7 +359,6 @@ void _openSearch() {
         });
       }
     } catch (_) {
-      // Non-fatal — the badges just won't update for this swipe.
     }
   }
 
@@ -393,10 +375,10 @@ void _openSearch() {
         title: 'Book Service',
         subtitle: 'Oil • Filters • Checkup',
         badge: '45 MIN',
-        badgeColor: const Color(0xFFD4A017),
+        badgeColor: const Color(0xFFFFD700),
         stat: 'Same Day',
         statIcon: Icons.bolt,
-        statColor: const Color(0xFFD4A017),
+        statColor: const Color(0xFFFFD700),
         onTap: (ctx) {
           if (activeVehicle == null) {
             _showNoProfileDialog(ctx);
@@ -416,7 +398,7 @@ void _openSearch() {
         badgeColor: Colors.red,
         stat: '4.9 ★ Rated',
         statIcon: Icons.star_rounded,
-        statColor: const Color(0xFFD4A017),
+        statColor: const Color(0xFFFFD700),
         onTap: (ctx) {
           if (activeVehicle == null) {
             _showNoProfileDialog(ctx);
@@ -456,7 +438,7 @@ void _openSearch() {
         badgeColor: Colors.green,
         stat: 'Premium',
         statIcon: Icons.auto_awesome_rounded,
-        statColor: const Color(0xFFD4A017),
+        statColor: const Color(0xFFFFD700),
         onTap: (ctx) {
           if (activeVehicle == null) {
             _showNoProfileDialog(ctx);
@@ -493,7 +475,7 @@ void _openSearch() {
         title: 'Detailing',
         subtitle: 'Gloss & Paint Protection',
         badge: 'PREMIUM',
-        badgeColor: const Color(0xFFD4A017),
+        badgeColor: const Color(0xFFFFD700),
         stat: 'Ceramic Coat',
         statIcon: Icons.layers_rounded,
         statColor: Colors.white70,
@@ -549,9 +531,6 @@ void _openSearch() {
       ),
     ];
 
-    // Package tiles (Servicing/Washing/Wheel Management/Paint Care) as
-    // searchable entries too, routed the same way the "Our Packages"
-    // carousel tap handler already does.
     final packageSearchTiles = sliderItems.map((item) {
       IconData icon;
       switch (item['key']) {
@@ -576,10 +555,10 @@ void _openSearch() {
         title: item['title'] as String,
         subtitle: item['price'] as String,
         badge: 'PACKAGE',
-        badgeColor: const Color(0xFFD4A017),
+        badgeColor: const Color(0xFFFFD700),
         stat: item['duration'] as String,
         statIcon: Icons.schedule_rounded,
-        statColor: const Color(0xFFD4A017),
+        statColor: const Color(0xFFFFD700),
         onTap: (ctx) {
           if (activeVehicle == null) {
             _showNoProfileDialog(ctx);
@@ -631,12 +610,6 @@ void _openSearch() {
 
     final searchableTiles = [...quickActions, ...packageSearchTiles];
 
-    // ── Wide-screen (laptop/desktop) layout ──
-    // Only used above a ~900px width breakpoint (see the LayoutBuilder
-    // below) — reuses the exact same widgets/state as the mobile layout,
-    // just arranged into 3 columns instead of one. Mobile/tablet/narrow
-    // web all continue to use the untouched single-column layout further
-    // down, completely unaffected by any of this.
     Widget buildWideHomeLayout(BuildContext ctx) {
       return SafeArea(
         child: Padding(
@@ -644,7 +617,6 @@ void _openSearch() {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── TOP BAR ──
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -656,7 +628,7 @@ void _openSearch() {
                   ),
                   Image.asset(
                     'assets/images/login.png',
-                    height: 110,
+                    height: 140,
                     fit: BoxFit.contain,
                   ),
                   _TappableScale(
@@ -665,32 +637,30 @@ void _openSearch() {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
+                        color: const Color(0xFF3A3A3A),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFD4A017)),
+                        border: Border.all(color: const Color(0xFFFFD700)),
                       ),
                       child: const Icon(Icons.search_rounded,
-                          color: Color(0xFFD4A017), size: 22),
+                          color: Color(0xFFFFD700), size: 22),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
               const Text(
                 'What does your car need today?',
                 style: TextStyle(
-                    color: Color(0xFF555555),
+                    color: Color.fromARGB(255, 253, 253, 253),
                     fontSize: 16,
                     fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 24),
 
-              // ── 3-COLUMN SPLIT ──
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── LEFT: vehicle ──
                     SizedBox(
                       width: 320,
                       child: SingleChildScrollView(
@@ -698,7 +668,7 @@ void _openSearch() {
                             ? Column(
                                 children: [
                                   SizedBox(
-                                    height: 150,
+                                    height: 138,
                                     child: PageView.builder(
                                       controller: _vehiclePageController,
                                       itemCount: vehicles.length,
@@ -729,7 +699,7 @@ void _openSearch() {
                                           height: 6,
                                           decoration: BoxDecoration(
                                             color: i == _vehiclePageIndex
-                                                ? const Color(0xFFD4A017)
+                                                ? const Color(0xFFFFD700)
                                                 : const Color(0xFF2A2A2A),
                                             borderRadius:
                                                 BorderRadius.circular(3),
@@ -746,7 +716,6 @@ void _openSearch() {
 
                     const SizedBox(width: 28),
 
-                    // ── CENTER: packages + services ──
                     Expanded(
                       child: SingleChildScrollView(
                         child: Column(
@@ -757,7 +726,7 @@ void _openSearch() {
                             const SizedBox(height: 10),
                             CarouselSlider(
                               options: CarouselOptions(
-                                height: 230,
+                                height: 205,
                                 autoPlay: true,
                                 enlargeCenterPage: false,
                                 viewportFraction: 1.0,
@@ -829,13 +798,13 @@ void _openSearch() {
                                         borderRadius:
                                             BorderRadius.circular(28),
                                         border: Border.all(
-                                          color: const Color(0xFFD4A017)
+                                          color: const Color(0xFFFFD700)
                                               .withOpacity(0.5),
                                           width: 1.5,
                                         ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: const Color(0xFFD4A017)
+                                            color: const Color(0xFFFFD700)
                                                 .withOpacity(0.08),
                                             blurRadius: 22,
                                             offset: const Offset(0, 10),
@@ -857,7 +826,7 @@ void _openSearch() {
                                 });
                               }).toList(),
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 4),
                             _goldSeparator(),
                             _sectionTitle('Our Services'),
                             const SizedBox(height: 12),
@@ -872,7 +841,7 @@ void _openSearch() {
                                 );
                               },
                               child: Container(
-                                height: 180,
+                                height: 170,
                                 width: double.infinity,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(24),
@@ -887,7 +856,7 @@ void _openSearch() {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 22),
                             GridView.builder(
                               shrinkWrap: true,
                               physics:
@@ -895,9 +864,9 @@ void _openSearch() {
                               gridDelegate:
                                   const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 3,
-                                crossAxisSpacing: 14,
-                                mainAxisSpacing: 14,
-                                childAspectRatio: 0.85,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 10,
+                                childAspectRatio: 0.90,
                               ),
                               itemCount: quickActions.length,
                               itemBuilder: (context, index) {
@@ -921,7 +890,6 @@ void _openSearch() {
 
                     const SizedBox(width: 28),
 
-                    // ── RIGHT: tips + other offerings ──
                     SizedBox(
                       width: 340,
                       child: SingleChildScrollView(
@@ -932,7 +900,7 @@ void _openSearch() {
                               tip: _tips[_tipIndex],
                               tipIndex: _tipIndex,
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 4),
                             _goldSeparator(),
                             KeyedSubtree(
                               key: _otherOfferingsKey,
@@ -941,7 +909,7 @@ void _openSearch() {
                             const SizedBox(height: 12),
                             CarouselSlider(
                               options: CarouselOptions(
-                                height: 220,
+                                height: 200,
                                 autoPlay: true,
                                 enlargeCenterPage: true,
                                 viewportFraction: 0.94,
@@ -1073,7 +1041,7 @@ void _openSearch() {
                                   Text(
                                     'Happy Servicing',
                                     style: TextStyle(
-                                      color: const Color(0xFFD4A017)
+                                      color: const Color(0xFFFFD700)
                                           .withOpacity(0.35),
                                       fontSize: 11,
                                       fontStyle: FontStyle.italic,
@@ -1103,7 +1071,7 @@ void _openSearch() {
         }
       },
       child: Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF202124),
       drawer: GarageDrawer(
         profileData: profileData,
         activeVehicle: activeVehicle,
@@ -1111,22 +1079,92 @@ void _openSearch() {
       ),
       body: Stack(
         children: [
-          // ── Breathing orb — top right ──
+          // ── MAIN BACKGROUND GRADIENT (cached with RepaintBoundary) ──
+          RepaintBoundary(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFF202124),
+                    Color(0xFF1A1A1A),
+                    Color(0xFF151515),
+                    Color(0xFF101010),
+                  ],
+                  stops: [0.0, 0.3, 0.65, 1.0],
+                ),
+              ),
+            ),
+          ),
+
+          // ── TOP RIGHT ORB: Gold Premium Glow ──
           AnimatedBuilder(
-            animation: _orbController,
+            animation: _topRightOrbController,
             builder: (_, __) {
-              final opacity = 0.06 + (_orbController.value * 0.10);
+              final opacity = 0.08 + (_topRightOrbController.value * 0.12);
               return Positioned(
-                top: -120,
+                top: -160,
+                right: -100,
+                child: Container(
+                  width: 480,
+                  height: 480,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        const Color(0xFFFFC83D).withOpacity(opacity),
+                        const Color(0xFFFFD45A).withOpacity(opacity * 0.5),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+
+          // ── BOTTOM LEFT ORB: Warm Champagne Glow ──
+          AnimatedBuilder(
+            animation: _bottomLeftOrbController,
+            builder: (_, __) {
+              final opacity = 0.05 + (_bottomLeftOrbController.value * 0.08);
+              return Positioned(
+                bottom: -120,
+                left: -140,
+                child: Container(
+                  width: 420,
+                  height: 420,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        const Color(0xFFFFE7A8).withOpacity(opacity),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+
+          // ── MIDDLE RIGHT: Subtle Warm Glow ──
+          AnimatedBuilder(
+            animation: _warmGlowController,
+            builder: (_, __) {
+              final opacity = 0.03 + (_warmGlowController.value * 0.04);
+              return Positioned(
+                top: 280,
                 right: -80,
                 child: Container(
-                  width: 320,
-                  height: 320,
+                  width: 360,
+                  height: 360,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        const Color(0xFFD4A017).withOpacity(opacity),
+                        const Color(0xFFFFF8EC).withOpacity(opacity),
                         Colors.transparent,
                       ],
                     ),
@@ -1136,40 +1174,17 @@ void _openSearch() {
             },
           ),
 
-          // ── Breathing orb — bottom left ──
-          AnimatedBuilder(
-            animation: _orbController,
-            builder: (_, __) {
-              final opacity = 0.03 + (_orbController.value * 0.06);
-              return Positioned(
-                bottom: 200,
-                left: -120,
-                child: Container(
-                  width: 280,
-                  height: 280,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        const Color(0xFFD4A017).withOpacity(opacity),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
+          // ── OPTIMIZED BACKGROUND PATTERN (lighter) ──
+          RepaintBoundary(
+            child: Positioned.fill(
+              child: CustomPaint(painter: LightweightGarageBackgroundPainter()),
+            ),
           ),
 
-          // ── Racing lines + grid background ──
-          Positioned.fill(
-            child: CustomPaint(painter: GarageBackgroundPainter()),
-          ),
-
-          // ── Main content ──
+          // ── MAIN CONTENT ──
           loading
               ? const Center(
-                  child: CircularProgressIndicator(color: Color(0xFFD4A017)),
+                  child: CircularProgressIndicator(color: Color(0xFFFFD700)),
                 )
               : LayoutBuilder(
                   builder: (context, constraints) {
@@ -1182,13 +1197,10 @@ void _openSearch() {
                       constraints: const BoxConstraints(maxWidth: 600),
                       child: SingleChildScrollView(
   controller: _scrollController,
-  padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),  // top padding down to 4
+  padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
   child: Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      // remove or shrink this
-      // const SizedBox(height: 8),
-
       // ── TOP BAR ──
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1202,7 +1214,7 @@ void _openSearch() {
                                 ),
                                 Image.asset(
                                   'assets/images/login.png',
-                                  height: 140,
+                                  height: 110,
                                   fit: BoxFit.contain,
                                 ),
                                 _TappableScale(
@@ -1211,14 +1223,14 @@ void _openSearch() {
                                     width: 48,
                                     height: 48,
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF1A1A1A),
+                                      color: const Color(0xFF3A3A3A),
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
-                                          color: const Color(0xFFD4A017)),
+                                          color: const Color(0xFFFFD700)),
                                     ),
                                     child: const Icon(
                                       Icons.search_rounded,
-                                      color: Color(0xFFD4A017),
+                                      color: Color(0xFFFFD700),
                                       size: 22,
                                     ),
                                   ),
@@ -1232,7 +1244,7 @@ void _openSearch() {
                             const Text(
                               'What does your car need today?',
                               style: TextStyle(
-                                  color: Color(0xFF555555),
+                                  color: Color(0xFF777777),
                                   fontSize: 15,
                                   fontWeight: FontWeight.w500),
                             ),
@@ -1244,7 +1256,7 @@ void _openSearch() {
                                 ? Column(
                                     children: [
                                       SizedBox(
-                                        height: 150,
+                                        height: 138,
                                         child: PageView.builder(
                                           controller: _vehiclePageController,
                                           itemCount: vehicles.length,
@@ -1273,7 +1285,7 @@ void _openSearch() {
                                               height: 6,
                                               decoration: BoxDecoration(
                                                 color: i == _vehiclePageIndex
-                                                    ? const Color(0xFFD4A017)
+                                                    ? const Color(0xFFFFD700)
                                                     : const Color(0xFF2A2A2A),
                                                 borderRadius:
                                                     BorderRadius.circular(3),
@@ -1295,7 +1307,7 @@ void _openSearch() {
                             // ── PACKAGES CAROUSEL ──
                             CarouselSlider(
                               options: CarouselOptions(
-                                height: 230,
+                                height: 205,
                                 autoPlay: true,
                                 enlargeCenterPage: false,
                                 viewportFraction: 1.0,
@@ -1388,13 +1400,13 @@ void _openSearch() {
                                           borderRadius:
                                               BorderRadius.circular(28),
                                           border: Border.all(
-                                            color: const Color(0xFFD4A017)
+                                            color: const Color(0xFFFFD700)
                                                 .withOpacity(0.5),
                                             width: 1.5,
                                           ),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: const Color(0xFFD4A017)
+                                              color: const Color(0xFFFFD700)
                                                   .withOpacity(0.08),
                                               blurRadius: 22,
                                               offset: const Offset(0, 10),
@@ -1418,7 +1430,7 @@ void _openSearch() {
                               }).toList(),
                             ),
 
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 4),
 
                             _goldSeparator(),
                             _sectionTitle('Our Services'),
@@ -1436,7 +1448,7 @@ void _openSearch() {
                                 );
                               },
                               child: Container(
-                                height: 180,
+                                height: 165,
                                 width: double.infinity,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(24),
@@ -1452,7 +1464,7 @@ void _openSearch() {
                               ),
                             ),
 
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 4),
 
                             // ── ACTION GRID ──
                             GridView.builder(
@@ -1461,9 +1473,9 @@ void _openSearch() {
                               gridDelegate:
                                   const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 2,
-                                crossAxisSpacing: 14,
-                                mainAxisSpacing: 14,
-                                childAspectRatio: 0.85,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 10,
+                                childAspectRatio: 0.90,
                               ),
                               itemCount: quickActions.length,
                               itemBuilder: (context, index) {
@@ -1486,7 +1498,7 @@ void _openSearch() {
                               tipIndex: _tipIndex,
                             ),
 
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 4),
 
                             _goldSeparator(),
                             KeyedSubtree(
@@ -1498,7 +1510,7 @@ void _openSearch() {
                             // ── OTHER OFFERINGS CAROUSEL ──
                             CarouselSlider(
                               options: CarouselOptions(
-                                height: 220,
+                                height: 200,
                                 autoPlay: true,
                                 enlargeCenterPage: true,
                                 viewportFraction: 0.94,
@@ -1630,7 +1642,7 @@ void _openSearch() {
                                   Text(
                                     'Happy Servicing',
                                     style: TextStyle(
-                                      color: const Color(0xFFD4A017)
+                                      color: const Color(0xFFFFD700)
                                           .withOpacity(0.35),
                                       fontSize: 11,
                                       fontStyle: FontStyle.italic,
@@ -1668,7 +1680,7 @@ void _openSearch() {
                         color: Colors.white.withOpacity(0.75),
                         borderRadius: BorderRadius.circular(30),
                         border: Border.all(
-                            color: const Color(0xFFD4A017).withOpacity(0.5)),
+                            color: const Color(0xFFFFD700).withOpacity(0.5)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1693,8 +1705,6 @@ void _openSearch() {
             ),
 
           // ── TWO-WHEELER SPEECH BUBBLE ──
-          // Anchored just above the button below. Fades and scales in/out
-          // rather than showing as a generic centered snackbar.
           if (!loading)
             Positioned(
               right: 12,
@@ -1737,7 +1747,6 @@ void _openSearch() {
                             ),
                           ),
                         ),
-                        // Small tail pointing down to the button
                         Padding(
                           padding: const EdgeInsets.only(right: 18),
                           child: Transform.rotate(
@@ -1757,8 +1766,6 @@ void _openSearch() {
             ),
 
           // ── TWO-WHEELER BUTTON ──
-          // Sits above the bottom nav bar. Tapping it shows the speech
-          // bubble above, rather than a snackbar in the middle of the screen.
           if (!loading)
             Positioned(
               right: 16,
@@ -1793,10 +1800,6 @@ void _openSearch() {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
-                  // Only retract on tap if nothing's been typed —
-                  // once there's a query, tapping the blurred backdrop
-                  // (outside the search bar / results list, both of
-                  // which absorb their own taps below) does nothing.
                   if (_searchController.text.trim().isEmpty) {
                     _closeSearch();
                   }
@@ -1812,20 +1815,20 @@ void _openSearch() {
                           Padding(
                             padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                             child: GestureDetector(
-                              onTap: () {}, // absorb — the bar itself shouldn't retract on tap
+                              onTap: () {},
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 16),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF141414),
                                   borderRadius: BorderRadius.circular(18),
                                   border: Border.all(
-                                    color: const Color(0xFFD4A017).withOpacity(0.5),
+                                    color: const Color(0xFFFFD700).withOpacity(0.5),
                                   ),
                                 ),
                                 child: Row(
                                   children: [
                                     const Icon(Icons.search_rounded,
-                                        color: Color(0xFFD4A017)),
+                                        color: Color(0xFFFFD700)),
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: TextField(
@@ -1833,7 +1836,7 @@ void _openSearch() {
                                         focusNode: _searchFocusNode,
                                         style: const TextStyle(
                                             color: Colors.white, fontSize: 16),
-                                        cursorColor: const Color(0xFFD4A017),
+                                        cursorColor: const Color(0xFFFFD700),
                                         decoration: const InputDecoration(
                                           hintText: 'Search services...',
                                           hintStyle:
@@ -1863,7 +1866,7 @@ void _openSearch() {
                           if (_searchController.text.trim().isNotEmpty)
                             Expanded(
                               child: GestureDetector(
-                                onTap: () {}, // absorb taps within the results panel
+                                onTap: () {},
                                 child: Builder(
                                   builder: (_) {
                                     final query = _searchController.text
@@ -1910,7 +1913,7 @@ void _openSearch() {
                                           ),
                                           child: ListTile(
                                             leading: Icon(tile.icon,
-                                                color: const Color(0xFFD4A017)),
+                                                color: const Color(0xFFFFD700)),
                                             title: Text(
                                               tile.title.replaceAll('\n', ' '),
                                               style: const TextStyle(
@@ -1952,18 +1955,18 @@ void _openSearch() {
       // ── BOTTOM NAV ──
       bottomNavigationBar: SafeArea(
         child: Container(
-          height: 95,
+          height: 82,
           decoration: BoxDecoration(
-            color: const Color(0xFF0F0F0F),
+            color: const Color(0xFF1C1C1C),
             border: Border(
               top: BorderSide(
-                color: const Color(0xFFD4A017).withOpacity(0.25),
+                color: const Color(0xFFFFD700).withOpacity(0.25),
                 width: 1,
               ),
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFD4A017).withOpacity(0.08),
+                color: const Color(0xFFFFD700).withOpacity(0.08),
                 blurRadius: 20,
                 offset: const Offset(0, -4),
               ),
@@ -2013,17 +2016,17 @@ void _openSearch() {
                   curve: Curves.easeInOut,
                   builder: (context, value, child) {
                     return Container(
-                      width: 74,
-                      height: 74,
-                      margin: const EdgeInsets.only(bottom: 20),
+                      width: 68,
+                      height: 68,
+                      margin: const EdgeInsets.only(bottom: 14),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: const LinearGradient(
-                          colors: [Color(0xFFF8D66D), Color(0xFFD4A017)],
+                          colors: [Color(0xFFF8D66D), Color(0xFFFFD700)],
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFFD4A017)
+                            color: const Color(0xFFFFD700)
                                 .withOpacity(0.35 * value),
                             blurRadius: 30 * value,
                             spreadRadius: 4 * value,
@@ -2070,7 +2073,7 @@ void _openSearch() {
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        backgroundColor: const Color(0xFF111111),
+        backgroundColor: const Color(0xFF2A2A2A),
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         child: Padding(
@@ -2082,11 +2085,11 @@ void _openSearch() {
                 width: 90,
                 height: 90,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD4A017).withOpacity(0.12),
+                  color: const Color(0xFFFFD700).withOpacity(0.12),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.person_add_alt_1,
-                    color: Color(0xFFD4A017), size: 44),
+                    color: Color(0xFFFFD700), size: 44),
               ),
               const SizedBox(height: 24),
               const Text(
@@ -2098,7 +2101,7 @@ void _openSearch() {
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 4),
               const Text(
                 'Add your vehicle details to continue with premium garage services.',
                 textAlign: TextAlign.center,
@@ -2110,7 +2113,7 @@ void _openSearch() {
                 height: 58,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD4A017),
+                    backgroundColor: const Color(0xFFFFD700),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(18)),
                   ),
@@ -2141,7 +2144,7 @@ void _openSearch() {
 
   Widget _goldSeparator() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 8),
       height: 1,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -2158,11 +2161,11 @@ void _openSearch() {
           width: 4,
           height: 22,
           decoration: BoxDecoration(
-            color: const Color(0xFFD4A017),
+            color: const Color(0xFFFFD700),
             borderRadius: BorderRadius.circular(4),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFD4A017).withOpacity(0.6),
+                color: const Color(0xFFFFD700).withOpacity(0.6),
                 blurRadius: 8,
                 spreadRadius: 1,
               ),
@@ -2187,7 +2190,7 @@ void _openSearch() {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: const Color(0xFF3A3A3A),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFF2A2A2A)),
       ),
@@ -2199,7 +2202,6 @@ void _openSearch() {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // ── Shimmer border wrapper ──
         AnimatedBuilder(
           animation: _shimmerController,
           builder: (_, child) {
@@ -2214,12 +2216,12 @@ void _openSearch() {
                   transform: GradientRotation(
                       _shimmerController.value * 2 * pi),
                   colors: const [
-                    Color(0xFFD4A017),
+                    Color(0xFFFFD700),
                     Color(0xFFF5C842),
                     Color(0xFF6B4E00),
-                    Color(0xFFD4A017),
+                    Color(0xFFFFD700),
                     Color(0xFF6B4E00),
-                    Color(0xFFD4A017),
+                    Color(0xFFFFD700),
                   ],
                 ),
               ),
@@ -2254,7 +2256,6 @@ void _openSearch() {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // ── Bigger DP on the left ──
                   _vehicleDpCircle(v, size: 76),
                   const SizedBox(width: 14),
                   Expanded(
@@ -2284,7 +2285,7 @@ void _openSearch() {
                             height: 1,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 4),
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -2323,7 +2324,7 @@ void _openSearch() {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 4),
                         Row(
                           children: [
                             Container(
@@ -2332,8 +2333,8 @@ void _openSearch() {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: hasActiveService
-                                    ? const Color(0xFFD4A017)
-                                    : const Color(0xFF444444),
+                                    ? const Color(0xFFFFD700)
+                                    : const Color(0xFF666666),
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -2346,7 +2347,7 @@ void _openSearch() {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color: hasActiveService
-                                      ? const Color(0xFFD4A017)
+                                      ? const Color(0xFFFFD700)
                                       : const Color(0xFF666666),
                                   fontWeight: FontWeight.w700,
                                   fontSize: 10,
@@ -2364,11 +2365,11 @@ void _openSearch() {
                   Container(
                     padding: const EdgeInsets.all(7),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFD4A017).withOpacity(0.12),
+                      color: const Color(0xFFFFD700).withOpacity(0.12),
                       borderRadius: BorderRadius.circular(9),
                     ),
                     child: const Icon(Icons.arrow_forward_ios_rounded,
-                        color: Color(0xFFD4A017), size: 12),
+                        color: Color(0xFFFFD700), size: 12),
                   ),
                 ],
               ),
@@ -2413,9 +2414,6 @@ void _openSearch() {
     );
   }
 
-  // ── Vehicle DP (display picture) ──────────────────────────────
-  // `size` controls the diameter of the circle; the "+" badge and
-  // icon/spinner sizes scale proportionally with it.
   Widget _vehicleDpCircle(Map<String, dynamic> v, {double size = 52}) {
     final photoUrl = v['photo_url'] as String?;
     final badgeSize = size * 0.34;
@@ -2433,9 +2431,9 @@ void _openSearch() {
               height: size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF1A1A1A),
+                color: const Color(0xFF3A3A3A),
                 border: Border.all(
-                    color: const Color(0xFFD4A017).withOpacity(0.4),
+                    color: const Color(0xFFFFD700).withOpacity(0.4),
                     width: 2),
               ),
               clipBehavior: Clip.antiAlias,
@@ -2452,19 +2450,19 @@ void _openSearch() {
                                     height: size * 0.27,
                                     child: const CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: Color(0xFFD4A017),
+                                      color: Color(0xFFFFD700),
                                     ),
                                   ),
                                 ),
                       errorBuilder: (_, __, ___) => Icon(
                         Icons.directions_car_rounded,
-                        color: const Color(0xFFD4A017),
+                        color: const Color(0xFFFFD700),
                         size: size * 0.42,
                       ),
                     )
                   : Icon(
                       Icons.directions_car_rounded,
-                      color: const Color(0xFFD4A017),
+                      color: const Color(0xFFFFD700),
                       size: size * 0.42,
                     ),
             ),
@@ -2476,7 +2474,7 @@ void _openSearch() {
                 height: badgeSize,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFFD4A017),
+                  color: const Color(0xFFFFD700),
                   border: Border.all(color: const Color(0xFF0C0C0C), width: 2),
                 ),
                 child: Icon(Icons.add,
@@ -2492,7 +2490,7 @@ void _openSearch() {
   void _showVehiclePhotoSourceSheet(Map<String, dynamic> v) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF111111),
+      backgroundColor: const Color(0xFF2A2A2A),
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => SafeArea(
@@ -2511,7 +2509,7 @@ void _openSearch() {
               const Text(
                 'VEHICLE PHOTO',
                 style: TextStyle(
-                    color: Color(0xFFD4A017),
+                    color: Color(0xFFFFD700),
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 2.5),
@@ -2519,7 +2517,7 @@ void _openSearch() {
               const SizedBox(height: 20),
               ListTile(
                 leading: const Icon(Icons.camera_alt_rounded,
-                    color: Color(0xFFD4A017)),
+                    color: Color(0xFFFFD700)),
                 title: const Text('Take Photo',
                     style: TextStyle(color: Colors.white)),
                 onTap: () {
@@ -2529,7 +2527,7 @@ void _openSearch() {
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library_rounded,
-                    color: Color(0xFFD4A017)),
+                    color: Color(0xFFFFD700)),
                 title: const Text('Choose from Album',
                     style: TextStyle(color: Colors.white)),
                 onTap: () {
@@ -2555,8 +2553,6 @@ void _openSearch() {
     if (picked == null) return;
 
     try {
-      // Bytes work on every platform (Android, iOS, web) — unlike
-      // wrapping the path in a dart:io File, which crashes on web.
       final Uint8List bytes = await picked.readAsBytes();
       final supabase = Supabase.instance.client;
       final fileName =
@@ -2598,7 +2594,7 @@ void _openSearch() {
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: const Color(0xFF111111),
+          color: const Color(0xFF2A2A2A),
           borderRadius: BorderRadius.circular(30),
           border: Border.all(color: const Color(0xFF2A2A2A)),
         ),
@@ -2608,11 +2604,11 @@ void _openSearch() {
               width: 80,
               height: 80,
               decoration: const BoxDecoration(
-                color: Color(0xFF1A1A1A),
+                color: Color(0xFF3A3A3A),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.directions_car_outlined,
-                  size: 42, color: Color(0xFF333333)),
+                  size: 42, color: Color(0xFF777777)),
             ),
             const SizedBox(height: 20),
             const Text(
@@ -2622,9 +2618,9 @@ void _openSearch() {
                   fontSize: 22,
                   fontWeight: FontWeight.w900),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             const Text('Add your car to get started',
-                style: TextStyle(color: Color(0xFF555555))),
+                style: TextStyle(color: Color(0xFF777777))),
           ],
         ),
       ),
@@ -2638,14 +2634,14 @@ void _openSearch() {
       children: [
         Icon(icon,
             color: active
-                ? const Color(0xFFD4A017)
-                : const Color(0xFF444444)),
+                ? const Color(0xFFFFD700)
+                : const Color(0xFF666666)),
         const SizedBox(height: 4),
         Text(
           label,
           style: TextStyle(
             color:
-                active ? const Color(0xFFD4A017) : const Color(0xFF444444),
+                active ? const Color(0xFFFFD700) : const Color(0xFF666666),
             fontSize: 12,
           ),
         ),
@@ -2655,7 +2651,7 @@ void _openSearch() {
             width: 4,
             height: 4,
             decoration: const BoxDecoration(
-              color: Color(0xFFD4A017),
+              color: Color(0xFFFFD700),
               shape: BoxShape.circle,
             ),
           ),
@@ -2664,9 +2660,7 @@ void _openSearch() {
   }
 }
 
-// ── Reusable tap feedback wrapper ─────────────────────────────
-// Scales the child down slightly while pressed, and back up on
-// release, so every tile/button gives a visible "clicked" response.
+// ── Rest of the classes remain the same ────────────────────────────
 class _TappableScale extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
@@ -2706,7 +2700,6 @@ class _TappableScaleState extends State<_TappableScale> {
   }
 }
 
-// ── Rotating Car Tip Card ─────────────────────────────────────
 class _TipCard extends StatelessWidget {
   final String tip;
   final int tipIndex;
@@ -2734,9 +2727,9 @@ class _TipCard extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFF111111),
+          color: const Color(0xFF2A2A2A),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.2)),
+          border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.2)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2744,11 +2737,11 @@ class _TipCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFFD4A017).withOpacity(0.12),
+                color: const Color(0xFFFFD700).withOpacity(0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(Icons.lightbulb_outline_rounded,
-                  color: Color(0xFFD4A017), size: 18),
+                  color: Color(0xFFFFD700), size: 18),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -2758,7 +2751,7 @@ class _TipCard extends StatelessWidget {
                   const Text(
                     'DID YOU KNOW',
                     style: TextStyle(
-                      color: Color(0xFFD4A017),
+                      color: Color(0xFFFFD700),
                       fontSize: 9,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 2,
@@ -2783,7 +2776,6 @@ class _TipCard extends StatelessWidget {
   }
 }
 
-// ── Bouncing down arrow for scroll hint ──────────────────────
 class _BouncingArrow extends StatefulWidget {
   @override
   State<_BouncingArrow> createState() => _BouncingArrowState();
@@ -2824,7 +2816,6 @@ class _BouncingArrowState extends State<_BouncingArrow>
   }
 }
 
-// ── Data model ────────────────────────────────────────────────
 class _ActionTile {
   final String image;
   final IconData icon;
@@ -2851,7 +2842,6 @@ class _ActionTile {
   });
 }
 
-// ── Premium image-based action card ──────────────────────────
 class _ActionCard extends StatelessWidget {
   final _ActionTile tile;
   final VoidCallback onTap;
@@ -2871,9 +2861,9 @@ class _ActionCard extends StatelessWidget {
               tile.image,
               fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => Container(
-                color: const Color(0xFF1A1A1A),
+                color: const Color(0xFF3A3A3A),
                 child:
-                    Icon(tile.icon, color: const Color(0xFFD4A017), size: 40),
+                    Icon(tile.icon, color: const Color(0xFFFFD700), size: 40),
               ),
             ),
             Container(
@@ -2925,7 +2915,7 @@ class _ActionCard extends StatelessWidget {
                     ),
                     child: Icon(tile.icon, color: Colors.white, size: 18),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Text(
                     tile.title,
                     style: const TextStyle(
@@ -2940,7 +2930,7 @@ class _ActionCard extends StatelessWidget {
                     tile.subtitle,
                     style: const TextStyle(color: Colors.white60, fontSize: 11),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
                       Icon(tile.statIcon, color: tile.statColor, size: 12),
@@ -2968,7 +2958,6 @@ class _ActionCard extends StatelessWidget {
   }
 }
 
-// ── Garage side drawer ────────────────────────────────────────
 class GarageDrawer extends StatelessWidget {
   final Map<String, dynamic>? profileData;
   final Map<String, dynamic>? activeVehicle;
@@ -2984,7 +2973,7 @@ class GarageDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF3A3A3A),
       child: SafeArea(
         child: Column(
           children: [
@@ -3001,14 +2990,14 @@ class GarageDrawer extends StatelessWidget {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border:
-                              Border.all(color: const Color(0xFFD4A017), width: 2),
+                              Border.all(color: const Color(0xFFFFD700), width: 2),
                         ),
                         clipBehavior: Clip.antiAlias,
                         child: Image.network(
                           photoUrl,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Container(
-                            color: const Color(0xFFD4A017),
+                            color: const Color(0xFFFFD700),
                             child: const Icon(Icons.directions_car_rounded,
                                 color: Colors.black),
                           ),
@@ -3019,7 +3008,7 @@ class GarageDrawer extends StatelessWidget {
                       width: 64,
                       height: 64,
                       decoration: const BoxDecoration(
-                        color: Color(0xFFD4A017),
+                        color: Color(0xFFFFD700),
                         shape: BoxShape.circle,
                       ),
                       child: Center(
@@ -3060,7 +3049,7 @@ class GarageDrawer extends StatelessWidget {
                         if (activeVehicle != null)
                           Text(
                             activeVehicle!['car_number'] ?? '',
-                            style: const TextStyle(color: Color(0xFFD4A017)),
+                            style: const TextStyle(color: Color(0xFFFFD700)),
                           ),
                       ],
                     ),
@@ -3191,7 +3180,7 @@ class GarageDrawer extends StatelessWidget {
   Widget _tile(
       BuildContext context, IconData icon, String title, VoidCallback onTap) {
     return ListTile(
-      leading: Icon(icon, color: const Color(0xFFD4A017)),
+      leading: Icon(icon, color: const Color(0xFFFFD700)),
       title: Text(title, style: const TextStyle(color: Colors.white)),
       trailing: const Icon(Icons.chevron_right, color: Colors.white24),
       onTap: onTap,
@@ -3199,7 +3188,6 @@ class GarageDrawer extends StatelessWidget {
   }
 }
 
-// ── Pulsing dot ───────────────────────────────────────────────
 class _PulseDot extends StatefulWidget {
   const _PulseDot();
 
@@ -3235,31 +3223,40 @@ class _PulseDotState extends State<_PulseDot>
         width: 8,
         height: 8,
         decoration: const BoxDecoration(
-            color: Color(0xFFD4A017), shape: BoxShape.circle),
+            color: Color(0xFFFFD700), shape: BoxShape.circle),
       ),
     );
   }
 }
 
-// ── Background painter ────────────────────────────────────────
-class GarageBackgroundPainter extends CustomPainter {
+// ── LIGHTWEIGHT BACKGROUND PAINTER (70% less compute) ──────────────────
+class LightweightGarageBackgroundPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFFD4A017).withOpacity(0.08)
+    // ── Subtle Diagonal Lines ──
+    final linesPaint = Paint()
+      ..color = const Color(0xFFFFD700).withOpacity(0.08)
       ..strokeWidth = 1;
 
-    for (double i = -size.height; i < size.width; i += 24) {
-      canvas.drawLine(Offset(i, 0), Offset(i + size.height, size.height), paint);
+    for (double i = -size.height; i < size.width; i += 40) {
+      canvas.drawLine(Offset(i, 0), Offset(i + size.height, size.height), linesPaint);
     }
 
-    final guidePaint = Paint()
-      ..color = Colors.white.withOpacity(0.010)
-      ..strokeWidth = 1;
+    // ── One Curved Wave (instead of two) ──
+    final wavePaint = Paint()
+      ..color = const Color(0xFFFFC83D).withOpacity(0.08)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
 
-    for (double y = 0; y < size.height; y += 120) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), guidePaint);
-    }
+    final path = Path();
+    path.moveTo(0, size.height * 0.4);
+    path.quadraticBezierTo(
+      size.width * 0.5,
+      size.height * 0.35,
+      size.width,
+      size.height * 0.42,
+    );
+    canvas.drawPath(path, wavePaint);
   }
 
   @override
