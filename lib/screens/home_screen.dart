@@ -254,7 +254,10 @@ void _openSearch() {
   Future<void> fetchProfile() async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      if (mounted) setState(() => loading = false);
+      return;
+    }
 
     try {
       final profile = await supabase
@@ -3230,14 +3233,14 @@ class _PulseDotState extends State<_PulseDot>
 }
 
 // ── LIGHTWEIGHT BACKGROUND PAINTER (70% less compute) ──────────────────
-// Enhanced with 20% brighter gold hues and additional decorative elements
+// Enhanced with highly visible gold hues and decorative elements
 class LightweightGarageBackgroundPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    // ── Primary Diagonal Lines (Gold) - 20% brighter ──
+    // ── Primary Diagonal Lines (Gold) - Much brighter & visible ──
     final linesPaint = Paint()
-      ..color = const Color(0xFFFFD700).withOpacity(0.11)
-      ..strokeWidth = 1;
+      ..color = const Color(0xFFFFD700).withOpacity(0.25)
+      ..strokeWidth = 1.5;
 
     for (double i = -size.height; i < size.width; i += 40) {
       canvas.drawLine(Offset(i, 0), Offset(i + size.height, size.height), linesPaint);
@@ -3245,8 +3248,8 @@ class LightweightGarageBackgroundPainter extends CustomPainter {
 
     // ── Secondary Diagonal Lines (Warm Gold) - Creates texture ──
     final secondaryLinesPaint = Paint()
-      ..color = const Color(0xFFFFC83D).withOpacity(0.07)
-      ..strokeWidth = 0.8;
+      ..color = const Color(0xFFFFC83D).withOpacity(0.18)
+      ..strokeWidth = 1;
 
     for (double i = -size.height; i < size.width; i += 80) {
       canvas.drawLine(Offset(i + 20, 0), Offset(i + 20 + size.height, size.height), secondaryLinesPaint);
@@ -3254,8 +3257,8 @@ class LightweightGarageBackgroundPainter extends CustomPainter {
 
     // ── Primary Curved Wave (Gold) ──
     final wavePaint = Paint()
-      ..color = const Color(0xFFFFC83D).withOpacity(0.12)
-      ..strokeWidth = 1.5
+      ..color = const Color(0xFFFFC83D).withOpacity(0.28)
+      ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
 
     final path = Path();
@@ -3270,8 +3273,8 @@ class LightweightGarageBackgroundPainter extends CustomPainter {
 
     // ── Secondary Curved Wave (Lighter Gold) ──
     final secondaryWavePaint = Paint()
-      ..color = const Color(0xFFFFD54F).withOpacity(0.08)
-      ..strokeWidth = 1
+      ..color = const Color(0xFFFFD54F).withOpacity(0.20)
+      ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
 
     final path2 = Path();
@@ -3284,26 +3287,26 @@ class LightweightGarageBackgroundPainter extends CustomPainter {
     );
     canvas.drawPath(path2, secondaryWavePaint);
 
-    // ── Accent Circular Patterns (Gold Dots) ──
+    // ── Accent Circular Patterns (Gold Dots) - Much more visible ──
     final dotPaint = Paint()
-      ..color = const Color(0xFFFFD700).withOpacity(0.09)
+      ..color = const Color(0xFFFFD700).withOpacity(0.22)
       ..style = PaintingStyle.fill;
 
     // Top left dots
-    canvas.drawCircle(Offset(size.width * 0.15, size.height * 0.2), 3, dotPaint);
-    canvas.drawCircle(Offset(size.width * 0.25, size.height * 0.15), 2, dotPaint);
+    canvas.drawCircle(Offset(size.width * 0.15, size.height * 0.2), 4, dotPaint);
+    canvas.drawCircle(Offset(size.width * 0.25, size.height * 0.15), 2.5, dotPaint);
 
     // Bottom right dots
-    canvas.drawCircle(Offset(size.width * 0.85, size.height * 0.85), 3.5, dotPaint);
-    canvas.drawCircle(Offset(size.width * 0.75, size.height * 0.90), 2.5, dotPaint);
+    canvas.drawCircle(Offset(size.width * 0.85, size.height * 0.85), 4.5, dotPaint);
+    canvas.drawCircle(Offset(size.width * 0.75, size.height * 0.90), 3, dotPaint);
 
     // Center accent dots
-    canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.5), 2, dotPaint);
+    canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.5), 2.5, dotPaint);
 
-    // ── Horizontal Gold Accent Lines ──
+    // ── Horizontal Gold Accent Lines - More visible ──
     final accentLinePaint = Paint()
-      ..color = const Color(0xFFFFD700).withOpacity(0.06)
-      ..strokeWidth = 1;
+      ..color = const Color(0xFFFFD700).withOpacity(0.18)
+      ..strokeWidth = 1.5;
 
     canvas.drawLine(
       Offset(0, size.height * 0.25),
@@ -3314,6 +3317,22 @@ class LightweightGarageBackgroundPainter extends CustomPainter {
       Offset(size.width * 0.7, size.height * 0.75),
       Offset(size.width, size.height * 0.75),
       accentLinePaint,
+    );
+
+    // ── Vertical Gold Accent Lines ──
+    final verticalAccentPaint = Paint()
+      ..color = const Color(0xFFFFC83D).withOpacity(0.15)
+      ..strokeWidth = 1;
+
+    canvas.drawLine(
+      Offset(size.width * 0.2, 0),
+      Offset(size.width * 0.2, size.height * 0.4),
+      verticalAccentPaint,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.8, size.height * 0.6),
+      Offset(size.width * 0.8, size.height),
+      verticalAccentPaint,
     );
   }
 
