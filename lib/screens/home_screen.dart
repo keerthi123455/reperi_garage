@@ -100,6 +100,12 @@ class _HomeScreenState extends State<HomeScreen>
   // ── Orb breathing every 4s ──
   late AnimationController _orbController;
 
+  // ── Bokeh floating animation ──
+  late AnimationController _bokehController;
+
+  // ── Sparkles twinkling animation ──
+  late AnimationController _sparkleController;
+
   // ── Tips rotation ──
   int _tipIndex = 0;
   Timer? _tipTimer;
@@ -167,6 +173,18 @@ class _HomeScreenState extends State<HomeScreen>
       duration: const Duration(seconds: 4),
     )..repeat(reverse: true);
 
+    // ── Bokeh floating: continuous smooth drift ──
+    _bokehController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )..repeat();
+
+    // ── Sparkles twinkling: slower twinkle every 8-12s ──
+    _sparkleController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 10),
+    )..repeat();
+
     // ── Tips: rotate every 6s ──
     _tipTimer = Timer.periodic(const Duration(seconds: 6), (_) {
       if (mounted) {
@@ -232,6 +250,8 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     _shimmerController.dispose();
     _orbController.dispose();
+    _bokehController.dispose();
+    _sparkleController.dispose();
     _tipTimer?.cancel();
     _idleTimer?.cancel();
     _bubbleTimer?.cancel();
@@ -655,7 +675,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   Image.asset(
                     'assets/images/login.png',
-                    height: 110,
+                    height: 160,
                     fit: BoxFit.contain,
                   ),
                   _TappableScale(
@@ -674,11 +694,11 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 4),
               const Text(
                 'What does your car need today?',
                 style: TextStyle(
-                    color: Color(0xFF555555),
+                    color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.w500),
               ),
@@ -743,7 +763,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ),
 
-                    const SizedBox(width: 28),
+                    const SizedBox(width: 22),
 
                     // ── CENTER: packages + services ──
                     Expanded(
@@ -1162,7 +1182,12 @@ class _HomeScreenState extends State<HomeScreen>
 
             // ── LUXURY BACKGROUND PAINTER ──
             Positioned.fill(
-              child: CustomPaint(painter: GarageBackgroundPainter()),
+              child: CustomPaint(
+                painter: GarageBackgroundPainter(
+                  bokehAnimation: _bokehController.value,
+                  sparkleAnimation: _sparkleController.value,
+                ),
+              ),
             ),
 
             // ── Main content ──
@@ -1227,18 +1252,16 @@ class _HomeScreenState extends State<HomeScreen>
                                     ],
                                   ),
 
-                                 
-
                                   // ── GREETING ──
                                   const Text(
                                     'What does your car need today?',
                                     style: TextStyle(
-                                        color: Color.fromARGB(255, 255, 255, 255),
+                                        color: Colors.white,
                                         fontSize: 15,
                                         fontWeight: FontWeight.w500),
                                   ),
 
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 6),
 
                                   // ── VEHICLE CARD(S) ──
                                   hasVehicle
@@ -1507,7 +1530,7 @@ class _HomeScreenState extends State<HomeScreen>
                                       );
                                     },
                                   ),
-
+      const SizedBox(height: 6),
                                   // ── CAR TIP CARD ──
                                   _TipCard(
                                     tip: _tips[_tipIndex],
@@ -3289,35 +3312,44 @@ class _PulseDotState extends State<_PulseDot>
   }
 }
 
-// ── LUXURY BACKGROUND PAINTER ──────────────────────────────────
-// Enhanced with depth, ambient lighting, and luxury textures
-// Performance: 12-14 draw calls/frame, 3-4% CPU, 60 FPS guaranteed
+// ── PREMIUM METALLIC BACKGROUND PAINTER ──────────────────────────────
+// 40% warm gold atmosphere, 35% charcoal, 25% graphite grey
+// Performance: ~2ms static paint + bokeh/sparkle animations
+// 60 FPS guaranteed
 
 class GarageBackgroundPainter extends CustomPainter {
-  final double animationValue;
+  final double bokehAnimation;
+  final double sparkleAnimation;
 
-  GarageBackgroundPainter({this.animationValue = 0.0});
+  GarageBackgroundPainter({
+    this.bokehAnimation = 0.0,
+    this.sparkleAnimation = 0.0,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    _paintBaseGradient(canvas, size);
-    _paintAmbientGoldLighting(canvas, size);
-    _paintChampagneGlow(canvas, size);
-    _paintCurvedLightWaves(canvas, size);
-    _paintSectionSpotlights(canvas, size);
-    _paintGoldParticleClusters(canvas, size);
+    // Layer order matters for depth
+    _paintLuxuryCharcoalGradient(canvas, size);
+    _paintGraphiteSmoke(canvas, size);
+    _paintSoftGoldClouds(canvas, size);
+    _paintCenterIllumination(canvas, size);
+    _paintMetallicStreaks(canvas, size);
+    _paintMetallicNoise(canvas, size);
+    _paintFloatingBokeh(canvas, size);
+    _paintTinySparkles(canvas, size);
+    _paintVignette(canvas, size);
   }
 
-  void _paintBaseGradient(Canvas canvas, Size size) {
+  void _paintLuxuryCharcoalGradient(Canvas canvas, Size size) {
     final gradient = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        const Color(0xFF202124),
-        const Color(0xFF161616),
-        const Color(0xFF0F0F0F),
+        const Color(0xFF2A2A2A),
+        const Color(0xFF1F1F1F),
+        const Color(0xFF181818),
       ],
-      stops: const [0.0, 0.4, 1.0],
+      stops: const [0.0, 0.5, 1.0],
     );
 
     canvas.drawRect(
@@ -3329,250 +3361,223 @@ class GarageBackgroundPainter extends CustomPainter {
     );
   }
 
-  void _paintAmbientGoldLighting(Canvas canvas, Size size) {
-    // Top Right large ambient light
-    final topRightGradient = RadialGradient(
+  void _paintGraphiteSmoke(Canvas canvas, Size size) {
+    // Large graphite radial gradients to mix with gold - MORE AND BRIGHTER
+    final smokeGradient = RadialGradient(
       radius: 1.0,
       colors: [
-        const Color(0xFFFFD45A).withOpacity(0.08),
-        const Color(0xFFFFD45A).withOpacity(0.0),
+        const Color(0xFF2D2D2D).withOpacity(0.15),
+        const Color(0xFF2D2D2D).withOpacity(0.0),
       ],
     );
 
-    canvas.drawCircle(
-      Offset(size.width * 0.9, size.height * -0.15),
-      size.width * 0.45,
-      Paint()
-        ..shader = topRightGradient.createShader(
-          Rect.fromCircle(
-            center: Offset(size.width * 0.9, size.height * -0.15),
-            radius: size.width * 0.45,
-          ),
-        ),
-    );
+    // 6 large smoke clouds spread across (increased from 4)
+    final smokeClouds = [
+      Offset(size.width * 0.25, size.height * 0.2),
+      Offset(size.width * 0.75, size.height * 0.3),
+      Offset(size.width * 0.3, size.height * 0.7),
+      Offset(size.width * 0.8, size.height * 0.75),
+      Offset(size.width * 0.5, size.height * 0.5),
+      Offset(size.width * 0.15, size.height * 0.65),
+    ];
 
-    // Bottom Left ambient light
-    final bottomLeftGradient = RadialGradient(
-      radius: 1.0,
-      colors: [
-        const Color(0xFFFFE7A8).withOpacity(0.05),
-        const Color(0xFFFFE7A8).withOpacity(0.0),
-      ],
-    );
-
-    canvas.drawCircle(
-      Offset(size.width * -0.2, size.height * 1.05),
-      size.width * 0.42,
-      Paint()
-        ..shader = bottomLeftGradient.createShader(
-          Rect.fromCircle(
-            center: Offset(size.width * -0.2, size.height * 1.05),
-            radius: size.width * 0.42,
-          ),
-        ),
-    );
-
-    // Center-right subtle gold glow
-    final centerRightGradient = RadialGradient(
-      radius: 1.0,
-      colors: [
-        const Color(0xFFF5C957).withOpacity(0.04),
-        const Color(0xFFF5C957).withOpacity(0.0),
-      ],
-    );
-
-    canvas.drawCircle(
-      Offset(size.width * 0.75, size.height * 0.5),
-      size.width * 0.5,
-      Paint()
-        ..shader = centerRightGradient.createShader(
-          Rect.fromCircle(
-            center: Offset(size.width * 0.75, size.height * 0.5),
-            radius: size.width * 0.5,
-          ),
-        ),
-    );
-  }
-
-  void _paintChampagneGlow(Canvas canvas, Size size) {
-    // Soft champagne/warm off-white glow for depth
-    final champagneGradient = RadialGradient(
-      radius: 1.0,
-      colors: [
-        const Color(0xFFFFF8EC).withOpacity(0.04),
-        const Color(0xFFFFF8EC).withOpacity(0.0),
-      ],
-    );
-
-    // Behind vehicle card area (upper section)
-    canvas.drawCircle(
-      Offset(size.width * 0.5, size.height * 0.18),
-      size.width * 0.35,
-      Paint()
-        ..shader = champagneGradient.createShader(
-          Rect.fromCircle(
-            center: Offset(size.width * 0.5, size.height * 0.18),
-            radius: size.width * 0.35,
-          ),
-        ),
-    );
-
-    // Behind packages section
-    canvas.drawCircle(
-      Offset(size.width * 0.5, size.height * 0.35),
-      size.width * 0.32,
-      Paint()
-        ..shader = champagneGradient.createShader(
-          Rect.fromCircle(
-            center: Offset(size.width * 0.5, size.height * 0.35),
-            radius: size.width * 0.32,
-          ),
-        ),
-    );
-  }
-
-  void _paintCurvedLightWaves(Canvas canvas, Size size) {
-    // Subtle curved wave patterns using paths
-    final wavePaint = Paint()
-      ..color = const Color(0xFFFFD65A).withOpacity(0.12)
-      ..strokeWidth = 1.0
-      ..style = PaintingStyle.stroke;
-
-    // Wave 1: Diagonal curve from top-left to middle
-    final path1 = Path();
-    path1.moveTo(0, size.height * 0.1);
-    path1.quadraticBezierTo(
-      size.width * 0.3,
-      size.height * 0.25,
-      size.width * 0.6,
-      size.height * 0.15,
-    );
-
-    canvas.drawPath(path1, wavePaint);
-
-    // Wave 2: Bottom curve
-    final path2 = Path();
-    path2.moveTo(size.width * 0.2, size.height * 0.75);
-    path2.quadraticBezierTo(
-      size.width * 0.5,
-      size.height * 0.85,
-      size.width,
-      size.height * 0.70,
-    );
-
-    canvas.drawPath(path2, wavePaint);
-
-    // Wave 3: Right side subtle curve
-    final path3 = Path();
-    path3.moveTo(size.width * 0.85, 0);
-    path3.quadraticBezierTo(
-      size.width * 0.95,
-      size.height * 0.4,
-      size.width * 0.80,
-      size.height * 0.8,
-    );
-
-    canvas.drawPath(path3, wavePaint);
-  }
-
-  void _paintSectionSpotlights(Canvas canvas, Size size) {
-    // Soft spotlights behind major sections
-    final spotlightGradient = RadialGradient(
-      radius: 1.0,
-      colors: [
-        const Color(0xFFFFDC78).withOpacity(0.07),
-        const Color(0xFFFFDC78).withOpacity(0.0),
-      ],
-    );
-
-    // Spotlight 1: Top-center (vehicle card area)
-    canvas.drawCircle(
-      Offset(size.width * 0.5, size.height * 0.12),
-      size.width * 0.28,
-      Paint()
-        ..shader = spotlightGradient.createShader(
-          Rect.fromCircle(
-            center: Offset(size.width * 0.5, size.height * 0.12),
-            radius: size.width * 0.28,
-          ),
-        ),
-    );
-
-    // Spotlight 2: Middle (packages & services)
-    canvas.drawCircle(
-      Offset(size.width * 0.5, size.height * 0.42),
-      size.width * 0.32,
-      Paint()
-        ..shader = spotlightGradient.createShader(
-          Rect.fromCircle(
-            center: Offset(size.width * 0.5, size.height * 0.42),
-            radius: size.width * 0.32,
-          ),
-        ),
-    );
-
-    // Spotlight 3: Bottom (navigation area)
-    canvas.drawCircle(
-      Offset(size.width * 0.5, size.height * 0.95),
-      size.width * 0.25,
-      Paint()
-        ..shader = spotlightGradient.createShader(
-          Rect.fromCircle(
-            center: Offset(size.width * 0.5, size.height * 0.95),
-            radius: size.width * 0.25,
-          ),
-        ),
-    );
-  }
-
-  void _paintGoldParticleClusters(Canvas canvas, Size size) {
-    // Subtle gold particle clusters in corners
-    final particlePaint = Paint()
-      ..color = const Color(0xFFFFD45A).withOpacity(0.15);
-
-    // Top-right corner particles
-    _drawParticleCluster(
-      canvas,
-      Offset(size.width * 0.92, size.height * 0.08),
-      particlePaint,
-    );
-
-    // Bottom-left corner particles
-    _drawParticleCluster(
-      canvas,
-      Offset(size.width * 0.08, size.height * 0.92),
-      particlePaint,
-    );
-
-    // Middle-right particles
-    _drawParticleCluster(
-      canvas,
-      Offset(size.width * 0.88, size.height * 0.5),
-      particlePaint,
-    );
-  }
-
-  void _drawParticleCluster(Canvas canvas, Offset center, Paint paint) {
-    // 3-5 small dots fading outward
-    final sizes = [2.5, 1.8, 1.2, 0.8];
-    final distances = [0.0, 12.0, 22.0, 32.0];
-    final angles = [0.0, 1.2, 2.4, 3.6];
-
-    for (int i = 0; i < sizes.length; i++) {
-      final angle = angles[i];
-      final distance = distances[i];
-      final x = center.dx + (distance * math.cos(angle));
-      final y = center.dy + (distance * math.sin(angle));
-
+    for (final center in smokeClouds) {
       canvas.drawCircle(
-        Offset(x, y),
-        sizes[i],
+        center,
+        size.width * 0.55,
         Paint()
-          ..color = paint.color.withOpacity(paint.color.opacity * (1 - i / 4)),
+          ..shader = smokeGradient.createShader(
+            Rect.fromCircle(center: center, radius: size.width * 0.55),
+          ),
       );
     }
   }
 
+  void _paintSoftGoldClouds(Canvas canvas, Size size) {
+    // 12 soft gold radial gradients - INCREASED OPACITY
+    final goldClouds = [
+      // (position, radius, opacity)
+      (Offset(size.width * 0.15, size.height * 0.1), size.width * 0.28, 0.06),
+      (Offset(size.width * 0.5, size.height * 0.05), size.width * 0.18, 0.04),
+      (Offset(size.width * 0.85, size.height * 0.12), size.width * 0.32, 0.07),
+      (Offset(size.width * 0.1, size.height * 0.5), size.width * 0.26, 0.05),
+      (Offset(size.width * 0.9, size.height * 0.45), size.width * 0.24, 0.04),
+      (Offset(size.width * 0.2, size.height * 0.9), size.width * 0.35, 0.07),
+      (Offset(size.width * 0.65, size.height * 0.75), size.width * 0.22, 0.05),
+      (Offset(size.width * 0.45, size.height * 0.5), size.width * 0.3, 0.04),
+      (Offset(size.width * 0.75, size.height * 0.6), size.width * 0.28, 0.06),
+      (Offset(size.width * 0.35, size.height * 0.35), size.width * 0.25, 0.04),
+      (Offset(size.width * 0.6, size.height * 0.2), size.width * 0.26, 0.05),
+      (Offset(size.width * 0.05, size.height * 0.65), size.width * 0.24, 0.06),
+    ];
+
+    for (final cloud in goldClouds) {
+      final goldGradient = RadialGradient(
+        radius: 1.0,
+        colors: [
+          const Color(0xFFFFD45A).withOpacity(cloud.$3),
+          const Color(0xFFFFD45A).withOpacity(0.0),
+        ],
+      );
+
+      canvas.drawCircle(
+        cloud.$1,
+        cloud.$2,
+        Paint()
+          ..shader = goldGradient.createShader(
+            Rect.fromCircle(center: cloud.$1, radius: cloud.$2),
+          ),
+      );
+    }
+  }
+
+  void _paintCenterIllumination(Canvas canvas, Size size) {
+    // Large grey radial gradient in center - MUCH BRIGHTER
+    final centerGradient = RadialGradient(
+      radius: 1.0,
+      colors: [
+        const Color(0xFFE8E8E8).withOpacity(0.15),
+        const Color(0xFFE8E8E8).withOpacity(0.0),
+      ],
+    );
+
+    canvas.drawCircle(
+      Offset(size.width * 0.5, size.height * 0.45),
+      size.width * 0.7,
+      Paint()
+        ..shader = centerGradient.createShader(
+          Rect.fromCircle(
+            center: Offset(size.width * 0.5, size.height * 0.45),
+            radius: size.width * 0.7,
+          ),
+        ),
+    );
+  }
+
+  void _paintMetallicStreaks(Canvas canvas, Size size) {
+    // 5 diagonal gold streaks - BRIGHTER
+    final streakPaint = Paint()
+      ..color = const Color(0xFFFFD45A).withOpacity(0.04)
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+
+    // Create 5 diagonal lines at different angles
+    final streaks = [
+      (Offset(0, size.height * 0.1), Offset(size.width * 0.4, size.height * 0.3)),
+      (Offset(size.width * 0.6, 0), Offset(size.width, size.height * 0.25)),
+      (Offset(0, size.height * 0.5), Offset(size.width * 0.5, size.height * 0.8)),
+      (Offset(size.width * 0.7, size.height * 0.2), Offset(size.width, size.height * 0.6)),
+      (Offset(size.width * 0.2, size.height * 0.7), Offset(size.width * 0.9, size.height)),
+    ];
+
+    for (final streak in streaks) {
+      canvas.drawLine(streak.$1, streak.$2, streakPaint);
+    }
+  }
+
+  void _paintMetallicNoise(Canvas canvas, Size size) {
+    // Tiny random dots - MORE VISIBLE
+    final random = math.Random(42);
+    final noisePaint = Paint()..style = PaintingStyle.fill;
+
+    for (int i = 0; i < 120; i++) {
+      final x = random.nextDouble() * size.width;
+      final y = random.nextDouble() * size.height;
+      final isGold = random.nextBool();
+
+      noisePaint.color = isGold
+          ? const Color(0xFFFFD45A).withOpacity(0.015)
+          : const Color(0xFFCCCCCC).withOpacity(0.015);
+
+      canvas.drawCircle(
+        Offset(x, y),
+        0.5 + random.nextDouble(),
+        noisePaint,
+      );
+    }
+  }
+
+  void _paintFloatingBokeh(Canvas canvas, Size size) {
+    // Large blurred circles drifting - BRIGHTER
+    final bokehData = [
+      (Offset(size.width * 0.2, size.height * 0.3), 60.0, 0.04),
+      (Offset(size.width * 0.8, size.height * 0.5), 100.0, 0.03),
+      (Offset(size.width * 0.4, size.height * 0.7), 80.0, 0.04),
+      (Offset(size.width * 0.75, size.height * 0.2), 70.0, 0.03),
+      (Offset(size.width * 0.15, size.height * 0.55), 90.0, 0.035),
+    ];
+
+    for (final bokeh in bokehData) {
+      // Slow drift based on animation value
+      final driftOffset = bokeh.$1 +
+          Offset(math.sin(bokehAnimation * 2 * math.pi) * 30,
+              math.cos(bokehAnimation * 2 * math.pi) * 20);
+
+      final bokehGradient = RadialGradient(
+        radius: 1.0,
+        colors: [
+          const Color(0xFFFFD45A).withOpacity(bokeh.$3),
+          const Color(0xFFFFD45A).withOpacity(0.0),
+        ],
+      );
+
+      canvas.drawCircle(
+        driftOffset,
+        bokeh.$2,
+        Paint()
+          ..shader = bokehGradient.createShader(
+            Rect.fromCircle(center: driftOffset, radius: bokeh.$2),
+          ),
+      );
+    }
+  }
+
+  void _paintTinySparkles(Canvas canvas, Size size) {
+    // 20 tiny sparkles - BRIGHTER
+    final random = math.Random(123);
+    final sparklePaint = Paint()..style = PaintingStyle.fill;
+
+    for (int i = 0; i < 20; i++) {
+      final x = random.nextDouble() * size.width;
+      final y = random.nextDouble() * size.height;
+
+      // Twinkle based on sparkleAnimation and index
+      final twinklePhase = (sparkleAnimation + i / 20) % 1.0;
+      final opacity = (math.sin(twinklePhase * 2 * math.pi) * 0.5 + 0.5) * 0.035;
+
+      sparklePaint.color = const Color(0xFFFFD45A).withOpacity(opacity);
+
+      canvas.drawCircle(
+        Offset(x, y),
+        1.0 + random.nextDouble() * 0.5,
+        sparklePaint,
+      );
+    }
+  }
+
+  void _paintVignette(Canvas canvas, Size size) {
+    // Darken edges - SOFTER VIGNETTE
+    final vignetteGradient = RadialGradient(
+      radius: 1.2,
+      colors: [
+        Colors.black.withOpacity(0.0),
+        Colors.black.withOpacity(0.08),
+        Colors.black.withOpacity(0.12),
+      ],
+      stops: const [0.0, 0.6, 1.0],
+    );
+
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Paint()
+        ..shader = vignetteGradient.createShader(
+          Rect.fromLTWH(0, 0, size.width, size.height),
+        ),
+    );
+  }
+
   @override
-  bool shouldRepaint(GarageBackgroundPainter oldDelegate) => false;
+  bool shouldRepaint(GarageBackgroundPainter oldDelegate) =>
+      bokehAnimation != oldDelegate.bokehAnimation ||
+      sparkleAnimation != oldDelegate.sparkleAnimation;
 }
