@@ -133,6 +133,7 @@
             font-size: 14px;
             color: #ddd;
             word-break: break-word;
+            line-height: 1.5;
         }
 
         .contact-buttons {
@@ -194,6 +195,45 @@
                 padding: 8px;
             }
         }
+
+        .search-container {
+            margin-bottom: 30px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 16px;
+            border: 2px solid #D4A017;
+            border-radius: 8px;
+            background: #1a1a1a;
+            color: #fff;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .search-input::placeholder {
+            color: #888;
+        }
+
+        .search-input:focus {
+            border-color: #e8b923;
+            box-shadow: 0 0 10px rgba(212, 160, 23, 0.3);
+        }
+
+        .search-results-count {
+            color: #D4A017;
+            font-size: 14px;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #ff6b6b;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
@@ -203,38 +243,111 @@
             <p>Premium automotive care across Bangalore</p>
         </div>
 
+        <div class="search-container">
+            <input 
+                type="text" 
+                id="searchInput" 
+                class="search-input" 
+                placeholder="🔍 Search by name, service, owner, or phone number..."
+            >
+            <div id="resultsCount" class="search-results-count"></div>
+        </div>
+
         <div id="vendorContainer" class="vendor-list">
             <div class="loading">Loading service partners...</div>
         </div>
     </div>
 
     <script>
-        // Supabase configuration
-        const SUPABASE_URL = 'https://rmvxqjyoqfinbrpubsvp.supabase.co'; // e.g., https://abc123.supabase.co
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E'; // Your anon key
+        // Supabase configuration - UPDATE THESE WITH YOUR VALUES
+        const SUPABASE_URL = 'https://aysbxyacblqqyfxhqkbv.supabase.co'; // Replace with your Supabase URL
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5c2J4eWFjYmxxcXlmeDhxa2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjMyNjM4MTAsImV4cCI6MTczODg5NzgxMH0.K3JGJXOt8TA0lNJLj7aqeLRXECfKyGR0OkxgH7q8ydg'; // Replace with your anon key
+
+        // Store all vendors for searching
+        let allVendors = [];
 
         async function fetchVendors() {
             try {
                 const response = await fetch(
                     `${SUPABASE_URL}/rest/v1/trustkon_vendor_applications?select=*`,
                     {
+                        method: 'GET',
+                        mode: 'cors',
                         headers: {
                             'apikey': SUPABASE_KEY,
                             'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${SUPABASE_KEY}`
                         }
                     }
                 );
 
                 if (!response.ok) {
-                    throw new Error('Failed to fetch vendors');
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
                 const vendors = await response.json();
-                displayVendors(vendors);
+                if (Array.isArray(vendors)) {
+                    allVendors = vendors;
+                    displayVendors(vendors);
+                    setupSearch();
+                } else {
+                    throw new Error('Invalid response format');
+                }
             } catch (error) {
-                console.error('Error:', error);
+                console.error('Fetch Error:', error);
                 document.getElementById('vendorContainer').innerHTML = 
-                    '<div class="error">Failed to load service partners. Please try again later.</div>';
+                    '<div class="error">Unable to load service partners. Please check your connection and try again.</div>';
+            }
+        }
+
+        function setupSearch() {
+            const searchInput = document.getElementById('searchInput');
+            searchInput.addEventListener('input', function() {
+                const query = this.value.toLowerCase().trim();
+                const filteredVendors = filterVendors(query);
+                displayVendors(filteredVendors);
+                updateResultsCount(filteredVendors.length, allVendors.length);
+            });
+        }
+
+        function filterVendors(query) {
+            if (query === '') {
+                return allVendors;
+            }
+
+            return allVendors.filter(vendor => {
+                // Search in business name
+                const businessName = (vendor.business_name || '').toLowerCase();
+                // Search in contact person
+                const contactPerson = (vendor.contact_person || '').toLowerCase();
+                // Search in phone numbers
+                const phone = (vendor.phone || '').toLowerCase();
+                // Search in offerings/services
+                const offering = (vendor.offering || '').toLowerCase();
+                // Search in pricing
+                const pricing = (vendor.pricing || '').toLowerCase();
+                // Search in notes
+                const notes = (vendor.notes || '').toLowerCase();
+
+                return (
+                    businessName.includes(query) ||
+                    contactPerson.includes(query) ||
+                    phone.includes(query) ||
+                    offering.includes(query) ||
+                    pricing.includes(query) ||
+                    notes.includes(query)
+                );
+            });
+        }
+
+        function updateResultsCount(count, total) {
+            const resultsCount = document.getElementById('resultsCount');
+            if (count === 0) {
+                resultsCount.textContent = 'No service partners found';
+                resultsCount.style.color = '#ff6b6b';
+            } else {
+                resultsCount.textContent = `Showing ${count} of ${total} service partners`;
+                resultsCount.style.color = '#D4A017';
             }
         }
 

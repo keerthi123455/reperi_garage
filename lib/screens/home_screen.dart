@@ -3055,7 +3055,7 @@ class GarageDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF3A3A3A),
       child: SafeArea(
         child: Column(
           children: [
@@ -3140,90 +3140,100 @@ class GarageDrawer extends StatelessWidget {
               ),
             ),
             const Divider(color: Color(0xFF222222)),
-            _tile(context, Icons.directions_car, 'My Vehicles', () {
-              Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const ProfileScreen()));
-            }),
-            _tile(context, Icons.calendar_month, 'My Bookings', () async {
-              if (activeVehicle == null) {
-                Navigator.pop(context);
-                return;
-              }
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => VehicleBookingsScreen(
-                    vehicleId: activeVehicle!['id'],
-                    carModel: activeVehicle!['car_model'],
-                    carBrand: activeVehicle!['car_brand'],
-                    carNumber: activeVehicle!['car_number'],
-                  ),
-                ),
-              );
-              onBookingsViewed();
-            }),
-            _tile(context, Icons.emergency, 'Roadside Assistance', () {
-              Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const RoadsideAssistanceScreen()));
-            }),
-            _tile(context, Icons.auto_awesome, 'AI Advisor', () {
-              if (activeVehicle == null) {
-                Navigator.pop(context);
-                return;
-              }
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => AiAdvisorSheet(vehicle: activeVehicle!),
-              );
-            }),
-            _tile(context, Icons.local_shipping_rounded, 'Fleet Login', () async {
-              final prefs = await SharedPreferences.getInstance();
-              final isFleetLoggedIn =
-                  prefs.getBool('fleet_logged_in') ?? false;
-              if (isFleetLoggedIn) {
-                final fleetId = prefs.getString('fleet_user_id');
-                final fleetUser = await Supabase.instance.client
-                    .from('fleet_users')
-                    .select()
-                    .eq('id', fleetId!)
-                    .single();
-                if (!context.mounted) return;
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => FleetDashboardScreen(fleetUser: fleetUser),
-                  ),
-                );
-              } else {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => const FleetLoginSheet(),
-                );
-              }
-            }),
-            _tile(context, Icons.handshake_rounded, 'Be a Partner', () async {
-              final uri = Uri.parse('https://trustkon.com/');
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            }),
-            _tile(context, Icons.privacy_tip_outlined, 'Privacy Policy', () async {
-              final uri = Uri.parse('https://reperi.in/privacy-policy.html');
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            }),
-            _tile(context, Icons.description_outlined, 'Terms & Conditions', () async {
-              final uri = Uri.parse('https://reperi.in/terms.html');
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            }),
-            _tile(context, Icons.phone, 'Contact Us', () async {
-              final uri = Uri(scheme: 'tel', path: '9353094672');
-              await launchUrl(uri);
-            }),
-            const Spacer(),
+            Expanded(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  _tile(context, Icons.directions_car, 'My Vehicles', () {
+                    Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const ProfileScreen()));
+                  }),
+                  _tile(context, Icons.calendar_month, 'My Bookings', () async {
+                    if (activeVehicle == null) {
+                      Navigator.pop(context);
+                      return;
+                    }
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => VehicleBookingsScreen(
+                          vehicleId: activeVehicle!['id'],
+                          carModel: activeVehicle!['car_model'],
+                          carBrand: activeVehicle!['car_brand'],
+                          carNumber: activeVehicle!['car_number'],
+                        ),
+                      ),
+                    );
+                    onBookingsViewed();
+                  }),
+                  _tile(context, Icons.emergency, 'Roadside Assistance', () {
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const RoadsideAssistanceScreen()));
+                  }),
+                  _tile(context, Icons.auto_awesome, 'AI Advisor', () {
+                    if (activeVehicle == null) {
+                      Navigator.pop(context);
+                      return;
+                    }
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => AiAdvisorSheet(vehicle: activeVehicle!),
+                    );
+                  }),
+                  _tile(context, Icons.local_shipping_rounded, 'Fleet Login', () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    final isFleetLoggedIn =
+                        prefs.getBool('fleet_logged_in') ?? false;
+                    if (isFleetLoggedIn) {
+                      final fleetId = prefs.getString('fleet_user_id');
+                      final fleetUser = await Supabase.instance.client
+                          .from('fleet_users')
+                          .select()
+                          .eq('id', fleetId!)
+                          .single();
+                      if (!context.mounted) return;
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => FleetDashboardScreen(fleetUser: fleetUser),
+                        ),
+                      );
+                    } else {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (_) => const FleetLoginSheet(),
+                      );
+                    }
+                  }),
+                  _tile(context, Icons.store_rounded, 'Service Partners', () async {
+                    final uri = Uri.parse('https://reperi.in/service-partners.html');
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }),
+                  _tile(context, Icons.handshake_rounded, 'Be a Partner', () async {
+                    final uri = Uri.parse('https://trustkon.com/');
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }),
+                  _tile(context, Icons.privacy_tip_outlined, 'Privacy Policy', () async {
+                    final uri = Uri.parse('https://reperi.in/privacy-policy.html');
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }),
+                  _tile(context, Icons.description_outlined, 'Terms & Conditions', () async {
+                    final uri = Uri.parse('https://reperi.in/terms.html');
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }),
+                  _tile(context, Icons.phone, 'Contact Us', () async {
+                    final uri = Uri(scheme: 'tel', path: '9353094672');
+                    await launchUrl(uri);
+                  }),
+                ],
+              ),
+            ),
             Container(
               margin: const EdgeInsets.all(20),
               child: SizedBox(
