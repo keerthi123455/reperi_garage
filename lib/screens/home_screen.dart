@@ -3230,22 +3230,32 @@ class _PulseDotState extends State<_PulseDot>
 }
 
 // ── LIGHTWEIGHT BACKGROUND PAINTER (70% less compute) ──────────────────
+// Enhanced with 20% brighter gold hues and additional decorative elements
 class LightweightGarageBackgroundPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    // ── Subtle Diagonal Lines ──
+    // ── Primary Diagonal Lines (Gold) - 20% brighter ──
     final linesPaint = Paint()
-      ..color = const Color(0xFFFFD700).withOpacity(0.08)
+      ..color = const Color(0xFFFFD700).withOpacity(0.11)
       ..strokeWidth = 1;
 
     for (double i = -size.height; i < size.width; i += 40) {
       canvas.drawLine(Offset(i, 0), Offset(i + size.height, size.height), linesPaint);
     }
 
-    // ── One Curved Wave (instead of two) ──
+    // ── Secondary Diagonal Lines (Warm Gold) - Creates texture ──
+    final secondaryLinesPaint = Paint()
+      ..color = const Color(0xFFFFC83D).withOpacity(0.07)
+      ..strokeWidth = 0.8;
+
+    for (double i = -size.height; i < size.width; i += 80) {
+      canvas.drawLine(Offset(i + 20, 0), Offset(i + 20 + size.height, size.height), secondaryLinesPaint);
+    }
+
+    // ── Primary Curved Wave (Gold) ──
     final wavePaint = Paint()
-      ..color = const Color(0xFFFFC83D).withOpacity(0.08)
-      ..strokeWidth = 1.2
+      ..color = const Color(0xFFFFC83D).withOpacity(0.12)
+      ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
 
     final path = Path();
@@ -3257,6 +3267,54 @@ class LightweightGarageBackgroundPainter extends CustomPainter {
       size.height * 0.42,
     );
     canvas.drawPath(path, wavePaint);
+
+    // ── Secondary Curved Wave (Lighter Gold) ──
+    final secondaryWavePaint = Paint()
+      ..color = const Color(0xFFFFD54F).withOpacity(0.08)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+
+    final path2 = Path();
+    path2.moveTo(0, size.height * 0.65);
+    path2.quadraticBezierTo(
+      size.width * 0.3,
+      size.height * 0.60,
+      size.width,
+      size.height * 0.68,
+    );
+    canvas.drawPath(path2, secondaryWavePaint);
+
+    // ── Accent Circular Patterns (Gold Dots) ──
+    final dotPaint = Paint()
+      ..color = const Color(0xFFFFD700).withOpacity(0.09)
+      ..style = PaintingStyle.fill;
+
+    // Top left dots
+    canvas.drawCircle(Offset(size.width * 0.15, size.height * 0.2), 3, dotPaint);
+    canvas.drawCircle(Offset(size.width * 0.25, size.height * 0.15), 2, dotPaint);
+
+    // Bottom right dots
+    canvas.drawCircle(Offset(size.width * 0.85, size.height * 0.85), 3.5, dotPaint);
+    canvas.drawCircle(Offset(size.width * 0.75, size.height * 0.90), 2.5, dotPaint);
+
+    // Center accent dots
+    canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.5), 2, dotPaint);
+
+    // ── Horizontal Gold Accent Lines ──
+    final accentLinePaint = Paint()
+      ..color = const Color(0xFFFFD700).withOpacity(0.06)
+      ..strokeWidth = 1;
+
+    canvas.drawLine(
+      Offset(0, size.height * 0.25),
+      Offset(size.width * 0.3, size.height * 0.25),
+      accentLinePaint,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.7, size.height * 0.75),
+      Offset(size.width, size.height * 0.75),
+      accentLinePaint,
+    );
   }
 
   @override
