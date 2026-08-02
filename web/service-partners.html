@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Our Service Partners - Reperi Garage</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0A0A0A;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-top: 20px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            color: #D4A017;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 14px;
+            color: #aaa;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+            color: #D4A017;
+        }
+
+        .vendor-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .vendor-card {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .vendor-card:hover {
+            background: #2a2a2a;
+            border-color: #D4A017;
+            box-shadow: 0 0 15px rgba(212, 160, 23, 0.2);
+        }
+
+        .vendor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .vendor-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #D4A017;
+            margin-bottom: 5px;
+        }
+
+        .vendor-owner {
+            font-size: 14px;
+            color: #aaa;
+            margin-bottom: 10px;
+        }
+
+        .expand-icon {
+            font-size: 24px;
+            color: #D4A017;
+            transition: transform 0.3s ease;
+        }
+
+        .vendor-card.expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+
+        .vendor-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .vendor-card.expanded .vendor-details {
+            max-height: 500px;
+            margin-top: 20px;
+        }
+
+        .detail-section {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #333;
+        }
+
+        .detail-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .detail-label {
+            font-size: 12px;
+            color: #D4A017;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .detail-value {
+            font-size: 14px;
+            color: #ddd;
+            word-break: break-word;
+        }
+
+        .contact-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-call {
+            background: #D4A017;
+            color: #000;
+        }
+
+        .btn-call:hover {
+            background: #e8b923;
+        }
+
+        .btn-whatsapp {
+            background: #25D366;
+            color: #fff;
+        }
+
+        .btn-whatsapp:hover {
+            background: #20ba5e;
+        }
+
+        .error {
+            text-align: center;
+            padding: 40px;
+            color: #ff6b6b;
+            font-size: 16px;
+        }
+
+        @media (max-width: 600px) {
+            .header h1 {
+                font-size: 24px;
+            }
+
+            .vendor-name {
+                font-size: 16px;
+            }
+
+            .btn {
+                font-size: 12px;
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Our Service Partners</h1>
+            <p>Premium automotive care across Bangalore</p>
+        </div>
+
+        <div id="vendorContainer" class="vendor-list">
+            <div class="loading">Loading service partners...</div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase configuration
+        const SUPABASE_URL = 'https://rmvxqjyoqfinbrpubsvp.supabase.co'; // e.g., https://abc123.supabase.co
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E'; // Your anon key
+
+        async function fetchVendors() {
+            try {
+                const response = await fetch(
+                    `${SUPABASE_URL}/rest/v1/trustkon_vendor_applications?select=*`,
+                    {
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Content-Type': 'application/json',
+                        }
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch vendors');
+                }
+
+                const vendors = await response.json();
+                displayVendors(vendors);
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('vendorContainer').innerHTML = 
+                    '<div class="error">Failed to load service partners. Please try again later.</div>';
+            }
+        }
+
+        function displayVendors(vendors) {
+            const container = document.getElementById('vendorContainer');
+            container.innerHTML = '';
+
+            if (vendors.length === 0) {
+                container.innerHTML = '<div class="error">No service partners found</div>';
+                return;
+            }
+
+            vendors.forEach((vendor, index) => {
+                const phones = vendor.phone.split(',').map(p => p.trim());
+                const primaryPhone = phones[0];
+                const whatsappPhone = primaryPhone.replace(/[^\d]/g, '');
+
+                const card = document.createElement('div');
+                card.className = 'vendor-card';
+                card.innerHTML = `
+                    <div class="vendor-header">
+                        <div>
+                            <div class="vendor-name">${vendor.business_name}</div>
+                            <div class="vendor-owner">Contact: ${vendor.contact_person}</div>
+                        </div>
+                        <div class="expand-icon">▼</div>
+                    </div>
+
+                    <div class="vendor-details">
+                        ${vendor.offering ? `
+                            <div class="detail-section">
+                                <div class="detail-label">Services Offered</div>
+                                <div class="detail-value">${vendor.offering}</div>
+                            </div>
+                        ` : ''}
+
+                        ${vendor.pricing ? `
+                            <div class="detail-section">
+                                <div class="detail-label">Pricing</div>
+                                <div class="detail-value">${vendor.pricing}</div>
+                            </div>
+                        ` : ''}
+
+                        <div class="detail-section">
+                            <div class="detail-label">Phone Numbers</div>
+                            <div class="detail-value">${vendor.phone}</div>
+                        </div>
+
+                        ${vendor.email && vendor.email !== 'Will be updated' ? `
+                            <div class="detail-section">
+                                <div class="detail-label">Email</div>
+                                <div class="detail-value">${vendor.email}</div>
+                            </div>
+                        ` : ''}
+
+                        ${vendor.notes ? `
+                            <div class="detail-section">
+                                <div class="detail-label">Additional Information</div>
+                                <div class="detail-value">${vendor.notes}</div>
+                            </div>
+                        ` : ''}
+
+                        <div class="contact-buttons">
+                            <a href="tel:${primaryPhone}" class="btn btn-call">📞 Call</a>
+                            <a href="https://wa.me/${whatsappPhone}" target="_blank" class="btn btn-whatsapp">💬 WhatsApp</a>
+                        </div>
+                    </div>
+                `;
+
+                card.addEventListener('click', function() {
+                    this.classList.toggle('expanded');
+                });
+
+                container.appendChild(card);
+            });
+        }
+
+        // Fetch vendors on page load
+        fetchVendors();
+    </script>
+</body>
+</html>
