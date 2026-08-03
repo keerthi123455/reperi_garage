@@ -54,13 +54,14 @@
             gap: 15px;
         }
 
+        /* COLLAPSED STATE - Photo + Info Layout */
         .vendor-card {
             background: #1a1a1a;
             border: 1px solid #333;
             border-radius: 8px;
-            padding: 20px;
             cursor: pointer;
             transition: all 0.3s ease;
+            overflow: hidden;
         }
 
         .vendor-card:hover {
@@ -69,10 +70,51 @@
             box-shadow: 0 0 15px rgba(212, 160, 23, 0.2);
         }
 
-        .vendor-header {
+        .vendor-card-collapsed {
+            display: flex;
+            align-items: center;
+            padding: 0;
+            gap: 0;
+        }
+
+        /* Photo Container */
+        .vendor-photo-container {
+            flex-shrink: 0;
+            width: 120px;
+            height: 120px;
+            overflow: hidden;
+            background: #0a0a0a;
+        }
+
+        .vendor-photo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+        }
+
+        .vendor-photo.placeholder {
+            background: #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            color: #666;
+        }
+
+        /* Text Content Container */
+        .vendor-info {
+            flex: 1;
+            padding: 15px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            min-width: 0;
+        }
+
+        .vendor-main-info {
+            flex: 1;
+            min-width: 0;
         }
 
         .vendor-name {
@@ -80,24 +122,46 @@
             font-weight: 600;
             color: #D4A017;
             margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
-        .vendor-owner {
-            font-size: 14px;
+        .vendor-location {
+            font-size: 13px;
             color: #aaa;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .vendor-rating {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            color: #D4A017;
+        }
+
+        .stars {
+            color: #D4A017;
+            letter-spacing: 2px;
         }
 
         .expand-icon {
             font-size: 24px;
             color: #D4A017;
             transition: transform 0.3s ease;
+            flex-shrink: 0;
+            margin-left: 10px;
         }
 
         .vendor-card.expanded .expand-icon {
             transform: rotate(180deg);
         }
 
+        /* EXPANDED STATE - Full Details */
         .vendor-details {
             max-height: 0;
             overflow: hidden;
@@ -105,8 +169,31 @@
         }
 
         .vendor-card.expanded .vendor-details {
-            max-height: 500px;
-            margin-top: 20px;
+            max-height: 1200px;
+        }
+
+        .expanded-content {
+            padding: 20px;
+            border-top: 1px solid #333;
+        }
+
+        /* Expanded Photo */
+        .expanded-photo-container {
+            width: 100%;
+            height: auto;
+            max-height: 300px;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            background: #0a0a0a;
+        }
+
+        .expanded-photo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            display: block;
         }
 
         .detail-section {
@@ -181,21 +268,6 @@
             font-size: 16px;
         }
 
-        @media (max-width: 600px) {
-            .header h1 {
-                font-size: 24px;
-            }
-
-            .vendor-name {
-                font-size: 16px;
-            }
-
-            .btn {
-                font-size: 12px;
-                padding: 8px;
-            }
-        }
-
         .search-container {
             margin-bottom: 30px;
         }
@@ -234,6 +306,52 @@
             color: #ff6b6b;
             font-size: 16px;
         }
+
+        /* Responsive Design */
+        @media (max-width: 600px) {
+            .header h1 {
+                font-size: 24px;
+            }
+
+            .vendor-card-collapsed {
+                flex-direction: column;
+            }
+
+            .vendor-photo-container {
+                width: 100%;
+                height: 200px;
+            }
+
+            .vendor-info {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 15px;
+            }
+
+            .vendor-name {
+                font-size: 16px;
+            }
+
+            .vendor-location {
+                font-size: 12px;
+            }
+
+            .expand-icon {
+                position: absolute;
+                right: 15px;
+                top: 15px;
+                margin: 0;
+            }
+
+            .btn {
+                font-size: 12px;
+                padding: 8px;
+            }
+
+            .expanded-photo-container {
+                max-height: 250px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -259,12 +377,25 @@
     </div>
 
     <script>
-        // Supabase configuration - UPDATE THESE WITH YOUR VALUES
-        const SUPABASE_URL = 'https://rmvxqjyoqfinbrpubsvp.supabase.co'; // Replace with your Supabase URL
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E'; // Replace with your anon key
+        // Supabase configuration
+        const SUPABASE_URL = 'https://rmvxqjyoqfinbrpubsvp.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E';
 
-        // Store all vendors for searching
         let allVendors = [];
+
+        // Function to generate image URL from business name
+        function generateImageUrl(businessName) {
+            // Convert business name to lowercase, replace spaces and special chars with hyphens
+            const imageName = businessName
+                .toLowerCase()
+                .trim()
+                .replace(/[&]/g, 'and')           // Replace & with 'and'
+                .replace(/[^a-z0-9]+/g, '-')      // Replace non-alphanumeric with hyphens
+                .replace(/^-|-$/g, '')             // Remove leading/trailing hyphens
+                + '.jpeg';
+            
+            return `https://rmvxqjyoqfinbrpubsvp.supabase.co/storage/v1/object/public/vehicle-photos/${imageName}`;
+        }
 
         async function fetchVendors() {
             try {
@@ -287,6 +418,12 @@
 
                 const vendors = await response.json();
                 if (Array.isArray(vendors)) {
+                    // Sort vendors: Haya Auto Gears Pvt Ltd first, rest alphabetically
+                    vendors.sort((a, b) => {
+                        if (a.business_name === 'Haya Auto Gears Pvt Ltd') return -1;
+                        if (b.business_name === 'Haya Auto Gears Pvt Ltd') return 1;
+                        return a.business_name.localeCompare(b.business_name);
+                    });
                     allVendors = vendors;
                     displayVendors(vendors);
                     setupSearch();
@@ -316,17 +453,11 @@
             }
 
             return allVendors.filter(vendor => {
-                // Search in business name
                 const businessName = (vendor.business_name || '').toLowerCase();
-                // Search in contact person
                 const contactPerson = (vendor.contact_person || '').toLowerCase();
-                // Search in phone numbers
                 const phone = (vendor.phone || '').toLowerCase();
-                // Search in offerings/services
                 const offering = (vendor.offering || '').toLowerCase();
-                // Search in pricing
                 const pricing = (vendor.pricing || '').toLowerCase();
-                // Search in notes
                 const notes = (vendor.notes || '').toLowerCase();
 
                 return (
@@ -365,54 +496,97 @@
                 const primaryPhone = phones[0];
                 const whatsappPhone = primaryPhone.replace(/[^\d]/g, '');
 
+                // Get location or use a default
+                const location = vendor.notes && vendor.notes.includes('Location') 
+                    ? vendor.notes.split('\n')[0] 
+                    : 'Bangalore';
+
+                // Extract rating from notes (if stored as "Rating: 4.5") or use a default
+                const ratingMatch = vendor.notes ? vendor.notes.match(/Rating[:\s]+(\d+\.?\d*)/) : null;
+                const rating = ratingMatch ? parseFloat(ratingMatch[1]) : 4.5;
+                const stars = '★'.repeat(Math.floor(rating)) + '☆'.repeat(5 - Math.floor(rating));
+
                 const card = document.createElement('div');
                 card.className = 'vendor-card';
                 card.innerHTML = `
-                    <div class="vendor-header">
-                        <div>
-                            <div class="vendor-name">${vendor.business_name}</div>
-                            <div class="vendor-owner">Contact: ${vendor.contact_person}</div>
+                    <!-- COLLAPSED VIEW -->
+                    <div class="vendor-card-collapsed">
+                        <!-- Photo -->
+                        <div class="vendor-photo-container">
+                            ${
+                                `<img src="${generateImageUrl(vendor.business_name)}" alt="${vendor.business_name}" class="vendor-photo" onerror="this.parentElement.innerHTML='<div class=\'vendor-photo placeholder\'>🚗</div>';">`
+                            }
                         </div>
-                        <div class="expand-icon">▼</div>
+
+                        <!-- Text Info -->
+                        <div class="vendor-info">
+                            <div class="vendor-main-info">
+                                <div class="vendor-name">${vendor.business_name}</div>
+                                <div class="vendor-location">📍 ${location}</div>
+                                <div class="vendor-rating">
+                                    <span class="stars">${stars}</span>
+                                    <span>${rating.toFixed(1)}</span>
+                                </div>
+                            </div>
+                            <div class="expand-icon">▼</div>
+                        </div>
                     </div>
 
+                    <!-- EXPANDED VIEW -->
                     <div class="vendor-details">
-                        ${vendor.offering ? `
-                            <div class="detail-section">
-                                <div class="detail-label">Services Offered</div>
-                                <div class="detail-value">${vendor.offering}</div>
+                        <div class="expanded-content">
+                            <!-- Large Photo in Expanded View -->
+                            <div class="expanded-photo-container">
+                                <img src="${generateImageUrl(vendor.business_name)}" alt="${vendor.business_name}" class="expanded-photo" onerror="this.parentElement.style.display='none';">
                             </div>
-                        ` : ''}
 
-                        ${vendor.pricing ? `
                             <div class="detail-section">
-                                <div class="detail-label">Pricing</div>
-                                <div class="detail-value">${vendor.pricing}</div>
+                                <div class="detail-label">Business Name</div>
+                                <div class="detail-value">${vendor.business_name}</div>
                             </div>
-                        ` : ''}
 
-                        <div class="detail-section">
-                            <div class="detail-label">Phone Numbers</div>
-                            <div class="detail-value">${vendor.phone}</div>
-                        </div>
-
-                        ${vendor.email && vendor.email !== 'Will be updated' ? `
                             <div class="detail-section">
-                                <div class="detail-label">Email</div>
-                                <div class="detail-value">${vendor.email}</div>
+                                <div class="detail-label">Contact Person</div>
+                                <div class="detail-value">${vendor.contact_person}</div>
                             </div>
-                        ` : ''}
 
-                        ${vendor.notes ? `
+                            ${vendor.offering ? `
+                                <div class="detail-section">
+                                    <div class="detail-label">Services Offered</div>
+                                    <div class="detail-value">${vendor.offering}</div>
+                                </div>
+                            ` : ''}
+
+                            ${vendor.pricing ? `
+                                <div class="detail-section">
+                                    <div class="detail-label">Pricing</div>
+                                    <div class="detail-value">${vendor.pricing}</div>
+                                </div>
+                            ` : ''}
+
                             <div class="detail-section">
-                                <div class="detail-label">Additional Information</div>
-                                <div class="detail-value">${vendor.notes}</div>
+                                <div class="detail-label">Phone Numbers</div>
+                                <div class="detail-value">${vendor.phone}</div>
                             </div>
-                        ` : ''}
 
-                        <div class="contact-buttons">
-                            <a href="tel:${primaryPhone}" class="btn btn-call">📞 Call</a>
-                            <a href="https://wa.me/${whatsappPhone}" target="_blank" class="btn btn-whatsapp">💬 WhatsApp</a>
+                            ${vendor.email && vendor.email !== 'Will be updated' ? `
+                                <div class="detail-section">
+                                    <div class="detail-label">Email</div>
+                                    <div class="detail-value">${vendor.email}</div>
+                                </div>
+                            ` : ''}
+
+                            ${vendor.notes ? `
+                                <div class="detail-section">
+                                    <div class="detail-label">Additional Information</div>
+                                    <div class="detail-value">${vendor.notes}</div>
+                                </div>
+                            ` : ''}
+
+                            <div class="contact-buttons">
+                                <a href="tel:${primaryPhone}" class="btn btn-call">📞 Call</a>
+                                <a href="https://wa.me/${whatsappPhone}" target="_blank" class="btn btn-whatsapp">💬 WhatsApp</a>
+                            </div>
                         </div>
                     </div>
                 `;
