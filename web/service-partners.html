@@ -130,23 +130,27 @@
         .vendor-location {
             font-size: 13px;
             color: #aaa;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
-        .vendor-rating {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            font-size: 12px;
-            color: #D4A017;
+        .vendor-contact {
+            font-size: 13px;
+            color: #aaa;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
-        .stars {
-            color: #D4A017;
-            letter-spacing: 2px;
+        .vendor-phone {
+            font-size: 12px;
+            color: #888;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .expand-icon {
@@ -501,11 +505,6 @@
                     ? vendor.notes.split('\n')[0] 
                     : 'Bangalore';
 
-                // Extract rating from notes (if stored as "Rating: 4.5") or use a default
-                const ratingMatch = vendor.notes ? vendor.notes.match(/Rating[:\s]+(\d+\.?\d*)/) : null;
-                const rating = ratingMatch ? parseFloat(ratingMatch[1]) : 4.5;
-                const stars = '★'.repeat(Math.floor(rating)) + '☆'.repeat(5 - Math.floor(rating));
-
                 const card = document.createElement('div');
                 card.className = 'vendor-card';
                 card.innerHTML = `
@@ -523,10 +522,8 @@
                             <div class="vendor-main-info">
                                 <div class="vendor-name">${vendor.business_name}</div>
                                 <div class="vendor-location">📍 ${location}</div>
-                                <div class="vendor-rating">
-                                    <span class="stars">${stars}</span>
-                                    <span>${rating.toFixed(1)}</span>
-                                </div>
+                                <div class="vendor-contact">👤 ${vendor.contact_person}</div>
+                                <div class="vendor-phone">📞 ${primaryPhone}</div>
                             </div>
                             <div class="expand-icon">▼</div>
                         </div>
