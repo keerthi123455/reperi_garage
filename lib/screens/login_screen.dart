@@ -152,12 +152,12 @@ class _LoginScreenState extends State<LoginScreen>
     if (email.isEmpty) {
       ErrorDisplay.showErrorSnackBar(
         context,
-        message: 'Please enter your email address.',
+        message: isClient ? 'Please enter your email address.' : 'Please enter your username.',
       );
       return;
     }
 
-    if (!email.contains('@') || !email.contains('.')) {
+    if (isClient && (!email.contains('@') || !email.contains('.'))) {
       ErrorDisplay.showErrorSnackBar(
         context,
         message: 'Please enter a valid email address.',
@@ -210,14 +210,17 @@ class _LoginScreenState extends State<LoginScreen>
         if (!mounted) return;
 
         if (response.isNotEmpty) {
+          final adminId = response[0]['id'];
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
+            MaterialPageRoute(
+              builder: (_) => AdminDashboardScreen(adminId: adminId),
+            ),
           );
         } else {
           ErrorDisplay.showErrorSnackBar(
             context,
-            message: 'Admin email or password is incorrect. Please try again.',
+            message: 'Garage username or password is incorrect. Please try again.',
           );
           setState(() => _isLoading = false);
         }
@@ -666,7 +669,7 @@ class _LoginScreenState extends State<LoginScreen>
                 child: _toggleButton(true, Icons.person_rounded, 'CLIENT')),
             const SizedBox(width: 12),
             Expanded(
-                child: _toggleButton(false, Icons.shield_rounded, 'ADMIN')),
+                child: _toggleButton(false, Icons.shield_rounded, 'GARAGE')),
           ],
         ),
       ],

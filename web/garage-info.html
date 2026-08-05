@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Garage Info - Reperi</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #0A0A0A;
+      color: #FFFFFF;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    h1 {
+      color: #D4A017;
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      margin-bottom: 10px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 30px;
+      border-bottom: 2px solid #222;
+      padding-bottom: 20px;
+    }
+
+    .tab-btn {
+      padding: 12px 24px;
+      background: transparent;
+      border: 2px solid #333;
+      color: #888;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+
+    .tab-btn.active {
+      background: rgba(212, 160, 23, 0.15);
+      border-color: #D4A017;
+      color: #D4A017;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      color: #D4A017;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 12px 16px;
+      background: #1A1A1A;
+      border: 2px solid #333;
+      border-radius: 8px;
+      color: #FFFFFF;
+      font-size: 14px;
+      transition: border-color 0.3s ease;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: #D4A017;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #D4A017 0%, #F5C842 100%);
+      color: #000;
+      border: none;
+      border-radius: 20px;
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 10px 28px rgba(212, 160, 23, 0.45);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 15px 35px rgba(212, 160, 23, 0.55);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      padding: 10px 16px;
+      background: #222;
+      color: #D4A017;
+      border: 2px solid #D4A017;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(212, 160, 23, 0.1);
+    }
+
+    .btn-danger {
+      padding: 8px 12px;
+      background: #8B0000;
+      color: #FFF;
+      border: none;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .btn-danger:hover {
+      background: #A00000;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 30px;
+      background: #111;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    thead {
+      background: #1A1A1A;
+      border-bottom: 2px solid #333;
+    }
+
+    th {
+      padding: 16px;
+      text-align: left;
+      font-weight: 700;
+      color: #D4A017;
+      font-size: 13px;
+      letter-spacing: 1px;
+    }
+
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid #222;
+      font-size: 14px;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    tbody tr:hover {
+      background: #1A1A1A;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #666;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .image-upload-area {
+      border: 2px dashed #D4A017;
+      border-radius: 8px;
+      padding: 30px;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.3s ease;
+      margin-top: 10px;
+    }
+
+    .image-upload-area:hover {
+      background: rgba(212, 160, 23, 0.05);
+    }
+
+    .image-upload-area.dragover {
+      background: rgba(212, 160, 23, 0.1);
+      border-color: #F5C842;
+    }
+
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 16px;
+      margin-top: 30px;
+    }
+
+    .image-card {
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #1A1A1A;
+      aspect-ratio: 1;
+    }
+
+    .image-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .image-card-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .image-card:hover .image-card-overlay {
+      opacity: 1;
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+      color: #D4A017;
+    }
+
+    .loading.show {
+      display: block;
+    }
+
+    .success-message, .error-message {
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+      font-weight: 600;
+    }
+
+    .success-message {
+      background: rgba(76, 175, 80, 0.2);
+      color: #4CAF50;
+      border: 1px solid #4CAF50;
+    }
+
+    .success-message.show,
+    .error-message.show {
+      display: block;
+    }
+
+    .error-message {
+      background: rgba(255, 76, 76, 0.2);
+      color: #FF4C4C;
+      border: 1px solid #FF4C4C;
+    }
+
+    .spinner {
+      border: 3px solid #333;
+      border-top: 3px solid #D4A017;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🏎️ GARAGE INFO</h1>
+      <p style="color: #888; font-size: 14px;">Manage your services and images</p>
+    </header>
+
+    <div id="successMessage" class="success-message"></div>
+    <div id="errorMessage" class="error-message"></div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('services')">Services</button>
+      <button class="tab-btn" onclick="switchTab('images')">Images</button>
+    </div>
+
+    <!-- SERVICES TAB -->
+    <div id="services" class="tab-content active">
+      <div class="form-group">
+        <label>Service Name</label>
+        <input type="text" id="serviceName" placeholder="e.g., Car Wash, Engine Service">
+      </div>
+
+      <div class="form-group">
+        <label>Price Range</label>
+        <input type="text" id="priceRange" placeholder="e.g., ₹500 - ₹2000">
+      </div>
+
+      <button class="btn-primary" onclick="addService()">+ ADD SERVICE</button>
+
+      <div id="servicesList"></div>
+    </div>
+
+    <!-- IMAGES TAB -->
+    <div id="images" class="tab-content">
+      <div class="form-group">
+        <label>Upload Images</label>
+        <div class="image-upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+          <div style="font-size: 40px; margin-bottom: 10px;">📷</div>
+          <p style="color: #D4A017; font-weight: 700; margin-bottom: 4px;">Click to upload or drag and drop</p>
+          <p style="color: #666; font-size: 12px;">PNG, JPG up to 10MB</p>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" multiple onchange="handleFileSelect(event)">
+      </div>
+
+      <div id="imagesList"></div>
+    </div>
+  </div>
+
+  <script>
+    // Supabase Configuration
+    const SUPABASE_URL = 'https://rmvxqjyoqfinbrpubsvp.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTIyNTQyNDUsImV4cCI6MjAyNzgzMDI0NX0.3Oa9gKYzAyMB_zfEF6DQMrJZLlLT7o3XvNMPpUYDAkI';
+
+    // Get admin ID from URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const adminId = urlParams.get('admin_id');
+
+    if (!adminId) {
+      showError('Admin ID not provided. Please access this page from the app.');
+      document.querySelector('.container').style.display = 'none';
+    }
+
+    // Switch tabs
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById(tab).classList.add('active');
+      event.target.classList.add('active');
+
+      if (tab === 'services') {
+        loadServices();
+      } else {
+        loadImages();
+      }
+    }
+
+    // Show messages
+    function showSuccess(message) {
+      const el = document.getElementById('successMessage');
+      el.textContent = message;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 3000);
+    }
+
+    function showError(message) {
+      const el = document.getElementById('errorMessage');
+      el.textContent = message;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 3000);
+    }
+
+    // Add Service
+    async function addService() {
+      const serviceName = document.getElementById('serviceName').value.trim();
+      const priceRange = document.getElementById('priceRange').value.trim();
+
+      if (!serviceName || !priceRange) {
+        showError('Please fill in all fields');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/garage_services`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            admin_id: adminId,
+            service_name: serviceName,
+            price_range: priceRange,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to add service');
+        }
+
+        showSuccess('Service added successfully!');
+        document.getElementById('serviceName').value = '';
+        document.getElementById('priceRange').value = '';
+        loadServices();
+      } catch (error) {
+        showError('Error adding service: ' + error.message);
+      }
+    }
+
+    // Load Services
+    async function loadServices() {
+      try {
+        const response = await fetch(
+          `${SUPABASE_URL}/rest/v1/garage_services?admin_id=eq.${adminId}&order=created_at.desc`,
+          {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+          }
+        );
+
+        const services = await response.json();
+
+        let html = '';
+        if (services.length === 0) {
+          html = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>No services added yet</p></div>';
+        } else {
+          html = '<table><thead><tr><th>Service Name</th><th>Price Range</th><th>Action</th></tr></thead><tbody>';
+          services.forEach(service => {
+            html += `
+              <tr>
+                <td>${service.service_name}</td>
+                <td>${service.price_range}</td>
+                <td><button class="btn-danger" onclick="deleteService('${service.id}')">DELETE</button></td>
+              </tr>
+            `;
+          });
+          html += '</tbody></table>';
+        }
+
+        document.getElementById('servicesList').innerHTML = html;
+      } catch (error) {
+        showError('Error loading services: ' + error.message);
+      }
+    }
+
+    // Delete Service
+    async function deleteService(serviceId) {
+      if (!confirm('Are you sure you want to delete this service?')) return;
+
+      try {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/garage_services?id=eq.${serviceId}`, {
+          method: 'DELETE',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+        });
+
+        if (!response.ok) throw new Error('Failed to delete');
+
+        showSuccess('Service deleted successfully!');
+        loadServices();
+      } catch (error) {
+        showError('Error deleting service: ' + error.message);
+      }
+    }
+
+    // Handle file selection
+    async function handleFileSelect(event) {
+      const files = event.target.files;
+      if (!files.length) return;
+
+      for (let file of files) {
+        await uploadImage(file);
+      }
+
+      document.getElementById('fileInput').value = '';
+    }
+
+    // Upload Image
+    async function uploadImage(file) {
+      if (!file.type.startsWith('image/')) {
+        showError('Only image files are allowed');
+        return;
+      }
+
+      if (file.size > 10 * 1024 * 1024) {
+        showError('File size must be less than 10MB');
+        return;
+      }
+
+      try {
+        const fileName = `${adminId}/${Date.now()}_${file.name}`;
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const uploadResponse = await fetch(`${SUPABASE_URL}/storage/v1/object/garage-images/${fileName}`, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: file,
+        });
+
+        if (!uploadResponse.ok) throw new Error('Upload failed');
+
+        const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/garage-images/${fileName}`;
+
+        const dbResponse = await fetch(`${SUPABASE_URL}/rest/v1/garage_images`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            admin_id: adminId,
+            image_url: imageUrl,
+          }),
+        });
+
+        if (!dbResponse.ok) throw new Error('Failed to save image');
+
+        showSuccess('Image uploaded successfully!');
+        loadImages();
+      } catch (error) {
+        showError('Error uploading image: ' + error.message);
+      }
+    }
+
+    // Load Images
+    async function loadImages() {
+      try {
+        const response = await fetch(
+          `${SUPABASE_URL}/rest/v1/garage_images?admin_id=eq.${adminId}&order=created_at.desc`,
+          {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+          }
+        );
+
+        const images = await response.json();
+
+        let html = '';
+        if (images.length === 0) {
+          html = '<div class="empty-state"><div class="empty-state-icon">🖼️</div><p>No images uploaded yet</p></div>';
+        } else {
+          html = '<div class="image-grid">';
+          images.forEach(image => {
+            html += `
+              <div class="image-card">
+                <img src="${image.image_url}" alt="Garage image">
+                <div class="image-card-overlay">
+                  <button class="btn-danger" onclick="deleteImage('${image.id}')">DELETE</button>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        document.getElementById('imagesList').innerHTML = html;
+      } catch (error) {
+        showError('Error loading images: ' + error.message);
+      }
+    }
+
+    // Delete Image
+    async function deleteImage(imageId) {
+      if (!confirm('Are you sure you want to delete this image?')) return;
+
+      try {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/garage_images?id=eq.${imageId}`, {
+          method: 'DELETE',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+        });
+
+        if (!response.ok) throw new Error('Failed to delete');
+
+        showSuccess('Image deleted successfully!');
+        loadImages();
+      } catch (error) {
+        showError('Error deleting image: ' + error.message);
+      }
+    }
+
+    // Drag and drop
+    const uploadArea = document.getElementById('uploadArea');
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+    uploadArea.addEventListener('dragleave', () => {
+      uploadArea.classList.remove('dragover');
+    });
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      const files = e.dataTransfer.files;
+      for (let file of files) {
+        uploadImage(file);
+      }
+    });
+
+    // Load initial data
+    loadServices();
+  </script>
+</body>
+</html>

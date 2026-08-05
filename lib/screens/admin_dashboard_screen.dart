@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'booking_details_screen.dart';
 import 'fleet_request_details_screen.dart';
@@ -7,7 +8,9 @@ import 'login_screen.dart';
 import '../services/push_notification_service.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
-  const AdminDashboardScreen({super.key});
+  final String adminId;
+  
+  const AdminDashboardScreen({super.key, required this.adminId});
 
   @override
   State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
@@ -50,12 +53,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             car_number
           )
         ''')
+        .eq('assigned_to_admin_id', widget.adminId)
         .order('created_at', ascending: false);
 
-    final fleetResponse = await supabase
-        .from('fleet_pickup_requests')
-        .select()
-        .order('created_at', ascending: false);
+    // Get current admin's username
+    final adminData = await supabase
+        .from('admin')
+        .select('username')
+        .eq('id', widget.adminId)
+        .single();
+
+    final adminUsername = adminData['username'] ?? '';
+
+    // Only fetch fleet requests if admin is haya_autogears
+    final fleetResponse = adminUsername == 'haya_autogears'
+        ? await supabase
+            .from('fleet_pickup_requests')
+            .select()
+            .order('created_at', ascending: false)
+        : [];
 
     // fetch all unread consumer messages in one query
     final unreadChats = await supabase
@@ -85,6 +101,31 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
     );
+  }
+
+  Future<void> _launchURL(String url) async {
+    final Uri uri = Uri.parse(url);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open garage info page'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -214,6 +255,46 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 },
                               ),
                             ),
+                    ),
+                    // ── UPDATE GARAGE INFO BUTTON ──
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                      child: GestureDetector(
+                        onTap: () {
+                          final garageInfoUrl = 'https://reperi.in/garage-info.html?admin_id=${widget.adminId}';
+                          _launchURL(garageInfoUrl);
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          height: 58,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFD4A017), Color(0xFFF5C842)],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFD4A017).withOpacity(0.45),
+                                blurRadius: 28,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'UPDATE GARAGE INFO',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),

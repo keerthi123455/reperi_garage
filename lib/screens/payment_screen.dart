@@ -183,7 +183,6 @@ class _PaymentScreenState
           'vehicle_id': widget.vehicleId,
           'package_name': widget.title,
           'package_price': widget.price,
-          'assigned_admin': 'admin@gmail.com',
           'razorpay_order_id': result.orderId,
           'razorpay_payment_id': result.paymentId,
           'payment_status': 'paid',
@@ -219,7 +218,6 @@ class _PaymentScreenState
         'vehicle_id': widget.vehicleId,
         'package_name': widget.title,
         'package_price': widget.price,
-        'assigned_admin': 'admin@gmail.com',
         'payment_status': 'cod', // cash on delivery/pickup
       });
 
