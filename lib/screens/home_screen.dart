@@ -658,26 +658,151 @@ class _HomeScreenState extends State<HomeScreen>
     // down, completely unaffected by any of this.
     Widget buildWideHomeLayout(BuildContext ctx) {
       return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── TOP BAR ──
-              Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── TOP BAR (UPDATED LAYOUT) ──
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  // ── LEFT: Hamburger Icon ──
                   Builder(
                     builder: (c) => _TappableScale(
                       onTap: () => Scaffold.of(c).openDrawer(),
                       child: _darkIcon(Icons.menu_rounded),
                     ),
                   ),
+                  const SizedBox(width: 24),
+
+                  // ── CENTER-LEFT: Logo (BIGGER) ──
                   Image.asset(
                     'assets/images/login.png',
                     height: 160,
                     fit: BoxFit.contain,
                   ),
+
+                  // ── CENTER: Navigation Links ──
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _NavLink('Profile', onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                          );
+                        }),
+                        const Text(
+                          ' | ',
+                          style: TextStyle(color: Colors.white38, fontSize: 17),
+                        ),
+                        _NavLink('About', onTap: () async {
+                          final uri = Uri.parse('https://trustkon.com/');
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }),
+                        const Text(
+                          ' | ',
+                          style: TextStyle(color: Colors.white38, fontSize: 17),
+                        ),
+                        _NavLink('Services', onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ServicesScreen(activeVehicle: activeVehicle),
+                            ),
+                          );
+                        }),
+                        const Text(
+                          ' | ',
+                          style: TextStyle(color: Colors.white38, fontSize: 17),
+                        ),
+                        _NavLink('Terms & Conditions', onTap: () async {
+                          final uri = Uri.parse('https://reperi.in/terms.html');
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }),
+                        const Text(
+                          ' | ',
+                          style: TextStyle(color: Colors.white38, fontSize: 17),
+                        ),
+                        _NavLink('Bookings', onTap: () {
+                          if (activeVehicle == null) {
+                            _showNoProfileDialog(context);
+                            return;
+                          }
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => VehicleBookingsScreen(
+                                vehicleId: activeVehicle!['id'],
+                                carModel: activeVehicle!['car_model'],
+                                carBrand: activeVehicle!['car_brand'],
+                                carNumber: activeVehicle!['car_number'],
+                              ),
+                            ),
+                          );
+                        }),
+                        const Text(
+                          ' | ',
+                          style: TextStyle(color: Colors.white38, fontSize: 17),
+                        ),
+                        _NavLink('Privacy Policy', onTap: () async {
+                          final uri = Uri.parse('https://reperi.in/privacy-policy.html');
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }),
+                        const Text(
+                          ' | ',
+                          style: TextStyle(color: Colors.white38, fontSize: 17),
+                        ),
+                        _NavLink('Fleet Login', onTap: () async {
+                          final prefs = await SharedPreferences.getInstance();
+                          final isFleetLoggedIn = prefs.getBool('fleet_logged_in') ?? false;
+                          if (isFleetLoggedIn) {
+                            final fleetId = prefs.getString('fleet_user_id');
+                            final fleetUser = await Supabase.instance.client
+                                .from('fleet_users')
+                                .select()
+                                .eq('id', fleetId!)
+                                .single();
+                            if (!context.mounted) return;
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => FleetDashboardScreen(fleetUser: fleetUser),
+                              ),
+                            );
+                          } else {
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              backgroundColor: Colors.transparent,
+                              builder: (_) => const FleetLoginSheet(),
+                            );
+                          }
+                        }),
+                        const Text(
+                          ' | ',
+                          style: TextStyle(color: Colors.white38, fontSize: 17),
+                        ),
+                        _NavLink('AI Advisor', onTap: () {
+                          if (activeVehicle == null) {
+                            _showNoProfileDialog(context);
+                            return;
+                          }
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (_) => AiAdvisorSheet(vehicle: activeVehicle!),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+
+                  // ── RIGHT: Search Icon ──
                   _TappableScale(
                     onTap: _openSearch,
                     child: Container(
@@ -694,18 +819,30 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              const Text(
-                'What does your car need today?',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 12),
+            ),
 
-              // ── 3-COLUMN SPLIT ──
-              Expanded(
+            // ── CONTENT BELOW TOP BAR ──
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'What does your car need today?',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+
+            // ── 3-COLUMN SPLIT ──
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -773,7 +910,7 @@ class _HomeScreenState extends State<HomeScreen>
                           children: [
                             _goldSeparator(),
                             _sectionTitle('Our Packages'),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4),
                             CarouselSlider(
                               options: CarouselOptions(
                                 height: 230,
@@ -876,10 +1013,10 @@ class _HomeScreenState extends State<HomeScreen>
                                 });
                               }).toList(),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 4),
                             _goldSeparator(),
                             _sectionTitle('Our Services'),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4),
                             _TappableScale(
                               onTap: () {
                                 Navigator.push(
@@ -890,23 +1027,22 @@ class _HomeScreenState extends State<HomeScreen>
                                   ),
                                 );
                               },
-                              child: Container(
-                                height: 180,
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(24),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(24),
+                                child: Container(
+                                  width: double.infinity,
+                                  height: 252,
+                                  color: Colors.black,
                                   child: Image.asset(
                                     'assets/images/roadside_assistance_banner.jpg',
                                     fit: BoxFit.cover,
-                                    alignment: Alignment.centerRight,
+                                    width: double.infinity,
+                                    height: 252,
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 6),
                             GridView.builder(
                               shrinkWrap: true,
                               physics:
@@ -951,13 +1087,13 @@ class _HomeScreenState extends State<HomeScreen>
                               tip: _tips[_tipIndex],
                               tipIndex: _tipIndex,
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 4),
                             _goldSeparator(),
                             KeyedSubtree(
                               key: _otherOfferingsKey,
                               child: _sectionTitle('Other Offerings'),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4),
                             CarouselSlider(
                               options: CarouselOptions(
                                 height: 220,
@@ -1108,8 +1244,8 @@ class _HomeScreenState extends State<HomeScreen>
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
@@ -1483,20 +1619,17 @@ class _HomeScreenState extends State<HomeScreen>
                                         ),
                                       );
                                     },
-                                    child: Container(
-                                      height: 180,
-                                      width: double.infinity,
-                                      decoration: BoxDecoration(
-                                        borderRadius:
-                                            BorderRadius.circular(24),
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius:
-                                            BorderRadius.circular(24),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(24),
+                                      child: Container(
+                                        width: double.infinity,
+                                        height: 252,
+                                        color: Colors.black,
                                         child: Image.asset(
                                           'assets/images/roadside_assistance_banner.jpg',
                                           fit: BoxFit.cover,
-                                          alignment: Alignment.centerRight,
+                                          width: double.infinity,
+                                          height: 252,
                                         ),
                                       ),
                                     ),
@@ -1530,7 +1663,7 @@ class _HomeScreenState extends State<HomeScreen>
                                       );
                                     },
                                   ),
-      const SizedBox(height: 6),
+                                  const SizedBox(height: 6),
                                   // ── CAR TIP CARD ──
                                   _TipCard(
                                     tip: _tips[_tipIndex],
@@ -2735,6 +2868,41 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
       ],
+    );
+  }
+}
+
+// ── Navigation Link Widget ──
+class _NavLink extends StatefulWidget {
+  final String text;
+  final VoidCallback? onTap;
+
+  const _NavLink(this.text, {this.onTap});
+
+  @override
+  State<_NavLink> createState() => _NavLinkState();
+}
+
+class _NavLinkState extends State<_NavLink> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Text(
+          widget.text,
+          style: TextStyle(
+            color: _hovered ? const Color(0xFFD4A017) : Colors.white70,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.6,
+          ),
+        ),
+      ),
     );
   }
 }
