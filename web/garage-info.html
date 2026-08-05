@@ -315,6 +315,37 @@
     input[type="file"] {
       display: none;
     }
+
+    .setup-guide {
+      background: rgba(212, 160, 23, 0.1);
+      border: 1px solid #D4A017;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+
+    .setup-guide h3 {
+      color: #D4A017;
+      margin-bottom: 10px;
+    }
+
+    .setup-guide ol {
+      margin-left: 20px;
+      line-height: 1.6;
+    }
+
+    .setup-guide li {
+      margin-bottom: 8px;
+    }
+
+    .setup-guide code {
+      background: #1A1A1A;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
@@ -326,6 +357,27 @@
 
     <div id="successMessage" class="success-message"></div>
     <div id="errorMessage" class="error-message"></div>
+
+    <!-- SETUP GUIDE - Shows if not configured -->
+    <div id="setupGuide" class="setup-guide" style="display: none;">
+      <h3>⚙️ Supabase Configuration Required</h3>
+      <p style="margin-bottom: 12px;">To enable this feature, configure RLS policies in Supabase:</p>
+      <ol>
+        <li><strong>Enable RLS</strong> on tables: <code>garage_services</code> and <code>garage_images</code></li>
+        <li><strong>Create Policy for Services</strong> (Allow SELECT, INSERT, DELETE for anon users)
+          <div style="background: #000; padding: 8px; margin-top: 4px; border-radius: 4px; font-size: 11px; overflow-x: auto;">
+            <code>CREATE POLICY "Allow public access" ON garage_services FOR ALL USING (true) WITH CHECK (true);</code>
+          </div>
+        </li>
+        <li><strong>Create Policy for Images</strong> (Same as above)
+          <div style="background: #000; padding: 8px; margin-top: 4px; border-radius: 4px; font-size: 11px; overflow-x: auto;">
+            <code>CREATE POLICY "Allow public access" ON garage_images FOR ALL USING (true) WITH CHECK (true);</code>
+          </div>
+        </li>
+        <li><strong>Configure Storage Bucket</strong>: Make <code>garage-images</code> bucket public</li>
+        <li>Refresh this page after configuration</li>
+      </ol>
+    </div>
 
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('services')">Services</button>
@@ -379,6 +431,31 @@
       document.querySelector('.container').style.display = 'none';
     }
 
+    // Check Supabase configuration on load
+    async function checkSupabaseSetup() {
+      try {
+        const response = await fetch(
+          `${SUPABASE_URL}/rest/v1/garage_services?admin_id=eq.${adminId}&limit=1`,
+          {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+          }
+        );
+
+        if (response.status === 401 || response.status === 403) {
+          document.getElementById('setupGuide').style.display = 'block';
+          showError('Supabase RLS policies not configured. See setup guide above.');
+          return false;
+        }
+        return true;
+      } catch (error) {
+        showError('Connection error: ' + error.message);
+        return false;
+      }
+    }
+
     // Switch tabs
     function switchTab(tab) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -405,7 +482,7 @@
       const el = document.getElementById('errorMessage');
       el.textContent = message;
       el.classList.add('show');
-      setTimeout(() => el.classList.remove('show'), 3000);
+      setTimeout(() => el.classList.remove('show'), 5000);
     }
 
     // Add Service
@@ -433,8 +510,15 @@
           }),
         });
 
+        if (response.status === 401 || response.status === 403) {
+          showError('Permission denied. Supabase RLS policies need configuration.');
+          document.getElementById('setupGuide').style.display = 'block';
+          return;
+        }
+
         if (!response.ok) {
-          throw new Error('Failed to add service');
+          const error = await response.text();
+          throw new Error(`Server error: ${response.status}`);
         }
 
         showSuccess('Service added successfully!');
@@ -458,6 +542,12 @@
             },
           }
         );
+
+        if (response.status === 401 || response.status === 403) {
+          document.getElementById('setupGuide').style.display = 'block';
+          showError('Permission denied. Configure RLS policies in Supabase.');
+          return;
+        }
 
         const services = await response.json();
 
@@ -532,8 +622,6 @@
 
       try {
         const fileName = `${adminId}/${Date.now()}_${file.name}`;
-        const formData = new FormData();
-        formData.append('file', file);
 
         const uploadResponse = await fetch(`${SUPABASE_URL}/storage/v1/object/garage-images/${fileName}`, {
           method: 'POST',
@@ -543,6 +631,11 @@
           },
           body: file,
         });
+
+        if (uploadResponse.status === 400 || uploadResponse.status === 401 || uploadResponse.status === 403) {
+          showError('Storage bucket not configured. Enable public access in Supabase Storage settings.');
+          return;
+        }
 
         if (!uploadResponse.ok) throw new Error('Upload failed');
 
@@ -582,6 +675,11 @@
             },
           }
         );
+
+        if (response.status === 401 || response.status === 403) {
+          document.getElementById('setupGuide').style.display = 'block';
+          return;
+        }
 
         const images = await response.json();
 
@@ -649,8 +747,11 @@
       }
     });
 
-    // Load initial data
-    loadServices();
+    // Initialize on page load
+    window.addEventListener('load', async () => {
+      await checkSupabaseSetup();
+      loadServices();
+    });
   </script>
 </body>
 </html>
