@@ -4,7 +4,6 @@ import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 
 class CarSpaScreen extends StatefulWidget {
-
   final Map<String, dynamic> vehicle;
 
   const CarSpaScreen({
@@ -13,150 +12,111 @@ class CarSpaScreen extends StatefulWidget {
   });
 
   @override
-  State<CarSpaScreen> createState() =>
-      _CarSpaScreenState();
+  State<CarSpaScreen> createState() => _CarSpaScreenState();
 }
 
-class _CarSpaScreenState
-    extends State<CarSpaScreen> {
-
-  final PageController
-      _beforeAfterController =
-      PageController();
-
-  int _currentPage = 0;
+class _CarSpaScreenState extends State<CarSpaScreen> {
+  int selectedPackage = -1;
 
   Timer? _autoScrollTimer;
 
-  int selectedPackage = -1;
-
-  final List<String>
-      _beforeAfterImages = [
-
+  final List<String> _beforeAfterImages = [
     'assets/images/before_after_1.jpg',
-
     'assets/images/before_after_2.jpg',
-
     'assets/images/before_after_3.jpg',
   ];
 
-  static const Color _bg =
-      Color(0xFF0A0A0A);
+  static const Color _bg = Color(0xFF050505);
+  static const Color _card = Color(0xFF111111);
+  static const Color _gold = Color(0xFFD4A017);
+  static const Color _white = Color(0xFFFFFFFF);
+  static const Color _grey = Color(0xFF9E9E9E);
 
-  static const Color _card =
-      Color(0xFF141414);
-
-  static const Color _gold =
-      Color(0xFFD4A84B);
-
-  static const Color _white =
-      Color(0xFFFFFFFF);
-
-  static const Color _grey =
-      Color(0xFF9E9E9E);
-
-  static const Color _cardBorder =
-      Color(0xFF2A2A2A);
-
-  List<Map<String, dynamic>>
-      packages = [
-
+  List<Map<String, dynamic>> packages = [
     {
-
-      'title':
-          'QUICK REFRESH',
-
-      'subtitle':
-          'Exterior Basic Care',
-
-      'price':
-          '₹399',
-
-      'duration':
-          '30 mins',
-
-      'icon':
-          Icons.water_drop_outlined,
-
+      'title': 'QUICK REFRESH',
+      'subtitle': 'Exterior Basic Care',
+      'price': '₹399',
+      'duration': '30 mins',
+      'icon': Icons.water_drop_outlined,
+      'details': 'Fast maintenance with essential exterior and basic interior cleaning.',
       'features': [
-
-        'Exterior Wash',
-
-        'Vacuum Cleaning',
-
+        'Pressure Water Wash',
+        'pH Neutral Foam Wash',
+        'Exterior Hand Wash',
+        'Microfiber Drying',
+        'Tyre Cleaning',
         'Tyre Polish',
+        'Wheel Rim Cleaning',
+        'Exterior Glass Cleaning',
+        'Dashboard Dusting',
+        'Interior Vacuum Cleaning',
+        'Door Jamb Cleaning',
+        'Final Quality Inspection',
       ],
     },
-
     {
-
-      'title':
-          'PREMIUM SPA',
-
-      'subtitle':
-          'Interior Deep Clean',
-
-      'price':
-          '₹999',
-
-      'duration':
-          '90 mins',
-
-      'icon':
-          Icons.chair_outlined,
-
+      'title': 'PREMIUM SPA',
+      'subtitle': 'Interior Deep Clean',
+      'price': '₹999',
+      'duration': '90 mins',
+      'icon': Icons.chair_outlined,
+      'details': 'Everything in Quick Refresh, plus deep interior cleaning and protective treatments.',
       'features': [
-
+        'Pressure Water Wash',
+        'Premium Foam Wash',
+        'Exterior Hand Drying',
+        'Complete Interior Vacuum',
         'Dashboard Detailing',
-
-        'Steam Cleaning',
-
-        'Odor Removal',
-
-        'Interior Conditioning',
+        'Door Panel Cleaning',
+        'Seat Deep Cleaning',
+        'Floor Mat Cleaning',
+        'Interior Plastic Dressing',
+        'Interior Steam Cleaning',
+        'AC Vent Cleaning',
+        'Odour Removal Treatment',
+        'Interior UV Protection',
+        'Tyre Polish',
+        'Exterior Glass Cleaning',
+        'Final Quality Inspection',
       ],
     },
-
     {
-
-      'title':
-          'SIGNATURE SPA+',
-
-      'subtitle':
-          'Complete Car Restoration',
-
-      'price':
-          '₹2499',
-
-      'duration':
-          '150 mins',
-
-      'icon':
-          Icons.diamond_outlined,
-
+      'title': 'SIGNATURE SPA+',
+      'subtitle': 'Complete Car Restoration',
+      'price': '₹2499',
+      'duration': '150 mins',
+      'icon': Icons.diamond_outlined,
+      'details': 'Complete restoration with paint treatment, engine bay detailing, and premium finishing.',
       'features': [
-
-        'Foam Wash',
-
+        'Premium Foam Wash',
         'Paint Decontamination',
-
-        'Wax Polish',
-
-        'Interior Restoration',
-
+        'Clay Bar Treatment',
+        'Machine Wax Polish',
+        'Paint Gloss Enhancement',
+        'Exterior Plastic Restoration',
+        'Wheel Arch Cleaning',
+        'Alloy Wheel Detailing',
         'Tyre Dressing',
-
-        'Perfume Finish',
+        'Complete Interior Vacuum',
+        'Dashboard Restoration',
+        'Leather / Fabric Seat Cleaning',
+        'Carpet Shampooing',
+        'Roof Lining Cleaning',
+        'Door Panel Restoration',
+        'Interior Steam Sanitization',
+        'AC Vent Sanitization',
+        'Engine Bay Cleaning',
+        'Exterior Glass Treatment',
+        'Premium Perfume Finish',
+        'Final Quality Inspection',
       ],
     },
   ];
 
   @override
   void initState() {
-
     super.initState();
-
-    _startAutoScroll();
     _fetchPackageData();
   }
 
@@ -171,1120 +131,567 @@ class _CarSpaScreenState
         if (byKey['car_spa_quick_refresh'] != null) {
           packages[0]['price'] = byKey['car_spa_quick_refresh']!['price'];
           packages[0]['duration'] = byKey['car_spa_quick_refresh']!['duration'];
-          packages[0]['features'] = List<String>.from(byKey['car_spa_quick_refresh']!['services']);
         }
         if (byKey['car_spa_premium'] != null) {
           packages[1]['price'] = byKey['car_spa_premium']!['price'];
           packages[1]['duration'] = byKey['car_spa_premium']!['duration'];
-          packages[1]['features'] = List<String>.from(byKey['car_spa_premium']!['services']);
         }
         if (byKey['car_spa_signature_plus'] != null) {
           packages[2]['price'] = byKey['car_spa_signature_plus']!['price'];
           packages[2]['duration'] = byKey['car_spa_signature_plus']!['duration'];
-          packages[2]['features'] = List<String>.from(byKey['car_spa_signature_plus']!['services']);
         }
       });
     } catch (e) {
-      // Keep the hardcoded fallback values above if the fetch fails.
+      // Keep fallback values
     }
-  }
-
-  void _startAutoScroll() {
-
-    _autoScrollTimer =
-        Timer.periodic(
-
-      const Duration(
-          seconds: 3),
-
-      (_) {
-
-        final next =
-            (_currentPage + 1) %
-                _beforeAfterImages
-                    .length;
-
-        _beforeAfterController
-            .animateToPage(
-
-          next,
-
-          duration:
-              const Duration(
-                  milliseconds:
-                      500),
-
-          curve:
-              Curves.easeInOut,
-        );
-      },
-    );
   }
 
   @override
   void dispose() {
-
-    _autoScrollTimer
-        ?.cancel();
-
-    _beforeAfterController
-        .dispose();
-
+    _autoScrollTimer?.cancel();
     super.dispose();
   }
 
-  @override
-  Widget build(
-      BuildContext context) {
-
-    return Scaffold(
-
-      backgroundColor: _bg,
-
-      body: SingleChildScrollView(
-  child: Center(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 600),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-
-          children: [
-
-            _buildHero(),
-
-            _buildBeforeAfter(),
-
-            _buildPackages(),
-
-            _buildWhyUs(),
-
-            _buildLiveTracking(),
-
-            _buildBottomCTA(),
-
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    ),
-  ),
-);
+  // ── Extract price value
+  int _extractPrice(String priceStr) {
+    return int.tryParse(priceStr.replaceAll('₹', '').replaceAll(',', '')) ?? 0;
   }
 
-  Widget _buildHero() {
+  // ── Show doorstep pickup dialog
+  void _showDoorstepPickupDialog() {
+    final selectedPkg = packages[selectedPackage];
+    final basePrice = _extractPrice(selectedPkg['price'] as String);
 
-    return Stack(
-
-      children: [
-
-        SizedBox(
-
-          width:
-              double.infinity,
-
-          height: 420,
-
-          child: Image.asset(
-
-            'assets/images/car_spa_hero.jpg',
-
-            fit: BoxFit.cover,
-
-            errorBuilder:
-                (_, __, ___) =>
-                    Container(
-
-              color: const Color(
-                  0xFF1A1A1A),
-
-              child:
-                  const Center(
-
-                child: Icon(
-
-                  Icons
-                      .directions_car,
-
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF111111),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  color: _gold.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.local_shipping_rounded,
                   color: _gold,
-
-                  size: 80,
+                  size: 48,
                 ),
               ),
-            ),
-          ),
-        ),
-
-        Container(
-
-          width:
-              double.infinity,
-
-          height: 420,
-
-          decoration:
-              const BoxDecoration(
-
-            gradient:
-                LinearGradient(
-
-              begin: Alignment
-                  .centerRight,
-
-              end: Alignment
-                  .centerLeft,
-
-              colors: [
-
-                Colors
-                    .transparent,
-
-                Color(
-                    0xCC000000),
-
-                Color(
-                    0xEE000000),
-              ],
-            ),
-          ),
-        ),
-
-        SafeArea(
-
-          child: Padding(
-
-            padding:
-                const EdgeInsets
-                    .fromLTRB(
-
-              24,
-              48,
-              24,
-              32,
-            ),
-
-            child: Column(
-
-              crossAxisAlignment:
-                  CrossAxisAlignment
-                      .start,
-
-              children: [
-
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.45),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
-                  ),
+              const SizedBox(height: 24),
+              const Text(
+                'Doorstep Pickup?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
                 ),
-                const SizedBox(height: 20),
-
-                const Text(
-
-                  'PREMIUM',
-
-                  style:
-                      TextStyle(
-
-                    color:
-                        _white,
-
-                    fontSize:
-                        28,
-
-                    fontWeight:
-                        FontWeight
-                            .w300,
-
-                    letterSpacing:
-                        6,
-                  ),
-                ),
-
-                const Text(
-
-                  'CAR SPA',
-
-                  style:
-                      TextStyle(
-
-                    color:
-                        _gold,
-
-                    fontSize:
-                        52,
-
-                    fontWeight:
-                        FontWeight
-                            .w800,
-
-                    letterSpacing:
-                        2,
-
-                    height: 1.0,
-                  ),
-                ),
-
-                const SizedBox(
-                    height: 10),
-
-                const Text(
-
-                  'Restore showroom shine.',
-
-                  style: TextStyle(
-
-                    color:
-                        _white,
-
-                    fontSize: 16,
-
-                    fontWeight:
-                        FontWeight
-                            .w300,
-                  ),
-                ),
-
-                const SizedBox(
-                    height: 12),
-
-                Row(
-
-                  children:
-                      const [
-
-                    Text(
-
-                      'INTERIOR',
-
-                      style:
-                          TextStyle(
-
-                        color:
-                            _grey,
-
-                        fontSize:
-                            12,
-
-                        letterSpacing:
-                            2,
-                      ),
-                    ),
-
-                    Padding(
-
-                      padding:
-                          EdgeInsets.symmetric(
-                              horizontal:
-                                  8),
-
-                      child: Text(
-
-                        '•',
-
-                        style:
-                            TextStyle(
-
-                          color:
-                              _gold,
-
-                          fontSize:
-                              12,
-                        ),
-                      ),
-                    ),
-
-                    Text(
-
-                      'EXTERIOR',
-
-                      style:
-                          TextStyle(
-
-                        color:
-                            _grey,
-
-                        fontSize:
-                            12,
-
-                        letterSpacing:
-                            2,
-                      ),
-                    ),
-
-                    Padding(
-
-                      padding:
-                          EdgeInsets.symmetric(
-                              horizontal:
-                                  8),
-
-                      child: Text(
-
-                        '•',
-
-                        style:
-                            TextStyle(
-
-                          color:
-                              _gold,
-
-                          fontSize:
-                              12,
-                        ),
-                      ),
-                    ),
-
-                    Text(
-
-                      'DETAILING',
-
-                      style:
-                          TextStyle(
-
-                        color:
-                            _grey,
-
-                        fontSize:
-                            12,
-
-                        letterSpacing:
-                            2,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(
-                    height: 28),
-
-                Container(
-
-                  padding:
-                      const EdgeInsets
-                          .all(18),
-
-                  decoration:
-                      BoxDecoration(
-
-                    color: Colors
-                        .black
-                        .withOpacity(
-                            0.35),
-
-                    borderRadius:
-                        BorderRadius.circular(
-                            18),
-
-                    border:
-                        Border.all(
-
-                      color: _gold
-                          .withOpacity(
-                              0.3),
-                    ),
-                  ),
-
-                  child:
-                      const Column(
-
-                    crossAxisAlignment:
-                        CrossAxisAlignment
-                            .start,
-
-                    children: [
-
-                      Text(
-
-                        'PREMIUM SPA EXPERIENCE',
-
-                        style:
-                            TextStyle(
-
-                          color:
-                              _gold,
-
-                          fontSize:
-                              13,
-
-                          fontWeight:
-                              FontWeight
-                                  .w800,
-
-                          letterSpacing:
-                              2,
-                        ),
-                      ),
-
-                      SizedBox(
-                          height:
-                              12),
-
-                      Text(
-
-                        'Luxury detailing and restoration packages designed to bring back showroom-level shine and comfort.',
-
-                        style:
-                            TextStyle(
-
-                          color:
-                              _white,
-
-                          fontSize:
-                              15,
-
-                          height:
-                              1.6,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBeforeAfter() {
-
-    return Padding(
-
-      padding:
-          const EdgeInsets
-              .fromLTRB(
-                  0,
-                  28,
-                  0,
-                  0),
-
-      child: Column(
-
-        crossAxisAlignment:
-            CrossAxisAlignment
-                .start,
-
-        children: [
-
-          const Padding(
-
-            padding:
-                EdgeInsets.symmetric(
-                    horizontal:
-                        20),
-
-            child: Text(
-
-              'BEFORE & AFTER',
-
-              style: TextStyle(
-
-                color:
-                    _white,
-
-                fontSize:
-                    18,
-
-                fontWeight:
-                    FontWeight
-                        .w800,
               ),
-            ),
-          ),
-
-          const SizedBox(
-              height: 14),
-
-          SizedBox(
-
-            height: 210,
-
-            child:
-                PageView.builder(
-
-              controller:
-                  _beforeAfterController,
-
-              onPageChanged:
-                  (i) {
-
-                setState(() {
-
-                  _currentPage =
-                      i;
-                });
-              },
-
-              itemCount:
-                  _beforeAfterImages
-                      .length,
-
-              itemBuilder:
-                  (context,
-                      index) {
-
-                return Padding(
-
-                  padding:
-                      const EdgeInsets
-                          .symmetric(
-                              horizontal:
-                                  16),
-
-                  child:
-                      ClipRRect(
-
-                    borderRadius:
-                        BorderRadius.circular(
-                            14),
-
-                    child:
-                        Image.asset(
-
-                      _beforeAfterImages[
-                          index],
-
-                      fit: BoxFit
-                          .cover,
+              const SizedBox(height: 12),
+              const Text(
+                'We can pick up your vehicle from your home and drop it back after service',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  height: 1.6,
+                ),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _gold,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                );
-              },
-            ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _proceedToPayment(basePrice + 100);
+                  },
+                  child: const Text(
+                    'Yes, Add ₹100',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    side: const BorderSide(color: _gold, width: 2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _proceedToPayment(basePrice);
+                  },
+                  child: const Text(
+                    'No, I\'ll Drop It Myself',
+                    style: TextStyle(
+                      color: _gold,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildPackages() {
+  // ── Proceed to payment
+  void _proceedToPayment(int finalPrice) {
+    final selectedPkg = packages[selectedPackage];
 
-    return Padding(
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PaymentScreen(
+          title: selectedPkg['title'] as String,
+          price: '₹$finalPrice',
+          duration: selectedPkg['duration'] as String,
+          vehicleId: widget.vehicle['id'].toString(),
+        ),
+      ),
+    );
+  }
 
-      padding:
-          const EdgeInsets
-              .fromLTRB(
-                  20,
-                  32,
-                  20,
-                  0),
-
-      child: Column(
-
-        crossAxisAlignment:
-            CrossAxisAlignment
-                .start,
-
-        children: [
-
-          const Text(
-
-            'OUR SPA PACKAGES',
-
-            style: TextStyle(
-
-              color:
-                  _white,
-
-              fontSize: 18,
-
-              fontWeight:
-                  FontWeight
-                      .w800,
-            ),
-          ),
-
-          const SizedBox(
-              height: 16),
-
-          ...List.generate(
-
-            packages.length,
-
-            (index) {
-
-              final p =
-                  packages[index];
-
-              final selected =
-                  selectedPackage ==
-                      index;
-
-              return GestureDetector(
-
-                onTap: () {
-
-                  setState(() {
-
-                    selectedPackage =
-                        index;
-                  });
-                },
-
-                child: AnimatedContainer(
-
-                  duration:
-                      const Duration(
-                          milliseconds:
-                              300),
-
-                  margin:
-                      const EdgeInsets
-                          .only(
-                              bottom:
-                                  16),
-
-                  padding:
-                      const EdgeInsets
-                          .all(18),
-
-                  decoration:
-                      BoxDecoration(
-
-                    color:
-                        _card,
-
-                    borderRadius:
-                        BorderRadius.circular(
-                            18),
-
-                    border:
-                        Border.all(
-
-                      color: selected
-
-                          ? _gold
-
-                          : _cardBorder,
-
-                      width:
-                          selected
-                              ? 2
-                              : 1,
-                    ),
-
-                    boxShadow:
-                        selected
-
-                            ? [
-
-                                BoxShadow(
-
-                                  color: _gold
-                                      .withOpacity(
-                                          0.35),
-
-                                  blurRadius:
-                                      18,
-                                ),
-                              ]
-
-                            : [],
-                  ),
-
-                  child:
-                      Column(
-
-                    crossAxisAlignment:
-                        CrossAxisAlignment
-                            .start,
-
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _bg,
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: Stack(
+              children: [
+                // ── Scrollable Content ──
+                SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 100),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-
-                      Row(
-
+                      /// HERO SECTION (IMPROVED)
+                      Stack(
                         children: [
-
-                          Container(
-
-                            padding:
-                                const EdgeInsets
-                                    .all(
-                                        10),
-
-                            decoration:
-                                BoxDecoration(
-
-                              color: _gold
-                                  .withOpacity(
-                                      0.12),
-
-                              borderRadius:
-                                  BorderRadius.circular(
-                                      10),
-                            ),
-
-                            child:
-                                Icon(
-
-                              p['icon']
-                                  as IconData,
-
-                              color:
-                                  _gold,
+                          // ── Hero Image ──
+                          SizedBox(
+                            height: 400,
+                            width: double.infinity,
+                            child: Image.asset(
+                              'assets/images/car_spa_hero.jpg',
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: const Color(0xFF1A1A1A),
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.directions_car,
+                                    color: _gold,
+                                    size: 80,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
 
-                          const SizedBox(
-                              width:
-                                  14),
+                          // ── Strong Dark Gradient Overlay ──
+                          Container(
+                            height: 400,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withOpacity(0.3),
+                                  Colors.black.withOpacity(0.75),
+                                ],
+                                stops: const [0.3, 1.0],
+                              ),
+                            ),
+                          ),
 
-                          Expanded(
-
-                            child:
-                                Column(
-
-                              crossAxisAlignment:
-                                  CrossAxisAlignment
-                                      .start,
-
+                          // ── Hero Content ──
+                          Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-
-                                Text(
-
-                                  p['title']
-                                      as String,
-
-                                  style:
-                                      const TextStyle(
-
-                                    color:
-                                        _white,
-
-                                    fontSize:
-                                        18,
-
-                                    fontWeight:
-                                        FontWeight
-                                            .w800,
+                                // ── Back Button ──
+                                GestureDetector(
+                                  onTap: () => Navigator.pop(context),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.55),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: Colors.white30),
+                                    ),
+                                    child: const Icon(
+                                      Icons.arrow_back,
+                                      color: _white,
+                                      size: 20,
+                                    ),
                                   ),
                                 ),
 
-                                const SizedBox(
-                                    height:
-                                        4),
-
-                                Text(
-
-                                  p['subtitle']
-                                      as String,
-
-                                  style:
-                                      const TextStyle(
-
-                                    color:
-                                        _grey,
-                                  ),
+                                // ── Content at Bottom ──
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _gold.withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: const Text(
+                                        'PREMIUM DETAILING',
+                                        style: TextStyle(
+                                          color: _gold,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 12,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    const Text(
+                                      'CAR SPA\nSERVICES',
+                                      style: TextStyle(
+                                        color: _white,
+                                        fontSize: 52,
+                                        fontWeight: FontWeight.w900,
+                                        height: 0.95,
+                                        letterSpacing: -1,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      'Premium detailing and restoration to keep your car looking showroom-new.',
+                                      style: TextStyle(
+                                        color: _white,
+                                        fontSize: 15,
+                                        height: 1.6,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                      maxLines: 3,
+                                    ),
+                                  ],
                                 ),
                               ],
-                            ),
-                          ),
-
-                          Text(
-
-                            p['price']
-                                as String,
-
-                            style:
-                                const TextStyle(
-
-                              color:
-                                  _gold,
-
-                              fontSize:
-                                  24,
-
-                              fontWeight:
-                                  FontWeight
-                                      .w800,
                             ),
                           ),
                         ],
                       ),
 
-                      const SizedBox(
-                          height: 18),
+                      const SizedBox(height: 24),
 
-                      ...(p['features']
-                              as List<
-                                  String>)
-                          .map(
+                      /// PACKAGE CARDS (FULL WIDTH, STACKED VERTICALLY)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          children: List.generate(packages.length, (index) {
+                            final pkg = packages[index];
+                            final isSelected = index == selectedPackage;
 
-                        (f) {
+                            return Padding(
+                              padding: EdgeInsets.only(
+                                bottom: index == packages.length - 1 ? 0 : 16,
+                              ),
+                              child: GestureDetector(
+                                onTap: () => setState(() => selectedPackage = index),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  decoration: BoxDecoration(
+                                    color: _card,
+                                    border: Border.all(
+                                      color: isSelected ? _gold : Colors.white10,
+                                      width: isSelected ? 2 : 1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(24),
+                                    boxShadow: isSelected
+                                        ? [
+                                            BoxShadow(
+                                              color: _gold.withOpacity(0.2),
+                                              blurRadius: 20,
+                                              spreadRadius: 2,
+                                            ),
+                                          ]
+                                        : [],
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // ── Header: Icon + Title + Price ──
+                                        Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                color: _gold.withOpacity(0.12),
+                                                borderRadius: BorderRadius.circular(14),
+                                              ),
+                                              child: Icon(
+                                                pkg['icon'] as IconData,
+                                                color: _gold,
+                                                size: 28,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    pkg['title'] as String,
+                                                    style: const TextStyle(
+                                                      color: _white,
+                                                      fontSize: 20,
+                                                      fontWeight: FontWeight.w900,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    pkg['subtitle'] as String,
+                                                    style: const TextStyle(
+                                                      color: _grey,
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  Row(
+                                                    children: [
+                                                      Text(
+                                                        pkg['price'] as String,
+                                                        style: const TextStyle(
+                                                          color: _gold,
+                                                          fontSize: 18,
+                                                          fontWeight: FontWeight.w900,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 12),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(
+                                                          horizontal: 10,
+                                                          vertical: 4,
+                                                        ),
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.white10,
+                                                          borderRadius: BorderRadius.circular(8),
+                                                        ),
+                                                        child: Text(
+                                                          pkg['duration'] as String,
+                                                          style: const TextStyle(
+                                                            color: Colors.white60,
+                                                            fontSize: 12,
+                                                            fontWeight: FontWeight.w600,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
 
-                          return Padding(
+                                        const SizedBox(height: 20),
 
-                            padding:
-                                const EdgeInsets
-                                    .only(
-                                        bottom:
-                                            8),
+                                        // ── Divider ──
+                                        Container(
+                                          height: 1,
+                                          color: Colors.white10,
+                                        ),
 
-                            child:
-                                Row(
+                                        const SizedBox(height: 20),
 
-                              children: [
+                                        // ── What's Included ──
+                                        const Text(
+                                          'WHAT\'S INCLUDED',
+                                          style: TextStyle(
+                                            color: _gold,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 1.5,
+                                          ),
+                                        ),
 
-                                const Icon(
+                                        const SizedBox(height: 12),
 
-                                  Icons
-                                      .check_circle,
+                                        Column(
+                                          children: (pkg['features'] as List<String>)
+                                              .asMap()
+                                              .entries
+                                              .map((entry) {
+                                            return Padding(
+                                              padding: EdgeInsets.only(
+                                                bottom: entry.key <
+                                                        (pkg['features'] as List).length - 1
+                                                    ? 10
+                                                    : 0,
+                                              ),
+                                              child: Row(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Container(
+                                                    margin: const EdgeInsets.only(top: 5),
+                                                    width: 5,
+                                                    height: 5,
+                                                    decoration: const BoxDecoration(
+                                                      color: _gold,
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: Text(
+                                                      entry.value,
+                                                      style: const TextStyle(
+                                                        color: Colors.white70,
+                                                        fontSize: 13,
+                                                        height: 1.5,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }).toList(),
+                                        ),
 
-                                  color:
-                                      _gold,
+                                        const SizedBox(height: 20),
 
-                                  size:
-                                      18,
-                                ),
+                                        // ── Divider ──
+                                        Container(
+                                          height: 1,
+                                          color: Colors.white10,
+                                        ),
 
-                                const SizedBox(
-                                    width:
-                                        8),
+                                        const SizedBox(height: 20),
 
-                                Text(
+                                        // ── Details ──
+                                        const Text(
+                                          'DETAILS',
+                                          style: TextStyle(
+                                            color: _gold,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 1.5,
+                                          ),
+                                        ),
 
-                                  f,
+                                        const SizedBox(height: 12),
 
-                                  style:
-                                      const TextStyle(
-
-                                    color:
-                                        _white,
+                                        Text(
+                                          pkg['details'] as String,
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 13,
+                                            height: 1.7,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-
-                      const SizedBox(
-                          height: 18),
-
-                      Container(
-
-                        width: double
-                            .infinity,
-
-                        padding:
-                            const EdgeInsets
-                                .symmetric(
-                          vertical:
-                              12,
-                        ),
-
-                        decoration:
-                            BoxDecoration(
-
-                          color: selected
-
-                              ? _gold
-
-                              : Colors
-                                  .transparent,
-
-                          borderRadius:
-                              BorderRadius.circular(
-                                  10),
-
-                          border:
-                              Border.all(
-
-                            color: selected
-
-                                ? _gold
-
-                                : _cardBorder,
-                          ),
-                        ),
-
-                        child:
-                            Center(
-
-                          child: Text(
-
-                            selected
-
-                                ? 'SELECTED'
-
-                                : 'SELECT',
-
-                            style:
-                                TextStyle(
-
-                              color: selected
-
-                                  ? Colors
-                                      .black
-
-                                  : _white,
-
-                              fontWeight:
-                                  FontWeight
-                                      .w800,
-
-                              letterSpacing:
-                                  2,
-                            ),
-                          ),
+                              ));
+                          }),
                         ),
                       ),
+
+                      const SizedBox(height: 40),
                     ],
                   ),
                 ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildWhyUs() {
-
-    return Container();
-  }
-
-  Widget _buildLiveTracking() {
-
-    return Container();
-  }
-
-  Widget _buildBottomCTA() {
-
-    return Padding(
-
-      padding:
-          const EdgeInsets
-              .fromLTRB(
-                  20,
-                  24,
-                  20,
-                  0),
-
-      child: GestureDetector(
-
-        onTap: () {
-
-          if (selectedPackage ==
-              -1) {
-
-            ScaffoldMessenger.of(
-                    context)
-                .showSnackBar(
-
-              const SnackBar(
-
-                content: Text(
-                    'Please select a package'),
-              ),
-            );
-
-            return;
-          }
-
-          final selected =
-              packages[
-                  selectedPackage];
-
-          Navigator.push(
-
-            context,
-
-            MaterialPageRoute(
-
-              builder: (_) =>
-                  PaymentScreen(
-
-                title:
-                    selected[
-                        'title'],
-
-                price:
-                    selected[
-                        'price'],
-
-                duration:
-                    selected[
-                        'duration'],
-
-                vehicleId:
-                    widget
-                        .vehicle[
-                            'id']
-                        .toString(),
-              ),
-            ),
-          );
-        },
-
-        child: Container(
-
-          width:
-              double.infinity,
-
-          padding:
-              const EdgeInsets
-                  .symmetric(
-            vertical: 18,
-          ),
-
-          decoration:
-              BoxDecoration(
-
-            color: _gold,
-
-            borderRadius:
-                BorderRadius.circular(
-                    14),
-
-            boxShadow: [
-
-              BoxShadow(
-
-                color: _gold
-                    .withOpacity(
-                        0.35),
-
-                blurRadius:
-                    16,
-
-                offset:
-                    const Offset(
-                        0,
-                        6),
-              ),
-            ],
-          ),
-
-          child: const Center(
-
-            child: Text(
-
-              'BOOK NOW',
-
-              style: TextStyle(
-
-                color:
-                    Colors.black,
-
-                fontSize:
-                    16,
-
-                fontWeight:
-                    FontWeight
-                        .w900,
-
-                letterSpacing:
-                    1.5,
-              ),
+                // ── FLOATING BOOK NOW BUTTON (BOTTOM) ──
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          _bg.withOpacity(0),
+                          _bg.withOpacity(0.95),
+                          _bg,
+                        ],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 62,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: selectedPackage == -1
+                                ? Colors.grey.shade700
+                                : _gold,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            elevation: 12,
+                            shadowColor: _gold.withOpacity(0.4),
+                          ),
+                          onPressed: selectedPackage == -1
+                              ? null
+                              : _showDoorstepPickupDialog,
+                          child: Text(
+                            selectedPackage == -1 ? 'SELECT A PACKAGE' : 'BOOK NOW',
+                            style: TextStyle(
+                              color: selectedPackage == -1
+                                  ? Colors.grey.shade400
+                                  : Colors.black87,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

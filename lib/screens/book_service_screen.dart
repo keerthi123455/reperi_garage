@@ -20,8 +20,6 @@ class BookServiceScreen extends StatefulWidget {
 class _BookServiceScreenState
     extends State<BookServiceScreen> {
 
-  bool pickupEnabled = true;
-
   int selectedIndex = 0;
 
   List<Map<String, dynamic>> services = [
@@ -140,1013 +138,554 @@ class _BookServiceScreenState
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  // ── Extract price value from string like "₹1999"
+  int _extractPrice(String priceStr) {
+    return int.tryParse(priceStr.replaceAll('₹', '').replaceAll(',', '')) ?? 0;
+  }
 
-    final selectedService =
-        services[selectedIndex];
+  // ── Show doorstep pickup dialog
+  void _showDoorstepPickupDialog() {
+    final selectedService = services[selectedIndex];
+    final basePrice = _extractPrice(selectedService['price'] as String);
 
-    return Scaffold(
-
-      backgroundColor:
-          const Color(0xFF050505),
-
-      body: SafeArea(
-  child: Center(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 600),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF111111),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-
-              /// HERO
-              Stack(
-
-                children: [
-
-                  SizedBox(
-
-                    height: 360,
-                    width: double.infinity,
-
-                    child: Image.asset(
-
-                      'assets/images/tile_book_service.jpg',
-
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-
-                  Container(
-
-                    height: 360,
-
-                    decoration:
-                        BoxDecoration(
-
-                      gradient:
-                          LinearGradient(
-
-                        begin:
-                            Alignment.bottomCenter,
-
-                        end:
-                            Alignment.topCenter,
-
-                        colors: [
-
-                          Colors.black,
-
-                          Colors.black
-                              .withOpacity(
-                                  0.2),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  Padding(
-
-                    padding:
-                        const EdgeInsets.all(
-                            24),
-
-                    child: Column(
-
-                      crossAxisAlignment:
-                          CrossAxisAlignment
-                              .start,
-
-                      children: [
-
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.45),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: Colors.white24),
-                            ),
-                            child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
-                          ),
-                        ),
-                        const SizedBox(
-                            height: 20),
-
-                        Container(
-
-                          padding:
-                              const EdgeInsets.symmetric(
-
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-
-                          decoration:
-                              BoxDecoration(
-
-                            color: const Color(
-                                    0xFFD4A017)
-                                .withOpacity(
-                                    0.12),
-
-                            borderRadius:
-                                BorderRadius.circular(
-                                    20),
-                          ),
-
-                          child:
-                              const Text(
-
-                            'PREMIUM CARE',
-
-                            style:
-                                TextStyle(
-
-                              color:
-                                  Color(
-                                      0xFFD4A017),
-
-                              fontWeight:
-                                  FontWeight.w900,
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(
-                            height: 26),
-
-                        const Text(
-
-                          'BOOK\nSERVICE',
-
-                          style: TextStyle(
-
-                            color:
-                                Colors.white,
-
-                            fontSize: 52,
-
-                            fontWeight:
-                                FontWeight.w900,
-
-                            height: 0.95,
-                          ),
-                        ),
-
-                        const SizedBox(
-                            height: 16),
-
-                        const Text(
-
-                          'Professional servicing for your vehicle with premium quality support.',
-
-                          style: TextStyle(
-
-                            color:
-                                Colors.white70,
-
-                            fontSize: 18,
-
-                            height: 1.5,
-                          ),
-                        ),
-
-                        const SizedBox(
-                            height: 26),
-
-                        Wrap(
-
-                          spacing: 10,
-                          runSpacing: 10,
-
-                          children: [
-
-                            _chip(
-                                'LIVE TRACKING'),
-
-                            _chip(
-                                'GENUINE PARTS'),
-
-                            _chip(
-                                'SERVICE WARRANTY'),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(
-                  height: 28),
-
-              /// VEHICLE CARD
-              Padding(
-
-                padding:
-                    const EdgeInsets.symmetric(
-                        horizontal: 18),
-
-                child: Container(
-
-                  padding:
-                      const EdgeInsets.all(
-                          22),
-
-                  decoration:
-                      BoxDecoration(
-
-                    color:
-                        const Color(
-                            0xFF111111),
-
-                    borderRadius:
-                        BorderRadius.circular(
-                            28),
-
-                    border: Border.all(
-
-                      color:
-                          const Color(
-                              0xFF2A2A2A),
-                    ),
-                  ),
-
-                  child: Row(
-
-                    children: [
-
-                      Container(
-
-                        width: 72,
-                        height: 72,
-
-                        decoration:
-                            BoxDecoration(
-
-                          color: const Color(
-                                  0xFFD4A017)
-                              .withOpacity(
-                                  0.1),
-
-                          borderRadius:
-                              BorderRadius.circular(
-                                  22),
-                        ),
-
-                        child:
-                            const Icon(
-
-                          Icons
-                              .directions_car,
-
-                          color:
-                              Color(
-                                  0xFFD4A017),
-
-                          size: 36,
-                        ),
-                      ),
-
-                      const SizedBox(
-                          width: 18),
-
-                      Expanded(
-
-                        child: Column(
-
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-
-                          children: [
-
-                            Text(
-
-                              (widget.vehicle['car_model'] ?? '')
-                                  .toString(),
-
-                              style:
-                                  const TextStyle(
-
-                                color:
-                                    Colors.white,
-
-                                fontSize:
-                                    24,
-
-                                fontWeight:
-                                    FontWeight.w900,
-                              ),
-                            ),
-
-                            const SizedBox(
-                                height: 6),
-
-                            Text(
-
-                              (widget.vehicle['car_brand'] ?? '')
-                                  .toString(),
-
-                              style:
-                                  const TextStyle(
-
-                                color:
-                                    Colors.white54,
-                              ),
-                            ),
-
-                            const SizedBox(
-                                height: 6),
-
-                            Text(
-
-                              (widget.vehicle['car_number'] ?? '')
-                                  .toString(),
-
-                              style:
-                                  const TextStyle(
-
-                                color:
-                                    Color(
-                                        0xFFD4A017),
-
-                                fontWeight:
-                                    FontWeight.w700,
-
-                                letterSpacing:
-                                    2,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+              // ── Icon ──
+              Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD4A017).withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.local_shipping_rounded,
+                  color: Color(0xFFD4A017),
+                  size: 48,
                 ),
               ),
 
-              const SizedBox(
-                  height: 34),
+              const SizedBox(height: 24),
 
-              /// SERVICES
-              const Padding(
-
-                padding:
-                    EdgeInsets.symmetric(
-                        horizontal: 18),
-
-                child: Text(
-
-                  'SELECT SERVICE',
-
-                  style: TextStyle(
-
-                    color:
-                        Colors.white,
-
-                    fontSize: 28,
-
-                    fontWeight:
-                        FontWeight.w900,
-                  ),
+              // ── Title ──
+              const Text(
+                'Doorstep Pickup?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
 
-              const SizedBox(
-                  height: 18),
+              const SizedBox(height: 12),
 
+              // ── Subtitle ──
+              const Text(
+                'We can pick up your vehicle from your home and drop it back after service',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  height: 1.6,
+                ),
+              ),
+
+              const SizedBox(height: 28),
+
+              // ── Yes Button ──
               SizedBox(
-
-                height: 200,
-
-                child: ListView.builder(
-
-                  scrollDirection:
-                      Axis.horizontal,
-
-                  padding:
-                      const EdgeInsets.symmetric(
-                          horizontal: 18),
-
-                  itemCount:
-                      services.length,
-
-                  itemBuilder:
-                      (context, index) {
-
-                    final service =
-                        services[index];
-
-                    final selected =
-                        selectedIndex ==
-                            index;
-
-                    return GestureDetector(
-
-                      onTap: () {
-
-                        setState(() {
-
-                          selectedIndex =
-                              index;
-                        });
-                      },
-
-                      child: Container(
-
-                        width: 190,
-
-                        margin:
-                            const EdgeInsets.only(
-                                right: 14),
-
-                        padding:
-                            const EdgeInsets.all(
-                                18),
-
-                        decoration:
-                            BoxDecoration(
-
-                          gradient:
-                              LinearGradient(
-
-                            colors: [
-
-                              selected
-
-                                  ? const Color(
-                                      0xFF2A1E00)
-
-                                  : const Color(
-                                      0xFF141414),
-
-                              const Color(
-                                  0xFF0A0A0A),
-                            ],
-                          ),
-
-                          borderRadius:
-                              BorderRadius.circular(
-                                  28),
-
-                          border: Border.all(
-
-                            color: selected
-
-                                ? const Color(
-                                    0xFFD4A017)
-
-                                : const Color(
-                                    0xFF2A2A2A),
-                          ),
-                        ),
-
-                        child: Column(
-
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-
-                          children: [
-
-                            Container(
-
-                              padding:
-                                  const EdgeInsets.all(
-                                      10),
-
-                              decoration:
-                                  BoxDecoration(
-
-                                color: const Color(
-                                        0xFFD4A017)
-                                    .withOpacity(
-                                        0.12),
-
-                                borderRadius:
-                                    BorderRadius.circular(
-                                        14),
-                              ),
-
-                              child: Icon(
-
-                                service['icon']
-                                    as IconData,
-
-                                color:
-                                    const Color(
-                                        0xFFD4A017),
-                              ),
-                            ),
-
-                            const Spacer(),
-
-                            Text(
-
-                              service['title']
-                                  as String,
-
-                              style:
-                                  const TextStyle(
-
-                                color:
-                                    Colors.white,
-
-                                fontSize:
-                                    18,
-
-                                fontWeight:
-                                    FontWeight.w900,
-                              ),
-                            ),
-
-                            const SizedBox(
-                                height: 8),
-
-                            Text(
-
-                              service['price']
-                                  as String,
-
-                              style:
-                                  const TextStyle(
-
-                                color:
-                                    Color(
-                                        0xFFD4A017),
-
-                                fontWeight:
-                                    FontWeight.w900,
-
-                                fontSize:
-                                    20,
-                              ),
-                            ),
-
-                            const SizedBox(
-                                height: 4),
-
-                            Text(
-
-                              service['time']
-                                  as String,
-
-                              style:
-                                  const TextStyle(
-
-                                color:
-                                    Colors.white54,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD4A017),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _proceedToPayment(basePrice + 100);
                   },
-                ),
-              ),
-
-              const SizedBox(
-                  height: 34),
-
-              /// FEATURES
-              Padding(
-
-                padding:
-                    const EdgeInsets.symmetric(
-                        horizontal: 18),
-
-                child: Container(
-
-                  width: double.infinity,
-
-                  padding:
-                      const EdgeInsets.all(
-                          24),
-
-                  decoration:
-                      BoxDecoration(
-
-                    color:
-                        const Color(
-                            0xFF111111),
-
-                    borderRadius:
-                        BorderRadius.circular(
-                            28),
-                  ),
-
-                  child: Column(
-
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-
-                    children: [
-
-                      const Text(
-
-                        'SERVICE FEATURES',
-
-                        style: TextStyle(
-
-                          color:
-                              Color(
-                                  0xFFD4A017),
-
-                          fontSize: 13,
-
-                          fontWeight:
-                              FontWeight.bold,
-
-                          letterSpacing:
-                              2,
-                        ),
-                      ),
-
-                      const SizedBox(
-                          height: 20),
-
-                      ...(selectedService[
-                                  'features']
-                              as List<String>)
-                          .map(
-
-                        (feature) {
-
-                          return Padding(
-
-                            padding:
-                                const EdgeInsets.only(
-                                    bottom: 14),
-
-                            child: Row(
-
-                              children: [
-
-                                const Icon(
-
-                                  Icons.check_circle,
-
-                                  color:
-                                      Color(
-                                          0xFFD4A017),
-
-                                  size: 20,
-                                ),
-
-                                const SizedBox(
-                                    width: 12),
-
-                                Expanded(
-
-                                  child: Text(
-
-                                    feature,
-
-                                    style:
-                                        const TextStyle(
-
-                                      color:
-                                          Colors.white,
-
-                                      fontSize:
-                                          16,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(
-                  height: 26),
-
-              /// DETAILS
-              Padding(
-
-                padding:
-                    const EdgeInsets.symmetric(
-                        horizontal: 18),
-
-                child: Container(
-
-                  width: double.infinity,
-
-                  padding:
-                      const EdgeInsets.all(
-                          24),
-
-                  decoration:
-                      BoxDecoration(
-
-                    color:
-                        const Color(
-                            0xFF111111),
-
-                    borderRadius:
-                        BorderRadius.circular(
-                            28),
-                  ),
-
-                  child: Column(
-
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-
-                    children: [
-
-                      const Text(
-
-                        'WHAT WE DO',
-
-                        style: TextStyle(
-
-                          color:
-                              Color(
-                                  0xFFD4A017),
-
-                          fontSize: 13,
-
-                          fontWeight:
-                              FontWeight.bold,
-
-                          letterSpacing:
-                              2,
-                        ),
-                      ),
-
-                      const SizedBox(
-                          height: 18),
-
-                      Text(
-
-                        selectedService[
-                            'details'] as String,
-
-                        style:
-                            const TextStyle(
-
-                          color:
-                              Colors.white70,
-
-                          fontSize: 16,
-
-                          height: 1.7,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(
-                  height: 30),
-
-              /// PICKUP
-              Padding(
-
-                padding:
-                    const EdgeInsets.symmetric(
-                        horizontal: 18),
-
-                child: Container(
-
-                  padding:
-                      const EdgeInsets.all(
-                          22),
-
-                  decoration:
-                      BoxDecoration(
-
-                    color:
-                        const Color(
-                            0xFF111111),
-
-                    borderRadius:
-                        BorderRadius.circular(
-                            24),
-                  ),
-
-                  child: Row(
-
-                    children: [
-
-                      const Expanded(
-
-                        child: Column(
-
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-
-                          children: [
-
-                            Text(
-
-                              'Pickup & Drop',
-
-                              style:
-                                  TextStyle(
-
-                                color:
-                                    Colors.white,
-
-                                fontSize:
-                                    20,
-
-                                fontWeight:
-                                    FontWeight
-                                        .w900,
-                              ),
-                            ),
-
-                            SizedBox(
-                                height: 6),
-
-                            Text(
-
-                              'Doorstep vehicle collection available',
-
-                              style:
-                                  TextStyle(
-
-                                color:
-                                    Colors.white54,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      Switch(
-
-                        value:
-                            pickupEnabled,
-
-                        activeColor:
-                            const Color(
-                                0xFFD4A017),
-
-                        onChanged:
-                            (v) {
-
-                          setState(() {
-
-                            pickupEnabled =
-                                v;
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(
-                  height: 40),
-
-              /// BOOK BUTTON
-              Padding(
-
-                padding:
-                    const EdgeInsets.symmetric(
-                        horizontal: 18),
-
-                child: SizedBox(
-
-                  width: double.infinity,
-                  height: 68,
-
-                  child:
-                      ElevatedButton(
-
-                    style:
-                        ElevatedButton.styleFrom(
-
-                      backgroundColor:
-                          const Color(
-                              0xFFD4A017),
-
-                      shape:
-                          RoundedRectangleBorder(
-
-                        borderRadius:
-                            BorderRadius.circular(
-                                24),
-                      ),
-                    ),
-
-                    onPressed: () {
-
-                      Navigator.push(
-
-                        context,
-
-                        MaterialPageRoute(
-
-                          builder: (_) =>
-                              PaymentScreen(
-
-                            title:
-                                selectedService[
-                                    'title'] as String,
-
-                            price:
-                                selectedService[
-                                    'price'] as String,
-
-                            duration:
-                                selectedService[
-                                    'time'] as String,
-
-                            vehicleId:
-                                widget.vehicle['id']
-                                    .toString(),
-                          ),
-                        ),
-                      );
-                    },
-
-                    child:
-                        const Text(
-
-                      'BOOK NOW',
-
-                      style:
-                          TextStyle(
-
-                        color:
-                            Colors.black,
-
-                        fontWeight:
-                            FontWeight.w900,
-
-                        fontSize:
-                            20,
-                      ),
+                  child: const Text(
+                    'Yes, Add ₹100',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                      letterSpacing: 0.5,
                     ),
                   ),
                 ),
               ),
 
-              const SizedBox(height: 40),
+              const SizedBox(height: 12),
+
+              // ── No Button ──
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    side: const BorderSide(
+                      color: Color(0xFFD4A017),
+                      width: 2,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _proceedToPayment(basePrice);
+                  },
+                  child: const Text(
+                    'No, I\'ll Drop It Myself',
+                    style: TextStyle(
+                      color: Color(0xFFD4A017),
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       ),
-    ),
-  ),
-);
+    );
   }
-  static Widget _chip(
-      String text) {
 
-    return Container(
-
-      padding:
-          const EdgeInsets.symmetric(
-
-        horizontal: 14,
-        vertical: 8,
+  // ── Proceed to payment
+  void _proceedToPayment(int finalPrice) {
+    final selectedService = services[selectedIndex];
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PaymentScreen(
+          title: selectedService['title'] as String,
+          price: '₹$finalPrice',
+          duration: selectedService['time'] as String,
+          vehicleId: widget.vehicle['id'].toString(),
+        ),
       ),
+    );
+  }
 
-      decoration:
-          BoxDecoration(
+  @override
+  Widget build(BuildContext context) {
 
-        color:
-            const Color(
-                0xFFD4A017)
-                .withOpacity(0.12),
+    return Scaffold(
+      backgroundColor: const Color(0xFF050505),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: Stack(
+              children: [
+                // ── Scrollable Content ──
+                SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 100),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
 
-        borderRadius:
-            BorderRadius.circular(
-                18),
-      ),
+                      /// HERO SECTION (IMPROVED)
+                      Stack(
+                        children: [
+                          // ── Hero Image ──
+                          SizedBox(
+                            height: 400,
+                            width: double.infinity,
+                            child: Image.asset(
+                              'assets/images/tile_book_service.jpg',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
 
-      child: Text(
+                          // ── Strong Dark Gradient Overlay ──
+                          Container(
+                            height: 400,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withOpacity(0.3),
+                                  Colors.black.withOpacity(0.75),
+                                ],
+                                stops: const [0.3, 1.0],
+                              ),
+                            ),
+                          ),
 
-        text,
+                          // ── Hero Content ──
+                          Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                // ── Back Button ──
+                                GestureDetector(
+                                  onTap: () => Navigator.pop(context),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.55),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: Colors.white30),
+                                    ),
+                                    child: const Icon(
+                                      Icons.arrow_back,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
 
-        style: const TextStyle(
+                                // ── Content at Bottom ──
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // ── Premium Badge ──
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFD4A017).withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: const Text(
+                                        'PREMIUM CARE',
+                                        style: TextStyle(
+                                          color: Color(0xFFD4A017),
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 12,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                    ),
 
-          color:
-              Color(0xFFD4A017),
+                                    const SizedBox(height: 16),
 
-          fontWeight:
-              FontWeight.w800,
+                                    // ── Title ──
+                                    const Text(
+                                      'BOOK\nSERVICE',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 52,
+                                        fontWeight: FontWeight.w900,
+                                        height: 0.95,
+                                        letterSpacing: -1,
+                                      ),
+                                    ),
 
-          fontSize: 12,
+                                    const SizedBox(height: 12),
+
+                                    // ── Description ──
+                                    const Text(
+                                      'Professional servicing for your vehicle with genuine parts and expert technicians.',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 15,
+                                        height: 1.6,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                      maxLines: 3,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      /// SERVICE CARDS (FULL WIDTH, STACKED VERTICALLY)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          children: List.generate(services.length, (index) {
+                            final service = services[index];
+                            final isSelected = index == selectedIndex;
+
+                            return Padding(
+                              padding: EdgeInsets.only(
+                                bottom: index == services.length - 1 ? 0 : 16,
+                              ),
+                              child: GestureDetector(
+                                onTap: () => setState(() => selectedIndex = index),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF111111),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? const Color(0xFFD4A017)
+                                          : Colors.white10,
+                                      width: isSelected ? 2 : 1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(24),
+                                    boxShadow: isSelected
+                                        ? [
+                                            BoxShadow(
+                                              color: const Color(0xFFD4A017).withOpacity(0.2),
+                                              blurRadius: 20,
+                                              spreadRadius: 2,
+                                            ),
+                                          ]
+                                        : [],
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // ── Header: Icon + Title + Price ──
+                                        Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFD4A017).withOpacity(0.12),
+                                                borderRadius: BorderRadius.circular(14),
+                                              ),
+                                              child: Icon(
+                                                service['icon'] as IconData,
+                                                color: const Color(0xFFD4A017),
+                                                size: 28,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    service['title'] as String,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20,
+                                                      fontWeight: FontWeight.w900,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    children: [
+                                                      Text(
+                                                        service['price'] as String,
+                                                        style: const TextStyle(
+                                                          color: Color(0xFFD4A017),
+                                                          fontSize: 18,
+                                                          fontWeight: FontWeight.w900,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 12),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(
+                                                          horizontal: 10,
+                                                          vertical: 4,
+                                                        ),
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.white10,
+                                                          borderRadius: BorderRadius.circular(8),
+                                                        ),
+                                                        child: Text(
+                                                          service['time'] as String,
+                                                          style: const TextStyle(
+                                                            color: Colors.white60,
+                                                            fontSize: 12,
+                                                            fontWeight: FontWeight.w600,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+
+                                        const SizedBox(height: 20),
+
+                                        // ── Divider ──
+                                        Container(
+                                          height: 1,
+                                          color: Colors.white10,
+                                        ),
+
+                                        const SizedBox(height: 20),
+
+                                        // ── What's Included ──
+                                        const Text(
+                                          'WHAT\'S INCLUDED',
+                                          style: TextStyle(
+                                            color: Color(0xFFD4A017),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 1.5,
+                                          ),
+                                        ),
+
+                                        const SizedBox(height: 12),
+
+                                        Column(
+                                          children: (service['features'] as List<String>)
+                                              .asMap()
+                                              .entries
+                                              .map((entry) {
+                                            return Padding(
+                                              padding: EdgeInsets.only(
+                                                bottom: entry.key <
+                                                        (service['features'] as List)
+                                                                .length -
+                                                            1
+                                                    ? 10
+                                                    : 0,
+                                              ),
+                                              child: Row(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Container(
+                                                    margin: const EdgeInsets.only(top: 5),
+                                                    width: 5,
+                                                    height: 5,
+                                                    decoration: const BoxDecoration(
+                                                      color: Color(0xFFD4A017),
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: Text(
+                                                      entry.value,
+                                                      style: const TextStyle(
+                                                        color: Colors.white70,
+                                                        fontSize: 13,
+                                                        height: 1.5,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }).toList(),
+                                        ),
+
+                                        const SizedBox(height: 20),
+
+                                        // ── Divider ──
+                                        Container(
+                                          height: 1,
+                                          color: Colors.white10,
+                                        ),
+
+                                        const SizedBox(height: 20),
+
+                                        // ── Details ──
+                                        const Text(
+                                          'DETAILS',
+                                          style: TextStyle(
+                                            color: Color(0xFFD4A017),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 1.5,
+                                          ),
+                                        ),
+
+                                        const SizedBox(height: 12),
+
+                                        Text(
+                                          service['details'] as String,
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 13,
+                                            height: 1.7,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ));
+                          }),
+                        ),
+                      ),
+
+                      const SizedBox(height: 40),
+                    ],
+                  ),
+                ),
+
+                // ── FLOATING BOOK NOW BUTTON (BOTTOM) ──
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          const Color(0xFF050505).withOpacity(0),
+                          const Color(0xFF050505).withOpacity(0.95),
+                          const Color(0xFF050505),
+                        ],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 62,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFD4A017),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            elevation: 12,
+                            shadowColor: const Color(0xFFD4A017).withOpacity(0.4),
+                          ),
+                          onPressed: _showDoorstepPickupDialog,
+                          child: const Text(
+                            'BOOK NOW',
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

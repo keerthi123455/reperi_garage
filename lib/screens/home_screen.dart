@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:math';
-import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,7 +25,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'profile_screen.dart';
 import 'service_details_screen.dart';
 import 'servicing_package_screen.dart';
-import 'washing_package_screen.dart';
 import 'wheel_management_package_screen.dart';
 import 'paint_care_package_screen.dart';
 
@@ -619,7 +617,7 @@ class _HomeScreenState extends State<HomeScreen>
               ctx,
               MaterialPageRoute(
                 builder: (_) =>
-                    WashingPackageScreen(vehicleId: activeVehicle!['id']),
+                    CarSpaScreen(vehicle: activeVehicle!),
               ),
             );
             return;
@@ -828,11 +826,12 @@ class _HomeScreenState extends State<HomeScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'What does your car need today?',
+                    'Active vehicle:',
                     style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500),
+                        color: Colors.white70,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5),
                   ),
                   const SizedBox(height: 8),
                 ],
@@ -945,9 +944,9 @@ class _HomeScreenState extends State<HomeScreen>
                                           context,
                                           MaterialPageRoute(
                                             builder: (_) =>
-                                                WashingPackageScreen(
-                                              vehicleId:
-                                                  activeVehicle!['id'],
+                                                CarSpaScreen(
+                                              vehicle:
+                                                  activeVehicle!,
                                             ),
                                           ),
                                         );
@@ -1388,13 +1387,14 @@ class _HomeScreenState extends State<HomeScreen>
                                     ],
                                   ),
 
-                                  // ── GREETING ──
+                                  // ── ACTIVE VEHICLE LABEL ──
                                   const Text(
-                                    'What does your car need today?',
+                                    'Active vehicle:',
                                     style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w500),
+                                        color: Colors.white70,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.5),
                                   ),
 
                                   const SizedBox(height: 6),
@@ -1459,6 +1459,188 @@ class _HomeScreenState extends State<HomeScreen>
                                         )
                                       : _noProfileCard(),
 
+                                  const SizedBox(height: 16),
+
+                                  // ── WHAT DOES YOUR CAR NEED ──
+                                  const Text(
+                                    'What does your car need today?',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w500),
+                                  ),
+
+                                  const SizedBox(height: 14),
+
+                                  // ── PREMIUM SHINY ACTION BUTTONS ──
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _TappableScale(
+                                          onTap: () {
+                                            if (activeVehicle == null) {
+                                              _showNoProfileDialog(context);
+                                              return;
+                                            }
+                                            Navigator.push(context,
+                                                MaterialPageRoute(
+                                              builder: (_) =>
+                                                  BookServiceScreen(
+                                                    vehicle: activeVehicle!,
+                                                  ),
+                                            ));
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets
+                                                .symmetric(
+                                                vertical: 16),
+                                            decoration: BoxDecoration(
+                                              gradient:
+                                                  const LinearGradient(
+                                                begin: Alignment.topLeft,
+                                                end: Alignment
+                                                    .bottomRight,
+                                                colors: [
+                                                  Color(0xFFFFE6B3),
+                                                  Color(0xFFF0C65A),
+                                                  Color(0xFFE8B92A),
+                                                ],
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: const Color(
+                                                          0xFFF0C65A)
+                                                      .withOpacity(0.55),
+                                                  blurRadius: 18,
+                                                  spreadRadius: 1,
+                                                  offset: const Offset(
+                                                      0, 7),
+                                                ),
+                                                BoxShadow(
+                                                  color: const Color(
+                                                          0xFFFFD45A)
+                                                      .withOpacity(0.35),
+                                                  blurRadius: 10,
+                                                  offset: const Offset(
+                                                      0, 3),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment
+                                                      .center,
+                                              children: const [
+                                                Icon(
+                                                  Icons.build_rounded,
+                                                  color: Colors.black87,
+                                                  size: 22,
+                                                ),
+                                                SizedBox(width: 8),
+                                                Text(
+                                                  'Book Service',
+                                                  style: TextStyle(
+                                                    color: Colors.black87,
+                                                    fontSize: 16,
+                                                    fontWeight:
+                                                        FontWeight.w900,
+                                                    letterSpacing: 0.6,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _TappableScale(
+                                          onTap: () {
+                                            if (activeVehicle == null) {
+                                              _showNoProfileDialog(context);
+                                              return;
+                                            }
+                                            Navigator.push(context,
+                                                MaterialPageRoute(
+                                              builder: (_) =>
+                                                  CarSpaScreen(
+                                                    vehicle:
+                                                        activeVehicle!,
+                                                  ),
+                                            ));
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets
+                                                .symmetric(
+                                                vertical: 16),
+                                            decoration: BoxDecoration(
+                                              gradient:
+                                                  const LinearGradient(
+                                                begin: Alignment.topLeft,
+                                                end: Alignment
+                                                    .bottomRight,
+                                                colors: [
+                                                  Color(0xFFFFE6B3),
+                                                  Color(0xFFF0C65A),
+                                                  Color(0xFFE8B92A),
+                                                ],
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: const Color(
+                                                          0xFFF0C65A)
+                                                      .withOpacity(0.55),
+                                                  blurRadius: 18,
+                                                  spreadRadius: 1,
+                                                  offset: const Offset(
+                                                      0, 7),
+                                                ),
+                                                BoxShadow(
+                                                  color: const Color(
+                                                          0xFFFFD45A)
+                                                      .withOpacity(0.35),
+                                                  blurRadius: 10,
+                                                  offset: const Offset(
+                                                      0, 3),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment
+                                                      .center,
+                                              children: const [
+                                                Icon(
+                                                  Icons
+                                                      .local_car_wash_rounded,
+                                                  color: Colors.black87,
+                                                  size: 22,
+                                                ),
+                                                SizedBox(width: 8),
+                                                Text(
+                                                  'Book Washing',
+                                                  style: TextStyle(
+                                                    color: Colors.black87,
+                                                    fontSize: 16,
+                                                    fontWeight:
+                                                        FontWeight.w900,
+                                                    letterSpacing: 0.6,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 20),
+
                                   _goldSeparator(),
                                   _sectionTitle('Our Packages'),
                                   const SizedBox(height: 4),
@@ -1500,9 +1682,9 @@ class _HomeScreenState extends State<HomeScreen>
                                                   context,
                                                   MaterialPageRoute(
                                                     builder: (_) =>
-                                                        WashingPackageScreen(
-                                                      vehicleId:
-                                                          activeVehicle!['id'],
+                                                        CarSpaScreen(
+                                                      vehicle:
+                                                          activeVehicle!,
                                                     ),
                                                   ),
                                                 );
@@ -2193,7 +2375,6 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                       ),
                     );
-                    fetchProfile();
                   },
                   child: _navItem(Icons.calendar_month, 'Bookings', 1),
                 ),
