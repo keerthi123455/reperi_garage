@@ -893,6 +893,168 @@ class _HomeScreenState extends State<HomeScreen>
                                       ),
                                     ),
                                   ],
+                                  const SizedBox(height: 16),
+
+                                  // ── BOOK SERVICE / WASHING BUTTONS ──
+                                  _TappableScale(
+                                    onTap: () {
+                                      if (activeVehicle == null) {
+                                        _showNoProfileDialog(context);
+                                        return;
+                                      }
+                                      Navigator.push(context,
+                                          MaterialPageRoute(
+                                        builder: (_) =>
+                                            BookServiceScreen(
+                                              vehicle: activeVehicle!,
+                                            ),
+                                      ));
+                                    },
+                                    child: Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets
+                                          .symmetric(
+                                          vertical: 14),
+                                      decoration: BoxDecoration(
+                                        gradient:
+                                            const LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment
+                                              .bottomRight,
+                                          colors: [
+                                            Color(0xFFFFE6B3),
+                                            Color(0xFFF0C65A),
+                                            Color(0xFFE8B92A),
+                                          ],
+                                        ),
+                                        borderRadius:
+                                            BorderRadius.circular(16),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(
+                                                    0xFFF0C65A)
+                                                .withOpacity(0.55),
+                                            blurRadius: 18,
+                                            spreadRadius: 1,
+                                            offset: const Offset(
+                                                0, 7),
+                                          ),
+                                          BoxShadow(
+                                            color: const Color(
+                                                    0xFFFFD45A)
+                                                .withOpacity(0.35),
+                                            blurRadius: 10,
+                                            offset: const Offset(
+                                                0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment
+                                                .center,
+                                        children: const [
+                                          Icon(
+                                            Icons.build_rounded,
+                                            color: Colors.black87,
+                                            size: 20,
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'Book Service',
+                                            style: TextStyle(
+                                              color: Colors.black87,
+                                              fontSize: 15,
+                                              fontWeight:
+                                                  FontWeight.w900,
+                                              letterSpacing: 0.6,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  _TappableScale(
+                                    onTap: () {
+                                      if (activeVehicle == null) {
+                                        _showNoProfileDialog(context);
+                                        return;
+                                      }
+                                      Navigator.push(context,
+                                          MaterialPageRoute(
+                                        builder: (_) =>
+                                            CarSpaScreen(
+                                              vehicle:
+                                                  activeVehicle!,
+                                            ),
+                                      ));
+                                    },
+                                    child: Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets
+                                          .symmetric(
+                                          vertical: 14),
+                                      decoration: BoxDecoration(
+                                        gradient:
+                                            const LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment
+                                              .bottomRight,
+                                          colors: [
+                                            Color(0xFFFFE6B3),
+                                            Color(0xFFF0C65A),
+                                            Color(0xFFE8B92A),
+                                          ],
+                                        ),
+                                        borderRadius:
+                                            BorderRadius.circular(16),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(
+                                                    0xFFF0C65A)
+                                                .withOpacity(0.55),
+                                            blurRadius: 18,
+                                            spreadRadius: 1,
+                                            offset: const Offset(
+                                                0, 7),
+                                          ),
+                                          BoxShadow(
+                                            color: const Color(
+                                                    0xFFFFD45A)
+                                                .withOpacity(0.35),
+                                            blurRadius: 10,
+                                            offset: const Offset(
+                                                0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment
+                                                .center,
+                                        children: const [
+                                          Icon(
+                                            Icons
+                                                .local_car_wash_rounded,
+                                            color: Colors.black87,
+                                            size: 20,
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'Book Washing',
+                                            style: TextStyle(
+                                              color: Colors.black87,
+                                              fontSize: 15,
+                                              fontWeight:
+                                                  FontWeight.w900,
+                                              letterSpacing: 0.6,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               )
                             : _noProfileCard(),
