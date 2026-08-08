@@ -133,6 +133,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final filteredBookings = bookings.where((booking) {
       final vehicle = booking['vehicles'];
       final query = searchText.toLowerCase();
+      
+      // Handle null vehicle safely
+      if (vehicle == null) {
+        return (booking['booking_status'] ?? '').toString().toLowerCase().contains(query);
+      }
+      
       return (vehicle['car_number'] ?? '').toString().toLowerCase().contains(query) ||
           (vehicle['car_model'] ?? '').toString().toLowerCase().contains(query) ||
           (booking['booking_status'] ?? '').toString().toLowerCase().contains(query);
@@ -307,6 +313,48 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final vehicle = booking['vehicles'];
     final hasUnread =
         unreadBookingIds.contains(booking['id'].toString());
+    
+    // Safety check: if vehicle is null, return a placeholder card
+    if (vehicle == null) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: const Color(0xFF111111),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: const Color(0xFF2A2A2A)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Booking ID: ${booking['id'] ?? 'N/A'}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              '⚠️ Vehicle data unavailable',
+              style: TextStyle(
+                color: Color(0xFFD4A017),
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              booking['booking_status'] ?? 'Unknown',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return _TappableScale(
       onTap: () {
@@ -451,6 +499,110 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
               ],
             ),
+            // ── LOCATION SECTION ──
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFFD4A017).withOpacity(0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Location Icon and Title
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.location_on_rounded,
+                        color: Color(0xFFD4A017),
+                        size: 18,
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Pickup Location',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  
+                  // Address Text
+                  Text(
+                    booking['pickup_address'] ?? 'Not specified',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      height: 1.4,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  
+                  // GPS Coordinates (if available)
+                  if (booking['pickup_latitude'] != null &&
+                      booking['pickup_longitude'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        '📍 ${booking['pickup_latitude']?.toStringAsFixed(4)}, ${booking['pickup_longitude']?.toStringAsFixed(4)}',
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ),
+                  
+                  // Customer Phone (if available)
+                  if (booking['customer_phone'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.phone_rounded,
+                            color: Color(0xFFD4A017),
+                            size: 14,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            booking['customer_phone'] ?? '',
+                            style: const TextStyle(
+                              color: Color(0xFFD4A017),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  
+                  // Customer Name (if available)
+                  if (booking['customer_name'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'Customer: ${booking['customer_name']}',
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            
             const SizedBox(height: 22),
             const Row(
               children: [

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '/services/payment_service_factory.dart';
 import 'home_screen.dart';
+import 'package:reperi_garage/services/address_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PaymentScreen extends StatefulWidget {
   final String title;
@@ -178,6 +180,22 @@ class _PaymentScreenState
       if (widget.onSuccess != null) {
         await widget.onSuccess!(result.orderId!, result.paymentId!);
       } else {
+        // ── Get location and customer details ──
+        final addressService = AddressService();
+        final defaultAddr = await addressService.getDefaultAddress();
+        
+        // Get customer details from profiles
+        Map<String, dynamic>? profileData;
+        try {
+          profileData = await supabase
+              .from('profiles')
+              .select('full_name, phone')
+              .eq('id', user!.id)
+              .single();
+        } catch (e) {
+          // Profile might not exist, continue with null values
+        }
+        
         await supabase.from('bookings').insert({
           'user_id': user!.id,
           'vehicle_id': widget.vehicleId,
@@ -186,6 +204,18 @@ class _PaymentScreenState
           'razorpay_order_id': result.orderId,
           'razorpay_payment_id': result.paymentId,
           'payment_status': 'paid',
+          
+          // ── NEW: Location Data ──
+          'pickup_address': defaultAddr?['address'] ?? 'Not specified',
+          'pickup_latitude': defaultAddr?['latitude'],
+          'pickup_longitude': defaultAddr?['longitude'],
+          'dropoff_address': defaultAddr?['address'] ?? 'Not specified',
+          'dropoff_latitude': defaultAddr?['latitude'],
+          'dropoff_longitude': defaultAddr?['longitude'],
+          
+          // ── NEW: Customer Details ──
+          'customer_name': profileData?['full_name'] ?? 'Unknown',
+          'customer_phone': profileData?['phone'],
         });
       }
 
@@ -213,12 +243,40 @@ class _PaymentScreenState
     });
 
     try {
+      // ── Get location and customer details ──
+      final addressService = AddressService();
+      final defaultAddr = await addressService.getDefaultAddress();
+      
+      // Get customer details from profiles
+      Map<String, dynamic>? profileData;
+      try {
+        profileData = await supabase
+            .from('profiles')
+            .select('full_name, phone')
+            .eq('id', user.id)
+            .single();
+      } catch (e) {
+        // Profile might not exist, continue with null values
+      }
+      
       await supabase.from('bookings').insert({
         'user_id': user.id,
         'vehicle_id': widget.vehicleId,
         'package_name': widget.title,
         'package_price': widget.price,
         'payment_status': 'cod', // cash on delivery/pickup
+        
+        // ── NEW: Location Data ──
+        'pickup_address': defaultAddr?['address'] ?? 'Not specified',
+        'pickup_latitude': defaultAddr?['latitude'],
+        'pickup_longitude': defaultAddr?['longitude'],
+        'dropoff_address': defaultAddr?['address'] ?? 'Not specified',
+        'dropoff_latitude': defaultAddr?['latitude'],
+        'dropoff_longitude': defaultAddr?['longitude'],
+        
+        // ── NEW: Customer Details ──
+        'customer_name': profileData?['full_name'] ?? 'Unknown',
+        'customer_phone': profileData?['phone'],
       });
 
       await _showSuccessAndGoHome();

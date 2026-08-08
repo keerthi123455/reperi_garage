@@ -198,6 +198,282 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                 ),
 
                 const SizedBox(height: 28),
+                // ── LOCATION INFORMATION ──
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111111),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: const Color(0xFFD4A017).withOpacity(0.2),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── SECTION TITLE ──
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.location_on_rounded,
+                            color: Color(0xFFD4A017),
+                            size: 22,
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Service Location',
+                            style: TextStyle(
+                              color: Color(0xFFD4A017),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 20),
+                      
+                      // ── PICKUP ADDRESS ──
+                      const Text(
+                        'Pickup Address:',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.booking['pickup_address'] ?? 'Not specified',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          height: 1.5,
+                        ),
+                      ),
+                      
+                      // ── GPS COORDINATES ──
+                      if (widget.booking['pickup_latitude'] != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.gps_fixed_rounded,
+                                color: Color(0xFFD4A017),
+                                size: 14,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${widget.booking['pickup_latitude']?.toStringAsFixed(4)}, ${widget.booking['pickup_longitude']?.toStringAsFixed(4)}',
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 11,
+                                  fontFamily: 'monospace',
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      
+                      // ── DROPOFF ADDRESS (if different) ──
+                      if (widget.booking['dropoff_address'] != null &&
+                          widget.booking['dropoff_address'] !=
+                              widget.booking['pickup_address'])
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 18),
+                            const Text(
+                              'Dropoff Address:',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              widget.booking['dropoff_address'] ??
+                                  'Not specified',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                height: 1.5,
+                              ),
+                            ),
+                            if (widget.booking['dropoff_latitude'] !=
+                                null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 10),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.gps_fixed_rounded,
+                                      color: Color(0xFFD4A017),
+                                      size: 14,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '${widget.booking['dropoff_latitude']?.toStringAsFixed(4)}, ${widget.booking['dropoff_longitude']?.toStringAsFixed(4)}',
+                                      style: const TextStyle(
+                                        color: Colors.white54,
+                                        fontSize: 11,
+                                        fontFamily: 'monospace',
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      
+                      // ── CUSTOMER CONTACT ──
+                      if (widget.booking['customer_name'] != null ||
+                          widget.booking['customer_phone'] != null)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 18),
+                            const Divider(
+                              color: Colors.white12,
+                              height: 1,
+                            ),
+                            const SizedBox(height: 18),
+                            const Row(
+                              children: [
+                                Icon(
+                                  Icons.person_rounded,
+                                  color: Color(0xFFD4A017),
+                                  size: 18,
+                                ),
+                                SizedBox(width: 10),
+                                Text(
+                                  'Customer Details',
+                                  style: TextStyle(
+                                    color: Color(0xFFD4A017),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            if (widget.booking['customer_name'] != null)
+                              Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Name:',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    widget.booking['customer_name'] ?? '',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            if (widget.booking['customer_phone'] != null)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.only(top: 10),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Phone:',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    GestureDetector(
+                                      onTap: () {
+                                        // Optional: Launch dialer
+                                        // final phone = widget.booking['customer_phone'];
+                                        // launchUrl(Uri(scheme: 'tel', path: phone));
+                                      },
+                                      child: Text(
+                                        widget.booking['customer_phone'] ??
+                                            '',
+                                        style: const TextStyle(
+                                          color: Color(0xFFD4A017),
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          decoration:
+                                              TextDecoration.underline,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      
+                      // ── SERVICE NOTES (if any) ──
+                      if (widget.booking['service_location_notes'] !=
+                          null)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 18),
+                            const Text(
+                              'Special Instructions:',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.03),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.1),
+                                ),
+                              ),
+                              child: Text(
+                                widget.booking['service_location_notes'] ??
+                                    '',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w400,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 28),
 
                 // ── STAGE TITLE ──
                 const Text(

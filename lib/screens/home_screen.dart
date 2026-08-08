@@ -27,6 +27,10 @@ import 'service_details_screen.dart';
 import 'servicing_package_screen.dart';
 import 'wheel_management_package_screen.dart';
 import 'paint_care_package_screen.dart';
+import 'package:reperi_garage/services/address_service.dart';
+import 'package:reperi_garage/screens/address_management_screen.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -46,9 +50,19 @@ class _HomeScreenState extends State<HomeScreen>
   int _vehiclePageIndex = 0;
 
   bool hasActiveService = false;
-  bool hasNewUpdate = false;
+  Map<String, bool> vehicleHasUpdate = {}; // Track per-vehicle instead of global
   bool loading = true;
   int _navIndex = 0;
+
+  // ── Booking Status Tracking ──
+  Map<String, String> vehicleBookingStatus = {}; // Maps vehicle_id to status
+
+  // ── Address Management ──
+  String pickupAddress = 'Detecting location...';
+  double? pickupLatitude;
+  double? pickupLongitude;
+  bool addressLoading = false;
+  late final AddressService _addressService;
 
   // Static, hardcoded — same "not from Supabase" approach used by the 4
   // dedicated package screens. Fixes "Our Packages" occasionally showing
@@ -155,6 +169,8 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     fetchProfile();
+    _addressService = AddressService();
+    _loadPickupAddress();
 
     // ── Shimmer: loops every 3s ──
     _shimmerController = AnimationController(
@@ -322,6 +338,13 @@ class _HomeScreenState extends State<HomeScreen>
         serviceExists = bookingResponse.isNotEmpty;
         updateExists = bookingResponse.isNotEmpty &&
             bookingResponse[0]['has_unread_update'] == true;
+        
+        // Track the booking status for this vehicle
+        if (bookingResponse.isNotEmpty) {
+          vehicleBookingStatus[vehicle['id']] = 
+              bookingResponse[0]['booking_status']?.toString() ?? 'Unknown';
+          vehicleHasUpdate[vehicle['id']] = updateExists; // Per-vehicle tracking
+        }
       }
 
       if (!mounted) return;
@@ -331,7 +354,6 @@ class _HomeScreenState extends State<HomeScreen>
         vehicles = allVehicles;
         activeVehicle = vehicle;
         hasActiveService = serviceExists;
-        hasNewUpdate = updateExists;
         loading = false;
         _vehiclePageIndex = pageIndex;
       });
@@ -346,6 +368,42 @@ class _HomeScreenState extends State<HomeScreen>
       if (!mounted) return;
       setState(() => loading = false);
     }
+  }
+
+ // Get status display info for a vehicle.
+  // Rules:
+  //  - No booking at all for this vehicle -> "No active service"
+  //  - Booking exists and its status is "delivered" -> "Vehicle is delivered"
+  //  - Booking exists with any other status -> "Service in progress" (+ spanner)
+  Map<String, dynamic> _getVehicleStatusDisplay(String vehicleId) {
+    final rawStatus = vehicleBookingStatus[vehicleId];
+
+    if (rawStatus == null) {
+      return {
+        'text': 'NO ACTIVE SERVICE',
+        'color': const Color(0xFF666666), // Gray
+        'dotColor': const Color(0xFF444444),
+        'showPulse': false,
+      };
+    }
+
+    final status = rawStatus.toLowerCase();
+
+    if (status == 'delivered') {
+      return {
+        'text': 'VEHICLE IS DELIVERED',
+        'color': const Color(0xFF4CAF50), // Green
+        'dotColor': const Color(0xFF4CAF50),
+        'showPulse': false,
+      };
+    }
+
+    return {
+      'text': 'SERVICE IN PROGRESS',
+      'color': const Color(0xFFD4A017), // Gold
+      'dotColor': const Color(0xFFD4A017),
+      'showPulse': true,
+    };
   }
 
   // Called whenever the user swipes to a different vehicle in the
@@ -384,6 +442,13 @@ class _HomeScreenState extends State<HomeScreen>
       bool serviceExists = bookingResponse.isNotEmpty;
       bool updateExists = bookingResponse.isNotEmpty &&
           bookingResponse[0]['has_unread_update'] == true;
+      
+      // Track the booking status for this vehicle
+      if (bookingResponse.isNotEmpty) {
+        vehicleBookingStatus[vehicle['id']] = 
+            bookingResponse[0]['booking_status']?.toString() ?? 'Unknown';
+        vehicleHasUpdate[vehicle['id']] = updateExists; // Per-vehicle tracking
+      }
 
       if (!mounted) return;
       // Only apply if the user hasn't already swiped past this page
@@ -391,11 +456,99 @@ class _HomeScreenState extends State<HomeScreen>
       if (_vehiclePageIndex == index) {
         setState(() {
           hasActiveService = serviceExists;
-          hasNewUpdate = updateExists;
+          // Don't set global hasNewUpdate anymore — it's now per-vehicle
         });
       }
     } catch (_) {
       // Non-fatal — the badges just won't update for this swipe.
+    }
+  }
+
+  // Refresh booking status for a specific vehicle
+  Future<void> _refreshVehicleBookingStatus(String vehicleId) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final bookingResponse = await supabase
+          .from('bookings')
+          .select()
+          .eq('vehicle_id', vehicleId)
+          .order('created_at', ascending: false);
+
+      if (bookingResponse.isNotEmpty) {
+        final status = bookingResponse[0]['booking_status']?.toString() ?? 'Unknown';
+        final hasUpdate = bookingResponse[0]['has_unread_update'] == true;
+        
+        if (!mounted) return;
+        setState(() {
+          vehicleBookingStatus[vehicleId] = status;
+          vehicleHasUpdate[vehicleId] = hasUpdate;
+        });
+      }
+    } catch (_) {
+      // Silent fail — not critical
+    }
+  }
+
+  Future<void> _loadPickupAddress() async {
+    setState(() => addressLoading = true);
+    try {
+      final defaultAddr = await _addressService.getDefaultAddress();
+      
+      if (defaultAddr != null) {
+        setState(() {
+          pickupAddress = defaultAddr['address'] ?? 'Address not found';
+          pickupLatitude = defaultAddr['latitude'];
+          pickupLongitude = defaultAddr['longitude'];
+          addressLoading = false;
+        });
+      } else {
+        await _detectAndSaveLocation();
+      }
+    } catch (e) {
+      setState(() => addressLoading = false);
+    }
+  }
+
+  Future<void> _detectAndSaveLocation() async {
+    try {
+      final permission = await Geolocator.requestPermission();
+      
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        setState(() => addressLoading = false);
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      String address = '${placemarks[0].street}, ${placemarks[0].locality}, ${placemarks[0].postalCode}';
+      
+      await _addressService.initializeDefaultAddress(
+        address: address,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        pickupAddress = address;
+        pickupLatitude = position.latitude;
+        pickupLongitude = position.longitude;
+        addressLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => addressLoading = false);
     }
   }
 
@@ -421,7 +574,11 @@ class _HomeScreenState extends State<HomeScreen>
           }
           Navigator.push(ctx, MaterialPageRoute(
             builder: (_) => BookServiceScreen(vehicle: activeVehicle!),
-          ));
+          )).then((_) {
+            if (activeVehicle != null) {
+              _refreshVehicleBookingStatus(activeVehicle!['id']);
+            }
+          });
         },
       ),
       _ActionTile(
@@ -441,7 +598,11 @@ class _HomeScreenState extends State<HomeScreen>
           }
           Navigator.push(ctx, MaterialPageRoute(
             builder: (_) => CarSpaScreen(vehicle: activeVehicle!),
-          ));
+          )).then((_) {
+            if (activeVehicle != null) {
+              _refreshVehicleBookingStatus(activeVehicle!['id']);
+            }
+          });
         },
       ),
       _ActionTile(
@@ -461,7 +622,11 @@ class _HomeScreenState extends State<HomeScreen>
           }
           Navigator.push(ctx, MaterialPageRoute(
             builder: (_) => DentingTinkeringScreen(vehicle: activeVehicle!),
-          ));
+          )).then((_) {
+            if (activeVehicle != null) {
+              _refreshVehicleBookingStatus(activeVehicle!['id']);
+            }
+          });
         },
       ),
       _ActionTile(
@@ -481,7 +646,11 @@ class _HomeScreenState extends State<HomeScreen>
           }
           Navigator.push(ctx, MaterialPageRoute(
             builder: (_) => PaintCareScreen(vehicle: activeVehicle!),
-          ));
+          )).then((_) {
+            if (activeVehicle != null) {
+              _refreshVehicleBookingStatus(activeVehicle!['id']);
+            }
+          });
         },
       ),
       _ActionTile(
@@ -501,7 +670,11 @@ class _HomeScreenState extends State<HomeScreen>
           }
           Navigator.push(ctx, MaterialPageRoute(
             builder: (_) => TyreCareScreen(vehicle: activeVehicle!),
-          ));
+          )).then((_) {
+            if (activeVehicle != null) {
+              _refreshVehicleBookingStatus(activeVehicle!['id']);
+            }
+          });
         },
       ),
       _ActionTile(
@@ -609,7 +782,11 @@ class _HomeScreenState extends State<HomeScreen>
                 builder: (_) =>
                     ServicingPackageScreen(vehicleId: activeVehicle!['id']),
               ),
-            );
+            ).then((_) {
+              if (activeVehicle != null) {
+                _refreshVehicleBookingStatus(activeVehicle!['id']);
+              }
+            });
             return;
           }
           if (item['key'] == 'quick_care') {
@@ -619,7 +796,11 @@ class _HomeScreenState extends State<HomeScreen>
                 builder: (_) =>
                     CarSpaScreen(vehicle: activeVehicle!),
               ),
-            );
+            ).then((_) {
+              if (activeVehicle != null) {
+                _refreshVehicleBookingStatus(activeVehicle!['id']);
+              }
+            });
             return;
           }
           if (item['key'] == 'wheelzcare') {
@@ -629,7 +810,11 @@ class _HomeScreenState extends State<HomeScreen>
                 builder: (_) => WheelManagementPackageScreen(
                     vehicleId: activeVehicle!['id']),
               ),
-            );
+            ).then((_) {
+              if (activeVehicle != null) {
+                _refreshVehicleBookingStatus(activeVehicle!['id']);
+              }
+            });
             return;
           }
           if (item['key'] == 'car360_pack') {
@@ -639,7 +824,11 @@ class _HomeScreenState extends State<HomeScreen>
                 builder: (_) =>
                     PaintCarePackageScreen(vehicleId: activeVehicle!['id']),
               ),
-            );
+            ).then((_) {
+              if (activeVehicle != null) {
+                _refreshVehicleBookingStatus(activeVehicle!['id']);
+              }
+            });
             return;
           }
         },
@@ -908,7 +1097,11 @@ class _HomeScreenState extends State<HomeScreen>
                                             BookServiceScreen(
                                               vehicle: activeVehicle!,
                                             ),
-                                      ));
+                                      )).then((_) {
+                                        if (activeVehicle != null) {
+                                          _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                        }
+                                      });
                                     },
                                     child: Container(
                                       width: double.infinity,
@@ -988,7 +1181,11 @@ class _HomeScreenState extends State<HomeScreen>
                                               vehicle:
                                                   activeVehicle!,
                                             ),
-                                      ));
+                                      )).then((_) {
+                                        if (activeVehicle != null) {
+                                          _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                        }
+                                      });
                                     },
                                     child: Container(
                                       width: double.infinity,
@@ -1098,7 +1295,11 @@ class _HomeScreenState extends State<HomeScreen>
                                                   activeVehicle!['id'],
                                             ),
                                           ),
-                                        );
+                                        ).then((_) {
+                                          if (activeVehicle != null) {
+                                            _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                          }
+                                        });
                                         return;
                                       }
                                       if (item['key'] == 'quick_care') {
@@ -1111,7 +1312,11 @@ class _HomeScreenState extends State<HomeScreen>
                                                   activeVehicle!,
                                             ),
                                           ),
-                                        );
+                                        ).then((_) {
+                                          if (activeVehicle != null) {
+                                            _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                          }
+                                        });
                                         return;
                                       }
                                       if (item['key'] == 'wheelzcare') {
@@ -1124,7 +1329,11 @@ class _HomeScreenState extends State<HomeScreen>
                                                   activeVehicle!['id'],
                                             ),
                                           ),
-                                        );
+                                        ).then((_) {
+                                          if (activeVehicle != null) {
+                                            _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                          }
+                                        });
                                         return;
                                       }
                                       if (item['key'] == 'car360_pack') {
@@ -1137,7 +1346,11 @@ class _HomeScreenState extends State<HomeScreen>
                                                   activeVehicle!['id'],
                                             ),
                                           ),
-                                        );
+                                        ).then((_) {
+                                          if (activeVehicle != null) {
+                                            _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                          }
+                                        });
                                         return;
                                       }
                                     },
@@ -1549,14 +1762,71 @@ class _HomeScreenState extends State<HomeScreen>
                                     ],
                                   ),
 
-                                  // ── ACTIVE VEHICLE LABEL ──
-                                  const Text(
-                                    'Active vehicle:',
-                                    style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 0.5),
+                                  // ── ACTIVE VEHICLE & ADDRESS ROW ──
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Row(
+                                          children: [
+                                            const Text(
+                                              'Active vehicle:',
+                                              style: TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  letterSpacing: 0.5),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Row(
+                                                children: [
+                                                  const Icon(
+                                                    Icons.location_on_rounded,
+                                                    color: Color(0xFFD4A017),
+                                                    size: 14,
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Expanded(
+                                                    child: Text(
+                                                      pickupAddress,
+                                                      style: const TextStyle(
+                                                        color: Colors.white70,
+                                                        fontSize: 13,
+                                                        fontWeight: FontWeight.w600,
+                                                        letterSpacing: 0.5,
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                      maxLines: 1,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      GestureDetector(
+                                        onTap: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => const AddressManagementScreen(),
+                                            ),
+                                          ).then((_) => setState(() {}));
+                                        },
+                                        child: const Text(
+                                          'Change',
+                                          style: TextStyle(
+                                            color: Color(0xFFD4A017),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            decoration: TextDecoration.underline,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
 
                                   const SizedBox(height: 6),
@@ -1650,7 +1920,11 @@ class _HomeScreenState extends State<HomeScreen>
                                                   BookServiceScreen(
                                                     vehicle: activeVehicle!,
                                                   ),
-                                            ));
+                                            )).then((_) {
+                                              if (activeVehicle != null) {
+                                                _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                              }
+                                            });
                                           },
                                           child: Container(
                                             padding: const EdgeInsets
@@ -1731,7 +2005,11 @@ class _HomeScreenState extends State<HomeScreen>
                                                     vehicle:
                                                         activeVehicle!,
                                                   ),
-                                            ));
+                                            )).then((_) {
+                                              if (activeVehicle != null) {
+                                                _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                              }
+                                            });
                                           },
                                           child: Container(
                                             padding: const EdgeInsets
@@ -1835,7 +2113,11 @@ class _HomeScreenState extends State<HomeScreen>
                                                           activeVehicle!['id'],
                                                     ),
                                                   ),
-                                                );
+                                                ).then((_) {
+                                                  if (activeVehicle != null) {
+                                                    _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                                  }
+                                                });
                                                 return;
                                               }
                                               if (item['key'] ==
@@ -1849,7 +2131,11 @@ class _HomeScreenState extends State<HomeScreen>
                                                           activeVehicle!,
                                                     ),
                                                   ),
-                                                );
+                                                ).then((_) {
+                                                  if (activeVehicle != null) {
+                                                    _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                                  }
+                                                });
                                                 return;
                                               }
                                               if (item['key'] ==
@@ -1863,7 +2149,11 @@ class _HomeScreenState extends State<HomeScreen>
                                                           activeVehicle!['id'],
                                                     ),
                                                   ),
-                                                );
+                                                ).then((_) {
+                                                  if (activeVehicle != null) {
+                                                    _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                                  }
+                                                });
                                                 return;
                                               }
                                               if (item['key'] ==
@@ -1877,7 +2167,11 @@ class _HomeScreenState extends State<HomeScreen>
                                                           activeVehicle!['id'],
                                                     ),
                                                   ),
-                                                );
+                                                ).then((_) {
+                                                  if (activeVehicle != null) {
+                                                    _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                                  }
+                                                });
                                                 return;
                                               }
                                               Navigator.push(
@@ -1904,7 +2198,11 @@ class _HomeScreenState extends State<HomeScreen>
                                                             as List),
                                                   ),
                                                 ),
-                                              );
+                                              ).then((_) {
+                                                if (activeVehicle != null) {
+                                                  _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                                }
+                                              });
                                             },
                                             child: Container(
                                               margin: const EdgeInsets
@@ -2885,30 +3183,25 @@ class _HomeScreenState extends State<HomeScreen>
                               height: 7,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: hasActiveService
-                                    ? const Color(0xFFD4A017)
-                                    : const Color(0xFF444444),
+                                color: _getVehicleStatusDisplay(v['id'])['dotColor'],
                               ),
                             ),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
-                                hasActiveService
-                                    ? 'SERVICE IN PROGRESS'
-                                    : 'NO ACTIVE SERVICE',
+                                _getVehicleStatusDisplay(v['id'])['text'],
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: hasActiveService
-                                      ? const Color(0xFFD4A017)
-                                      : const Color(0xFF666666),
+                                  color: _getVehicleStatusDisplay(v['id'])['color'],
                                   fontWeight: FontWeight.w700,
                                   fontSize: 10,
                                   letterSpacing: 0.6,
                                 ),
                               ),
                             ),
-                            if (hasActiveService) const _PulseDot(),
+                            if (_getVehicleStatusDisplay(v['id'])['showPulse']) 
+                              const _PulseDot(),
                           ],
                         ),
                       ],
@@ -2930,36 +3223,29 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ),
 
-        if (hasNewUpdate)
+        // ── RED SPANNER BADGE FOR ACTIVE SERVICE ──
+        if (vehicleBookingStatus[v['id']] != null &&
+            vehicleBookingStatus[v['id']]?.toLowerCase() != 'delivered')
           Positioned(
-            top: -8,
-            right: 12,
+            top: -6,
+            right: -6,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
                 color: Colors.red,
-                borderRadius: BorderRadius.circular(20),
+                shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.red.withOpacity(0.35), blurRadius: 6)
-                ],
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.circle, color: Colors.white, size: 6),
-                  SizedBox(width: 4),
-                  Text(
-                    'NEW UPDATE',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.6,
-                    ),
+                    color: Colors.red.withOpacity(0.6),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
                   ),
                 ],
+              ),
+              child: const Icon(
+                Icons.build_rounded,
+                color: Colors.white,
+                size: 16,
               ),
             ),
           ),

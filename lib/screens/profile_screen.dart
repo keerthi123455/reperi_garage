@@ -131,6 +131,241 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // ── Check if vehicle has active service ──
+  Future<bool> _checkActiveService(String vehicleId) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final response = await supabase
+          .from('bookings')
+          .select()
+          .eq('vehicle_id', vehicleId)
+          .order('created_at', ascending: false)
+          .limit(1);
+
+      if (response.isEmpty) return false;
+      
+      final booking = response[0];
+      final status = booking['booking_status'] as String?;
+      
+      // Cannot delete if there's any booking that is NOT Delivered
+      // Allowed to delete only if:
+      // 1. No bookings exist, OR
+      // 2. Latest booking status is "Delivered"
+      if (status == null) return false;
+      
+      final statusLower = status.toLowerCase();
+      
+      // Check if booking has active status (service in progress)
+      // Do not allow deletion if status is any of these (except Delivered)
+      return statusLower != 'delivered' && 
+             (statusLower == 'confirmed' || 
+              statusLower == 'in_progress' ||
+              statusLower == 'accepted' ||
+              statusLower == 'scheduled');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ── Show delete confirmation dialog ──
+  Future<void> _confirmDeleteVehicle(Map<String, dynamic> vehicle) async {
+    // First check if there's an active service
+    final hasActiveService = await _checkActiveService(vehicle['id'] as String);
+
+    if (!mounted) return;
+
+    if (hasActiveService) {
+      // Show "Cannot delete" dialog with warning
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Row(
+            children: const [
+              Icon(Icons.error_rounded, color: Colors.red, size: 28),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Cannot Delete Vehicle',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.red),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 50),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Vehicle Cannot Be Deleted',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'This vehicle has a service in progress. Please wait until the service is delivered before attempting to delete.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey,
+                  height: 1.6,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text(
+                'Understood',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.red,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // Show delete confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text(
+          'Delete Vehicle?',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.delete_outline_rounded, 
+                color: Colors.orange, size: 40),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '${vehicle['car_brand']} ${vehicle['car_model']}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Are you sure you want to delete this vehicle? All the service history and progress will be lost.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'No',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Yes, I understand',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _deleteVehicle(vehicle['id'] as String);
+    }
+  }
+
+  // ── Delete vehicle from database ──
+  Future<void> _deleteVehicle(String vehicleId) async {
+    try {
+      final supabase = Supabase.instance.client;
+      
+      // Delete the vehicle
+      await supabase
+          .from('vehicles')
+          .delete()
+          .eq('id', vehicleId);
+
+      if (!mounted) return;
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vehicle deleted successfully'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // Refresh the vehicle list
+      await fetchVehicles();
+    } catch (e) {
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete vehicle: ${ErrorHandler.getUserMessage(e)}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   void openAddVehicleSheet() {
     final nameController = TextEditingController();
     final carModelController = TextEditingController();
@@ -523,8 +758,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             ],
                                           ),
                                         ),
-                                        const Icon(Icons.chevron_right_rounded,
-                                            color: Colors.grey),
+                                        // Delete button
+                                        GestureDetector(
+                                          onTap: () => _confirmDeleteVehicle(v),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: Colors.red.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                            child: Icon(
+                                              Icons.delete_outline_rounded,
+                                              color: Colors.red.shade600,
+                                              size: 22,
+                                            ),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
