@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '/services/payment_service_factory.dart';
 import 'home_screen.dart';
 import 'package:reperi_garage/services/address_service.dart';
+import 'package:reperi_garage/screens/address_management_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class PaymentScreen extends StatefulWidget {
@@ -45,6 +46,13 @@ class _PaymentScreenState
     with SingleTickerProviderStateMixin {
   bool orderPlaced = false;
   bool isProcessing = false;
+  
+  // ── Address state ──
+  String selectedAddress = 'Loading address...';
+  double? selectedLatitude;
+  double? selectedLongitude;
+  bool addressLoading = true;
+  late final AddressService _addressService;
 
   late AnimationController
       _controller;
@@ -67,6 +75,99 @@ class _PaymentScreenState
       parent: _controller,
       curve: Curves.elasticOut,
     );
+    
+    // ── Initialize address service and load default address ──
+    _addressService = AddressService();
+    _loadDefaultAddress();
+  }
+  
+  /// Load the default address for display
+  Future<void> _loadDefaultAddress() async {
+    try {
+      final defaultAddr = await _addressService.getDefaultAddress();
+      
+      if (mounted) {
+        setState(() {
+          if (defaultAddr != null) {
+            selectedAddress = defaultAddr['address'] ?? 'Address not found';
+            selectedLatitude = defaultAddr['latitude'];
+            selectedLongitude = defaultAddr['longitude'];
+          } else {
+            selectedAddress = 'No address saved';
+          }
+          addressLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          selectedAddress = 'Error loading address';
+          addressLoading = false;
+        });
+      }
+    }
+  }
+  
+  /// Check if address is valid before proceeding to payment
+  bool _isAddressValid() {
+    return selectedAddress.isNotEmpty &&
+        selectedAddress != 'No address saved' &&
+        selectedAddress != 'Address not found' &&
+        selectedAddress != 'Loading address...' &&
+        selectedLatitude != null &&
+        selectedLongitude != null;
+  }
+  
+  /// Show error popup if address is invalid
+  void _showAddressErrorPopup() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text(
+          'Address Required',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: const Text(
+          'Enter valid address to continue to payment',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Close',
+              style: TextStyle(color: Color(0xFFD4A017)),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _navigateToAddressManagement();
+            },
+            child: const Text(
+              'Add Address',
+              style: TextStyle(color: Color(0xFFD4A017)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  /// Navigate to address management screen
+  Future<void> _navigateToAddressManagement() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const AddressManagementScreen(),
+      ),
+    );
+    // Reload address after returning
+    await _loadDefaultAddress();
   }
 
   void _goToHomeScreen() {
@@ -95,6 +196,12 @@ class _PaymentScreenState
 
   /// PATH 1: Pay Online via Razorpay
   Future<void> placeOnlineOrder() async {
+    // ── VALIDATION: Check if address is valid ──
+    if (!_isAddressValid()) {
+      _showAddressErrorPopup();
+      return;
+    }
+    
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
 
@@ -233,6 +340,12 @@ class _PaymentScreenState
 
   /// PATH 2: Cash on Pickup, no online payment
   Future<void> placeCashOnPickupOrder() async {
+    // ── VALIDATION: Check if address is valid ──
+    if (!_isAddressValid()) {
+      _showAddressErrorPopup();
+      return;
+    }
+    
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
 
@@ -656,6 +769,82 @@ class _PaymentScreenState
 
                     const SizedBox(
                         height: 50),
+
+                    /// ── ADDRESS DISPLAY SECTION ──
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A1A),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: const Color(0xFF2A2A2A),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'PICKUP ADDRESS',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.location_on_rounded,
+                                color: Color(0xFFD4A017),
+                                size: 16,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: addressLoading
+                                    ? const SizedBox(
+                                        height: 16,
+                                        width: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(
+                                            Color(0xFFD4A017),
+                                          ),
+                                        ),
+                                      )
+                                    : Text(
+                                        selectedAddress,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 0.3,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                              ),
+                              const SizedBox(width: 12),
+                              GestureDetector(
+                                onTap: _navigateToAddressManagement,
+                                child: const Text(
+                                  'Change',
+                                  style: TextStyle(
+                                    color: Color(0xFFD4A017),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 32),
 
                     /// PAY ONLINE BUTTON
                     GestureDetector(
