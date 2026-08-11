@@ -27,8 +27,6 @@ Future<void> main() async {
   await PushNotificationService.init();
 
   Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-    print("MAIN AUTH EVENT: ${data.event}");
-
     if (data.event == AuthChangeEvent.passwordRecovery) {
       isPasswordRecoveryInProgress = true;
 

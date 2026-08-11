@@ -55,13 +55,7 @@ class _SplashScreenState extends State<SplashScreen>
 _authSubscription =
     Supabase.instance.client.auth.onAuthStateChange.listen(
   (data) {
-    print('================================');
-    print('AUTH EVENT: ${data.event}');
-    print('SESSION: ${data.session}');
-    print('================================');
-
     if (data.event == AuthChangeEvent.passwordRecovery) {
-      print('PASSWORD RECOVERY DETECTED');
 
       _handledRecovery = true;
 

@@ -26,7 +26,6 @@ class AddressService {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      print('Error fetching addresses: $e');
       return [];
     }
   }
@@ -52,7 +51,6 @@ class AddressService {
 
       return response[0];
     } catch (e) {
-      print('Error fetching default address: $e');
       return null;
     }
   }
@@ -90,7 +88,6 @@ class AddressService {
 
       return true;
     } catch (e) {
-      print('Error adding address: $e');
       return false;
     }
   }
@@ -136,7 +133,6 @@ class AddressService {
 
       return true;
     } catch (e) {
-      print('Error updating address: $e');
       return false;
     }
   }
@@ -155,7 +151,6 @@ class AddressService {
 
       return true;
     } catch (e) {
-      print('Error deleting address: $e');
       return false;
     }
   }
@@ -182,7 +177,6 @@ class AddressService {
 
       return true;
     } catch (e) {
-      print('Error setting default address: $e');
       return false;
     }
   }
@@ -210,7 +204,7 @@ class AddressService {
         isDefault: true,
       );
     } catch (e) {
-      print('Error initializing default address: $e');
+      // Error handled silently
     }
   }
 }
