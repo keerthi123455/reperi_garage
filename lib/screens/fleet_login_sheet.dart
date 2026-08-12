@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'fleet_order_sheet.dart';
 import 'fleet_dashboard_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 class FleetLoginSheet extends StatefulWidget {
   const FleetLoginSheet({super.key});
 
@@ -11,7 +12,6 @@ class FleetLoginSheet extends StatefulWidget {
 }
 
 class _FleetLoginSheetState extends State<FleetLoginSheet> {
-  final _companyController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
 
@@ -19,10 +19,104 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
 
   @override
   void dispose() {
-    _companyController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  // Helper method to show error dialog
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Row(
+          children: [
+            const Icon(Icons.error_rounded, color: Colors.red),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD4A017),
+            ),
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper method to show success dialog
+  void _showSuccessDialog(String title, String message, VoidCallback onClose) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade700,
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              onClose();
+            },
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -98,17 +192,6 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                 ),
 
                 const SizedBox(height: 32),
-                _label('Company Name'),
-                const SizedBox(height: 8),
-
-                _field(
-                  controller: _companyController,
-                  hint: 'Company Name',
-                  icon: Icons.business_rounded,
-                ),
-
-                const SizedBox(height: 20),
-
                 _label('Username'),
                 const SizedBox(height: 8),
 
@@ -154,6 +237,268 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                   ),
                 ),
 
+                const SizedBox(height: 20),
+
+                // Forgot Password Button
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {
+                      final emailController = TextEditingController();
+                      final usernameController = TextEditingController();
+                      final passwordController = TextEditingController();
+
+                      showDialog(
+                        context: context,
+                        builder: (context) {
+                          bool isLoading = false;
+
+                          return StatefulBuilder(
+                            builder: (context, setDialogState) {
+                              return AlertDialog(
+                                title: const Text('Reset Password'),
+                                backgroundColor: const Color(0xFF1A1A1A),
+                                titleTextStyle: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                content: SingleChildScrollView(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      // Email field
+                                      const Text(
+                                        'Email registered with Reperi',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: emailController,
+                                        keyboardType: TextInputType.emailAddress,
+                                        style: const TextStyle(color: Colors.white),
+                                        enabled: !isLoading,
+                                        decoration: InputDecoration(
+                                          hintText: 'your@email.com',
+                                          hintStyle: const TextStyle(color: Color(0xFF444444)),
+                                          filled: true,
+                                          fillColor: const Color(0xFF2A2A2A),
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                            borderSide: const BorderSide(color: Color(0xFF333333)),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+
+                                      // Username field
+                                      const Text(
+                                        'Username registered with Reperi',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: usernameController,
+                                        style: const TextStyle(color: Colors.white),
+                                        enabled: !isLoading,
+                                        decoration: InputDecoration(
+                                          hintText: 'your_username',
+                                          hintStyle: const TextStyle(color: Color(0xFF444444)),
+                                          filled: true,
+                                          fillColor: const Color(0xFF2A2A2A),
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                            borderSide: const BorderSide(color: Color(0xFF333333)),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+
+                                      // New password field
+                                      const Text(
+                                        'New Password',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: passwordController,
+                                        obscureText: true,
+                                        style: const TextStyle(color: Colors.white),
+                                        enabled: !isLoading,
+                                        decoration: InputDecoration(
+                                          hintText: 'Enter new password',
+                                          hintStyle: const TextStyle(color: Color(0xFF444444)),
+                                          filled: true,
+                                          fillColor: const Color(0xFF2A2A2A),
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                            borderSide: const BorderSide(color: Color(0xFF333333)),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: isLoading ? null : () => Navigator.pop(context),
+                                    child: const Text(
+                                      'Cancel',
+                                      style: TextStyle(color: Color(0xFFD4A017)),
+                                    ),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFD4A017),
+                                    ),
+                                    onPressed: isLoading
+                                        ? null
+                                        : () async {
+                                            setDialogState(() => isLoading = true);
+
+                                            try {
+                                              final email = emailController.text.trim();
+                                              final username = usernameController.text.trim();
+                                              final newPassword = passwordController.text.trim();
+
+                                              // Validate email
+                                              if (email.isEmpty) {
+                                                if (!context.mounted) return;
+                                                Navigator.pop(context);
+                                                _showErrorDialog(
+                                                  'Empty Email',
+                                                  'Please enter your registered email address.',
+                                                );
+                                                return;
+                                              }
+
+                                              // Validate username
+                                              if (username.isEmpty) {
+                                                if (!context.mounted) return;
+                                                Navigator.pop(context);
+                                                _showErrorDialog(
+                                                  'Empty Username',
+                                                  'Please enter your registered username.',
+                                                );
+                                                return;
+                                              }
+
+                                              // Validate password
+                                              if (newPassword.isEmpty) {
+                                                if (!context.mounted) return;
+                                                Navigator.pop(context);
+                                                _showErrorDialog(
+                                                  'Empty Password',
+                                                  'Please enter a new password.',
+                                                );
+                                                return;
+                                              }
+
+                                              if (newPassword.length < 6) {
+                                                if (!context.mounted) return;
+                                                Navigator.pop(context);
+                                                _showErrorDialog(
+                                                  'Weak Password',
+                                                  'Password must be at least 6 characters long.',
+                                                );
+                                                return;
+                                              }
+
+                                              // Find fleet user with matching email AND username
+                                              final response = await Supabase.instance.client
+                                                  .from('fleet_users')
+                                                  .select()
+                                                  .eq('email', email)
+                                                  .eq('username', username)
+                                                  .maybeSingle();
+
+                                              if (!context.mounted) return;
+
+                                              if (response == null) {
+                                                // Email and username don't match
+                                                Navigator.pop(context);
+                                                _showErrorDialog(
+                                                  'No Match Found',
+                                                  'Email and username do not match our records. Please verify and try again.',
+                                                );
+                                                return;
+                                              }
+
+                                              // Update password
+                                              await Supabase.instance.client
+                                                  .from('fleet_users')
+                                                  .update({'password': newPassword})
+                                                  .eq('id', response['id']);
+
+                                              if (!context.mounted) return;
+
+                                              Navigator.pop(context);
+
+                                              _showSuccessDialog(
+                                                'Password Reset',
+                                                'Password reset successfully! Please login with your new password.',
+                                                () {},
+                                              );
+                                            } catch (e) {
+                                              if (!context.mounted) return;
+                                              Navigator.pop(context);
+                                              _showErrorDialog(
+                                                'Reset Failed',
+                                                'Error resetting password: $e',
+                                              );
+                                            }
+                                          },
+                                    child: isLoading
+                                        ? const SizedBox(
+                                            height: 16,
+                                            width: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(Colors.black),
+                                            ),
+                                          )
+                                        : const Text(
+                                            'Reset Password',
+                                            style: TextStyle(color: Colors.black),
+                                          ),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text(
+                      'Forgot Password?',
+                      style: TextStyle(
+                        color: Color(0xFFD4A017),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+
                 const SizedBox(height: 32),
 
                 // Submit Button
@@ -175,86 +520,75 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                             });
 
                             try {
+                              final username = _usernameController.text.trim();
+                              final password = _passwordController.text.trim();
+
+                              // Validate fields not empty
+                              if (username.isEmpty || password.isEmpty) {
+                                setState(() {
+                                  _loading = false;
+                                });
+                                _showErrorDialog(
+                                  'Missing Fields',
+                                  'Please enter both username and password.',
+                                );
+                                return;
+                              }
+
                               final fleetUser = await Supabase.instance.client
                                   .from('fleet_users')
                                   .select()
                                   .ilike(
-                                    'company_name',
-                                    _companyController.text.trim(),
-                                  )
-                                  .ilike(
                                     'username',
-                                    _usernameController.text.trim(),
+                                    username,
                                   )
                                   .eq(
                                     'password',
-                                    _passwordController.text.trim(),
+                                    password,
                                   )
                                   .maybeSingle();
 
                               if (!mounted) return;
 
                               if (fleetUser != null) {
+                                // Success - Login successful
+                                final prefs = await SharedPreferences.getInstance();
 
-      final prefs =
-          await SharedPreferences.getInstance();
+                                await prefs.setBool('fleet_logged_in', true);
+                                await prefs.setString('fleet_company', fleetUser['company_name'] ?? 'N/A');
+                                await prefs.setString('fleet_username', fleetUser['username']);
+                                await prefs.setString('fleet_user_id', fleetUser['id'].toString());
 
-      await prefs.setBool(
-        'fleet_logged_in',
-        true,
-      );
+                                if (!mounted) return;
 
-      await prefs.setString(
-        'fleet_company',
-        fleetUser['company_name'],
-      );
-
-      await prefs.setString(
-        'fleet_username',
-        fleetUser['username'],
-      );
-
-      await prefs.setString(
-        'fleet_user_id',
-        fleetUser['id'].toString(),
-      );
-
-      Navigator.pop(context);
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => FleetDashboardScreen(
-            fleetUser: fleetUser,
-          ),
-        ),
-      );
-
-    } else {
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Invalid Company, Username or Password',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-
-    }
-                            } catch (e) {
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(e.toString()),
-                                ),
-                              );
-                            } finally {
-                              if (mounted) {
+                                Navigator.pop(context);
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => FleetDashboardScreen(
+                                      fleetUser: fleetUser,
+                                    ),
+                                  ),
+                                );
+                              } else {
+                                // Error - Invalid credentials
                                 setState(() {
                                   _loading = false;
                                 });
+                                _showErrorDialog(
+                                  'Login Failed',
+                                  'Invalid username or password. Please try again.',
+                                );
                               }
+                            } catch (e) {
+                              if (!mounted) return;
+                              setState(() {
+                                _loading = false;
+                              });
+                              _showErrorDialog(
+                                'Error',
+                                'An error occurred: ${e.toString()}',
+                              );
                             }
                           },
                     child: _loading

@@ -25,6 +25,237 @@ class _LoginScreenState extends State<LoginScreen>
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+  Future<void> _forgotPasswordAdmin() async {
+    final emailController = TextEditingController();
+    final usernameController = TextEditingController();
+    final passwordController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        bool isLoading = false;
+        
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Reset Password'),
+              backgroundColor: const Color(0xFF1A1A1A),
+              titleTextStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Email field
+                    const Text(
+                      'Email registered with Reperi',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(color: Colors.white),
+                      enabled: !isLoading,
+                      decoration: InputDecoration(
+                        hintText: 'your@email.com',
+                        hintStyle: const TextStyle(color: Color(0xFF444444)),
+                        filled: true,
+                        fillColor: const Color(0xFF2A2A2A),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFF333333)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Username field
+                    const Text(
+                      'Username registered with Reperi',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: usernameController,
+                      style: const TextStyle(color: Colors.white),
+                      enabled: !isLoading,
+                      decoration: InputDecoration(
+                        hintText: 'your_username',
+                        hintStyle: const TextStyle(color: Color(0xFF444444)),
+                        filled: true,
+                        fillColor: const Color(0xFF2A2A2A),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFF333333)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // New password field
+                    const Text(
+                      'New Password',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: passwordController,
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white),
+                      enabled: !isLoading,
+                      decoration: InputDecoration(
+                        hintText: 'Enter new password',
+                        hintStyle: const TextStyle(color: Color(0xFF444444)),
+                        filled: true,
+                        fillColor: const Color(0xFF2A2A2A),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFF333333)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLoading ? null : () => Navigator.pop(context),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Color(0xFFD4A017)),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD4A017),
+                  ),
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          setDialogState(() => isLoading = true);
+
+                          try {
+                            final email = emailController.text.trim();
+                            final username = usernameController.text.trim();
+                            final newPassword = passwordController.text.trim();
+
+                            // Validate inputs
+                            if (email.isEmpty || username.isEmpty || newPassword.isEmpty) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('All fields are required'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                              setDialogState(() => isLoading = false);
+                              return;
+                            }
+
+                            // Find admin with matching email AND username
+                            final response = await Supabase.instance.client
+                                .from('admin')
+                                .select()
+                                .eq('email', email)
+                                .eq('username', username)
+                                .maybeSingle();
+
+                            if (!mounted) return;
+
+                            if (response == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Email and Username do not match. Please check and try again.',
+                                  ),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                              setDialogState(() => isLoading = false);
+                              return;
+                            }
+
+                            // Update password
+                            await Supabase.instance.client
+                                .from('admin')
+                                .update({'password': newPassword})
+                                .eq('id', response['id']);
+
+                            if (!mounted) return;
+
+                            Navigator.pop(context);
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Row(
+                                  children: [
+                                    Icon(Icons.check_circle, color: Colors.green),
+                                    SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        'Password reset successfully! Please login with your new password.',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                backgroundColor: Colors.green.shade700,
+                              ),
+                            );
+                          } catch (e) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            setDialogState(() => isLoading = false);
+                          }
+                        },
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                          ),
+                        )
+                      : const Text(
+                          'Reset Password',
+                          style: TextStyle(color: Colors.black),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    emailController.dispose();
+    usernameController.dispose();
+    passwordController.dispose();
+  }
+
   Future<void> _forgotPassword() async {
   final emailController = TextEditingController();
 
@@ -487,7 +718,13 @@ class _LoginScreenState extends State<LoginScreen>
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: _forgotPassword,
+              onPressed: () {
+                if (isClient) {
+                  _forgotPassword();
+                } else {
+                  _forgotPasswordAdmin();
+                }
+              },
               style: TextButton.styleFrom(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
