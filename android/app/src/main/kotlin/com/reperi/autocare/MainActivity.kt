@@ -1,4 +1,4 @@
-package com.reperi.garage
+package com.reperi.autocare
 
 import io.flutter.embedding.android.FlutterActivity
 

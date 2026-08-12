@@ -3731,102 +3731,81 @@ class _ActionCard extends StatelessWidget {
     return _TappableScale(
       onTap: onTap,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: Stack(
-          fit: StackFit.expand,
+        borderRadius: BorderRadius.circular(20),
+        child: Column(
           children: [
-            Image.asset(
-              tile.image,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                color: const Color(0xFF1A1A1A),
-                child:
-                    Icon(tile.icon, color: const Color(0xFFD4A017), size: 40),
-              ),
-            ),
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0x55000000),
-                    Color(0xCC000000),
-                    Color(0xF5000000),
-                  ],
-                  stops: [0.0, 0.5, 1.0],
+            // TOP SECTION: Image (82%)
+            Expanded(
+              flex: 82,
+              child: Image.asset(
+                tile.image,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: const Color(0xFF2A2A2A),
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Align(
-                    alignment: Alignment.topRight,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: tile.badgeColor,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        tile.badge,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: Icon(tile.icon, color: Colors.white, size: 18),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    tile.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                      height: 1.15,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    tile.subtitle,
-                    style: const TextStyle(color: Colors.white60, fontSize: 11),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(tile.statIcon, color: tile.statColor, size: 12),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          tile.stat,
-                          style: TextStyle(
-                            color: tile.statColor,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+            // BOTTOM SECTION: Gold Shining Sheet (18%) - Sleek & Compact
+            Expanded(
+              flex: 18,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFFD4A017),
+                      Color(0xFFE8C75D),
+                      Color(0xFFC49A1F),
                     ],
                   ),
-                ],
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0xFFD4A017).withOpacity(0.4),
+                      blurRadius: 8,
+                      spreadRadius: 0,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Service Name - Black Text, Sleek
+                    Expanded(
+                      child: Text(
+                        tile.title.split('&').first.trim(),
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.3,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    // Compact Arrow Button
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black12,
+                      ),
+                      child: Center(
+                        child: Icon(
+                          Icons.arrow_forward,
+                          color: Colors.black54,
+                          size: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
