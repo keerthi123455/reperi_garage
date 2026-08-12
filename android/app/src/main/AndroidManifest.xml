@@ -43,9 +43,37 @@
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LOCATION PERMISSIONS (for Roadside Assistance)
+         ═══════════════════════════════════════════════════════════════ -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         INTERNET (CRITICAL - for Supabase, Razorpay, OneSignal)
+         ═══════════════════════════════════════════════════════════════ -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CAMERA (for photo uploads: inspection, booking updates, fleet orders)
+         ═══════════════════════════════════════════════════════════════ -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         STORAGE (for accessing photo gallery & saving images)
+         ═══════════════════════════════════════════════════════════════ -->
+    <!-- Android 6-12: Legacy permissions -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+
+    <!-- Android 13+ (API 33+): Granular media permissions -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         QUERIES (for package visibility)
+         ═══════════════════════════════════════════════════════════════ -->
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
          https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
@@ -56,9 +84,11 @@
             <data android:mimeType="text/plain"/>
         </intent>
     </queries>
+
+    <!-- For phone dialing (WhatsApp, call buttons) -->
     <queries>
-  <intent>
-    <action android:name="android.intent.action.DIAL" />
-  </intent>
-</queries>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+    </queries>
 </manifest>

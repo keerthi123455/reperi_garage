@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../widgets/inspection_view_widget.dart';
+
 class BookingTrackingScreen extends StatefulWidget {
   final Map booking;
   final bool autoOpenChat;
@@ -232,6 +234,44 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                         ),
                       );
                     }).toList(),
+
+                    const SizedBox(height: 30),
+
+                    // ── INSPECTION SECTION ──
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF111111),
+                        borderRadius: BorderRadius.circular(26),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(
+                                Icons.camera_alt_rounded,
+                                color: Color(0xFFD4A017),
+                                size: 24,
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                'Inspection Report',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          InspectionViewWidget(
+                            bookingId: widget.booking['id'],
+                          ),
+                        ],
+                      ),
+                    ),
 
                     const SizedBox(height: 30),
 

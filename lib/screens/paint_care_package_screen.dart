@@ -824,13 +824,17 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
                         const Icon(Icons.calendar_month,
                             color: Colors.black, size: 22),
                         const SizedBox(width: 10),
-                        Text(
-                          'BOOK ${selected.name} • ${selected.price}',
-                          style: const TextStyle(
-                            color: Colors.black,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.5,
+                        Expanded(
+                          child: Text(
+                            'BOOK ${selected.name} • ${selected.price}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                         ),
                       ],

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'booking_tracking_screen.dart'; // imports ChatSheet
+import 'inspection_upload_screen.dart';
 
 class BookingDetailsScreen extends StatefulWidget {
   final Map booking;
@@ -559,6 +560,51 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                 ),
 
                 const SizedBox(height: 28),
+
+                // ── INSPECTION BUTTON ──
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => InspectionUploadScreen(
+                          booking: widget.booking,
+                        ),
+                      ),
+                    ).then((_) {
+                      // Optionally refresh data after inspection upload
+                    });
+                  },
+                  child: Container(
+                    height: 68,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF111111),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: const Color(0xFFD4A017).withOpacity(0.5),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.photo_camera_rounded,
+                            color: Color(0xFFD4A017), size: 22),
+                        SizedBox(width: 10),
+                        Text(
+                          'ADD INSPECTION PHOTOS',
+                          style: TextStyle(
+                            color: Color(0xFFD4A017),
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
 
                 // ── UPLOAD BUTTON ──
                 GestureDetector(
