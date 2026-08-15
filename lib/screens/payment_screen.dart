@@ -5,6 +5,7 @@ import 'home_screen.dart';
 import 'package:reperi_garage/services/address_service.dart';
 import 'package:reperi_garage/screens/address_management_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '/services/admin_assignment_service.dart';  // ✅ NEW: Admin assignment service
 
 class PaymentScreen extends StatefulWidget {
   final String title;
@@ -303,6 +304,9 @@ class _PaymentScreenState
           // Profile might not exist, continue with null values
         }
         
+        // ✅ NEW: Get admin ID for load-balanced assignment
+        final assignedAdminId = await AdminAssignmentService.getNextAdminId();
+        
         await supabase.from('bookings').insert({
           'user_id': user!.id,
           'vehicle_id': widget.vehicleId,
@@ -312,7 +316,7 @@ class _PaymentScreenState
           'razorpay_payment_id': result.paymentId,
           'payment_status': 'paid',
           
-          // ── NEW: Location Data ──
+          // ── Location Data ──
           'pickup_address': defaultAddr?['address'] ?? 'Not specified',
           'pickup_latitude': defaultAddr?['latitude'],
           'pickup_longitude': defaultAddr?['longitude'],
@@ -320,9 +324,12 @@ class _PaymentScreenState
           'dropoff_latitude': defaultAddr?['latitude'],
           'dropoff_longitude': defaultAddr?['longitude'],
           
-          // ── NEW: Customer Details ──
+          // ── Customer Details ──
           'customer_name': profileData?['full_name'] ?? 'Unknown',
           'customer_phone': profileData?['phone'],
+          
+          // ✅ NEW: Admin Assignment (Load-Balanced)
+          'assigned_to_admin_id': assignedAdminId,
         });
       }
 
@@ -372,6 +379,9 @@ class _PaymentScreenState
         // Profile might not exist, continue with null values
       }
       
+      // ✅ NEW: Get admin ID for load-balanced assignment
+      final assignedAdminId = await AdminAssignmentService.getNextAdminId();
+      
       await supabase.from('bookings').insert({
         'user_id': user.id,
         'vehicle_id': widget.vehicleId,
@@ -379,7 +389,7 @@ class _PaymentScreenState
         'package_price': widget.price,
         'payment_status': 'cod', // cash on delivery/pickup
         
-        // ── NEW: Location Data ──
+        // ── Location Data ──
         'pickup_address': defaultAddr?['address'] ?? 'Not specified',
         'pickup_latitude': defaultAddr?['latitude'],
         'pickup_longitude': defaultAddr?['longitude'],
@@ -387,9 +397,12 @@ class _PaymentScreenState
         'dropoff_latitude': defaultAddr?['latitude'],
         'dropoff_longitude': defaultAddr?['longitude'],
         
-        // ── NEW: Customer Details ──
+        // ── Customer Details ──
         'customer_name': profileData?['full_name'] ?? 'Unknown',
         'customer_phone': profileData?['phone'],
+        
+        // ✅ NEW: Admin Assignment (Load-Balanced)
+        'assigned_to_admin_id': assignedAdminId,
       });
 
       await _showSuccessAndGoHome();
@@ -733,7 +746,7 @@ class _PaymentScreenState
                               ],
                             ),
                           ),
-                          if (widget.billItems != null) ...[
+                          if (widget.billItems != null) ...[ 
                             const SizedBox(height: 20),
                             Container(
                               padding: const EdgeInsets.all(18),

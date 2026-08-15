@@ -46,6 +46,11 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
   // ── Sheet setState handle ──
   StateSetter? _sheetSetState;
 
+  // 🔒 BLOCKING STATE - PERSISTENT
+  Set<String> blockedSenders = {};
+  bool blockingLoaded = false;
+  bool isBlockedByOther = false;
+
   // ── Animation controllers ──
   late AnimationController _scaleController;
   late AnimationController _fadeController;
@@ -90,6 +95,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
     });
 
     _watchRequestForUnreadChat();
+    _fetchFleetBlockingStatus();
   }
 
   @override
@@ -145,6 +151,42 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
             backgroundColor: Colors.red,
           ),
         );
+      }
+    }
+  }
+
+  // 🔒 FETCH BLOCKING STATUS FOR FLEET
+  Future<void> _fetchFleetBlockingStatus() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final requestId = widget.request['id'].toString();
+
+      // Get users I've blocked
+      final myBlocks = await supabase
+          .from('blocked_fleet_chats')
+          .select()
+          .eq('request_id', requestId)
+          .eq('blocked_by', 'fleet');
+
+      // Check if I'm blocked by admin
+      final theirBlocks = await supabase
+          .from('blocked_fleet_chats')
+          .select()
+          .eq('request_id', requestId)
+          .eq('blocked_by', 'admin')
+          .eq('blocked_sender', 'fleet');
+
+      if (mounted) {
+        setState(() {
+          blockedSenders = Set.from((myBlocks as List).map((b) => b['blocked_sender']));
+          isBlockedByOther = (theirBlocks as List).isNotEmpty;
+          blockingLoaded = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching fleet blocking status: $e');
+      if (mounted) {
+        setState(() => blockingLoaded = true);
       }
     }
   }
@@ -295,68 +337,80 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
     });
   }
 
- Future<void> _sendChatMessage() async {
-  final text = _chatController.text.trim();
-  if (text.isEmpty || _chatSending) return;
+  Future<void> _sendChatMessage() async {
+    final text = _chatController.text.trim();
+    if (text.isEmpty || _chatSending) return;
 
-  _chatController.clear();
-
-  final optimisticMsg = {
-    'request_id': widget.request['id'].toString(),
-    'sender_type': 'fleet',
-    'sender_name': widget.request['company_name'] ?? 'Fleet Operator',
-    'message': text,
-    'created_at': DateTime.now().toIso8601String(),
-    'is_read_by_fleet': true,
-    'is_read_by_admin': false,
-  };
-
-  _sheetSetState?.call(() {
-    _chatSending = true;
-    _chatMessages.add(optimisticMsg);
-  });
-
-  _scrollChatToBottom();
-
-  try {
-    final inserted = await Supabase.instance.client
-        .from('fleet_chat_messages')
-        .insert({
-          'request_id': widget.request['id'].toString(),
-          'sender_type': 'fleet',
-          'sender_name': widget.request['company_name'] ?? 'Fleet Operator',
-          'message': text,
-          'is_read_by_fleet': true,
-          'is_read_by_admin': false,
-        })
-        .select()
-        .single();
-
-    final idx = _chatMessages.indexOf(optimisticMsg);
-    if (idx != -1) {
-      _sheetSetState?.call(() => _chatMessages[idx] = inserted);
-    }
-
-    await Supabase.instance.client
-        .from('fleet_pickup_requests')
-        .update({'admin_has_unread_chat': true})
-        .eq('id', widget.request['id']);
-  } catch (e) {
-    _sheetSetState?.call(() => _chatMessages.remove(optimisticMsg));
-    if (mounted) {
+    // 🔒 CHECK BLOCKING
+    if (isBlockedByOther) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Send failed: $e'),
+        const SnackBar(
+          content: Text('You cannot send messages - you have been blocked'),
           backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
         ),
       );
+      return;
+    }
+
+    _chatController.clear();
+
+    final optimisticMsg = {
+      'request_id': widget.request['id'].toString(),
+      'sender_type': 'fleet',
+      'sender_name': widget.request['company_name'] ?? 'Fleet Operator',
+      'message': text,
+      'created_at': DateTime.now().toIso8601String(),
+      'is_read_by_fleet': true,
+      'is_read_by_admin': false,
+    };
+
+    _sheetSetState?.call(() {
+      _chatSending = true;
+      _chatMessages.add(optimisticMsg);
+    });
+
+    _scrollChatToBottom();
+
+    try {
+      final inserted = await Supabase.instance.client
+          .from('fleet_chat_messages')
+          .insert({
+            'request_id': widget.request['id'].toString(),
+            'sender_type': 'fleet',
+            'sender_name': widget.request['company_name'] ?? 'Fleet Operator',
+            'message': text,
+            'is_read_by_fleet': true,
+            'is_read_by_admin': false,
+          })
+          .select()
+          .single();
+
+      final idx = _chatMessages.indexOf(optimisticMsg);
+      if (idx != -1) {
+        _sheetSetState?.call(() => _chatMessages[idx] = inserted);
+      }
+
+      await Supabase.instance.client
+          .from('fleet_pickup_requests')
+          .update({'admin_has_unread_chat': true})
+          .eq('id', widget.request['id']);
+    } catch (e) {
+      _sheetSetState?.call(() => _chatMessages.remove(optimisticMsg));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Send failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+
+    if (mounted) {
+      _sheetSetState?.call(() => _chatSending = false);
     }
   }
-
-  if (mounted) {
-    _sheetSetState?.call(() => _chatSending = false);
-  }
-}
 
   void _openChatPopup() {
     // Clear fleet's unread flag locally and in DB
@@ -427,36 +481,49 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD4A017).withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.chat_bubble_rounded,
-                      color: Color(0xFFD4A017), size: 18),
-                ),
-                const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'Garage Admin',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD4A017).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
                         ),
+                        child: const Icon(Icons.chat_bubble_rounded,
+                            color: Color(0xFFD4A017), size: 18),
                       ),
-                      Text(
-                        'Real-time conversation',
-                        style: TextStyle(color: Colors.white38, fontSize: 11),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              'Garage Admin',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                              ),
+                            ),
+                            Text(
+                              'Real-time conversation',
+                              style: TextStyle(color: Colors.white38, fontSize: 11),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
+                // 🔒 MENU & CLOSE BUTTONS
+                if (blockingLoaded)
+                  IconButton(
+                    icon: const Icon(Icons.more_vert, color: Colors.white54),
+                    onPressed: _showFleetSafetyMenu,
+                  ),
                 IconButton(
                   icon: const Icon(Icons.close_rounded, color: Colors.white54),
                   onPressed: () => Navigator.pop(sheetCtx),
@@ -474,15 +541,42 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                       strokeWidth: 2,
                     ),
                   )
-                : _chatMessages.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No messages yet.\nStart the conversation.',
-                          textAlign: TextAlign.center,
-                          style:
-                              TextStyle(color: Colors.white24, fontSize: 13),
+                : isBlockedByOther
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.block, color: Colors.red, size: 48),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'You are blocked',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'You cannot send or receive messages',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
                         ),
                       )
+                    : _chatMessages.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No messages yet.\nStart the conversation.',
+                              textAlign: TextAlign.center,
+                              style:
+                                  TextStyle(color: Colors.white24, fontSize: 13),
+                            ),
+                          )
                     : ListView.builder(
                         controller: _chatScrollController,
                         padding: const EdgeInsets.symmetric(
@@ -490,6 +584,12 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                         itemCount: _chatMessages.length,
                         itemBuilder: (_, i) {
                           final msg = _chatMessages[i];
+                          final senderKey = msg['sender_type'] ?? 'unknown';
+                          final isBlocked = blockedSenders.contains(senderKey);
+
+                          // 🔒 SKIP blocked messages
+                          if (isBlocked) return const SizedBox.shrink();
+
                           final isFleet = msg['sender_type'] == 'fleet';
                           final seen = isFleet
                               ? msg['is_read_by_admin'] == true
@@ -542,16 +642,17 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                     child: TextField(
                       controller: _chatController,
                       onChanged: _handleChatTyping,
+                      enabled: !isBlockedByOther && blockingLoaded,
                       style:
                           const TextStyle(color: Colors.white, fontSize: 14),
                       maxLines: null,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _sendChatMessage(),
-                      decoration: const InputDecoration(
-                        hintText: 'Type a message…',
-                        hintStyle: TextStyle(color: Color(0xFF444444)),
+                      decoration: InputDecoration(
+                        hintText: isBlockedByOther ? 'You are blocked' : 'Type a message…',
+                        hintStyle: const TextStyle(color: Color(0xFF444444)),
                         border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(
+                        contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 12),
                       ),
                     ),
@@ -686,6 +787,234 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
             content: Text('Failed to submit: $e'),
             backgroundColor: Colors.red),
       );
+    }
+  }
+
+  // 🔒 SHOW FLEET SAFETY MENU
+  void _showFleetSafetyMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF333333),
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.block, color: Colors.red),
+              title: const Text(
+                'Block Admin',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _blockFleetUser('admin');
+              },
+            ),
+            if (blockedSenders.contains('admin'))
+              ListTile(
+                leading: const Icon(Icons.person_add, color: Colors.green),
+                title: const Text(
+                  'Unblock Admin',
+                  style: TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _unblockFleetUser('admin');
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.flag, color: Colors.orange),
+              title: const Text(
+                'Report',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _showFleetReportDialog();
+              },
+            ),
+            ListTile(
+              title: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              onTap: () => Navigator.pop(context),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 🔒 BLOCK FLEET USER
+  Future<void> _blockFleetUser(String sender) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final requestId = widget.request['id'].toString();
+
+      await supabase.from('blocked_fleet_chats').insert({
+        'request_id': requestId,
+        'blocked_by': 'fleet',
+        'blocked_sender': sender,
+      });
+
+      if (mounted) {
+        setState(() => blockedSenders.add(sender));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Blocked $sender'),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // 🔒 UNBLOCK FLEET USER
+  Future<void> _unblockFleetUser(String sender) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final requestId = widget.request['id'].toString();
+
+      await supabase
+          .from('blocked_fleet_chats')
+          .delete()
+          .eq('request_id', requestId)
+          .eq('blocked_by', 'fleet')
+          .eq('blocked_sender', sender);
+
+      if (mounted) {
+        setState(() => blockedSenders.remove(sender));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Admin unblocked'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // 🔒 SHOW FLEET REPORT DIALOG
+  void _showFleetReportDialog() {
+    final reasons = ['Offensive language', 'Spam', 'Inappropriate', 'Other'];
+    String? selectedReason;
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Report Admin',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: reasons
+              .map((reason) => RadioListTile<String>(
+                title: Text(
+                  reason,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                  ),
+                ),
+                value: reason,
+                groupValue: selectedReason,
+                activeColor: const Color(0xFFD4A017),
+                onChanged: (value) {
+                  Navigator.pop(context);
+                  selectedReason = value;
+                  if (selectedReason != null) {
+                    _submitFleetReport(selectedReason!);
+                  }
+                },
+              ))
+              .toList(),
+        ),
+      ),
+    );
+  }
+
+  // 🔒 SUBMIT FLEET REPORT
+  Future<void> _submitFleetReport(String reason) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      await supabase.from('chat_reports').insert({
+        'request_id': widget.request['id'].toString(),
+        'reported_sender': 'admin',
+        'report_reason': reason,
+        'reporter': 'fleet',
+        'report_type': 'fleet',
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Report submitted. Thank you!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

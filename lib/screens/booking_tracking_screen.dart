@@ -404,9 +404,15 @@ class _ChatSheetState extends State<ChatSheet> {
   Timer? _typingClearTimer;
   DateTime? _lastTypingSentAt;
 
+  // 🔒 BLOCKING STATE - PERSISTENT
+  Set<String> blockedSenders = {};
+  bool blockingLoaded = false;
+  bool isBlockedByOther = false;
+
   @override
   void initState() {
     super.initState();
+    _fetchBlockingStatus();
     fetchMessages();
     markMessagesRead();
     _subscribeToChatChanges();
@@ -421,6 +427,42 @@ class _ChatSheetState extends State<ChatSheet> {
     _chatChannel?.unsubscribe();
     _typingChannel?.unsubscribe();
     super.dispose();
+  }
+
+  // 🔒 FETCH BLOCKING STATUS
+  Future<void> _fetchBlockingStatus() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final otherSender = widget.sender == 'consumer' ? 'admin' : 'consumer';
+
+      // Get users I've blocked
+      final myBlocks = await supabase
+          .from('blocked_chats')
+          .select()
+          .eq('booking_id', widget.bookingId)
+          .eq('blocked_by', widget.sender);
+
+      // Check if I'm blocked by them
+      final theirBlocks = await supabase
+          .from('blocked_chats')
+          .select()
+          .eq('booking_id', widget.bookingId)
+          .eq('blocked_by', otherSender)
+          .eq('blocked_sender', widget.sender);
+
+      if (mounted) {
+        setState(() {
+          blockedSenders = Set.from((myBlocks as List).map((b) => b['blocked_sender']));
+          isBlockedByOther = (theirBlocks as List).isNotEmpty;
+          blockingLoaded = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching blocking status: $e');
+      if (mounted) {
+        setState(() => blockingLoaded = true);
+      }
+    }
   }
 
   // ── Live message sync (insert + read-status updates) ──
@@ -570,6 +612,18 @@ class _ChatSheetState extends State<ChatSheet> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
+    // 🔒 CHECK BLOCKING
+    if (isBlockedByOther) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You cannot send messages - you have been blocked'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
     setState(() => sending = true);
     _controller.clear();
 
@@ -650,28 +704,42 @@ class _ChatSheetState extends State<ChatSheet> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD4A017).withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.chat_bubble_rounded,
-                    color: Color(0xFFD4A017),
-                    size: 20,
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD4A017).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.chat_bubble_rounded,
+                        color: Color(0xFFD4A017),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Garage Chat',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Garage Chat',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
+                // 🔒 SAFETY MENU
+                if (blockingLoaded)
+                  IconButton(
+                    icon: const Icon(Icons.more_vert, color: Colors.white54),
+                    onPressed: () {
+                      final otherSender = widget.sender == 'consumer' ? 'admin' : 'consumer';
+                      _showSafetyMenu(otherSender);
+                    },
                   ),
-                ),
               ],
             ),
           ),
@@ -685,23 +753,56 @@ class _ChatSheetState extends State<ChatSheet> {
                     child: CircularProgressIndicator(
                         color: Color(0xFFD4A017)),
                   )
-                : messages.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No messages yet.\nSend the first one!',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: Colors.white38, fontSize: 15, height: 1.6),
+                : isBlockedByOther
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.block, color: Colors.red, size: 48),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'You are blocked',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'You cannot send or receive messages from this user',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
                         ),
                       )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
-                        itemCount: messages.length,
-                        itemBuilder: (context, index) {
-                          final msg = messages[index];
-                          final isMe = msg['sender'] == widget.sender;
+                    : messages.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No messages yet.\nSend the first one!',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  color: Colors.white38, fontSize: 15, height: 1.6),
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 12),
+                            itemCount: messages.length,
+                            itemBuilder: (context, index) {
+                              final msg = messages[index];
+                              final senderKey = msg['sender'] ?? 'unknown';
+                              final isBlocked = blockedSenders.contains(senderKey);
+
+                              // 🔒 SKIP blocked messages
+                              if (isBlocked) return const SizedBox.shrink();
+
+                              final isMe = msg['sender'] == widget.sender;
 
                           // Has the OTHER party read this message of mine?
                           final seen = widget.sender == 'consumer'
@@ -830,15 +931,18 @@ class _ChatSheetState extends State<ChatSheet> {
                   child: TextField(
                     controller: _controller,
                     onChanged: _handleTyping,
+                    enabled: !isBlockedByOther && blockingLoaded,
                     style: const TextStyle(color: Colors.white),
                     maxLines: null,
                     textCapitalization: TextCapitalization.sentences,
                     decoration: InputDecoration(
-                      hintText: 'Type a message...',
+                      hintText: isBlockedByOther ? 'You are blocked' : 'Type a message...',
                       hintStyle:
                           const TextStyle(color: Color(0xFF444444)),
                       filled: true,
-                      fillColor: const Color(0xFF1A1A1A),
+                      fillColor: isBlockedByOther 
+                          ? const Color(0xFF2A1A1A)
+                          : const Color(0xFF1A1A1A),
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 18, vertical: 14),
                       border: OutlineInputBorder(
@@ -879,5 +983,231 @@ class _ChatSheetState extends State<ChatSheet> {
         ],
       ),
     );
+  }
+
+  // 🔒 SHOW SAFETY MENU
+  void _showSafetyMenu(String otherSender) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF333333),
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.block, color: Colors.red),
+              title: const Text(
+                'Block',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _blockUser(otherSender);
+              },
+            ),
+            if (blockedSenders.contains(otherSender))
+              ListTile(
+                leading: const Icon(Icons.person_add, color: Colors.green),
+                title: const Text(
+                  'Unblock',
+                  style: TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _unblockUser(otherSender);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.flag, color: Colors.orange),
+              title: const Text(
+                'Report',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _showReportDialog(otherSender);
+              },
+            ),
+            ListTile(
+              title: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              onTap: () => Navigator.pop(context),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 🔒 BLOCK USER
+  Future<void> _blockUser(String sender) async {
+    try {
+      final supabase = Supabase.instance.client;
+      
+      await supabase.from('blocked_chats').insert({
+        'booking_id': widget.bookingId,
+        'blocked_by': widget.sender,
+        'blocked_sender': sender,
+      });
+
+      if (mounted) {
+        setState(() => blockedSenders.add(sender));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Blocked $sender'),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // 🔒 UNBLOCK USER
+  Future<void> _unblockUser(String sender) async {
+    try {
+      final supabase = Supabase.instance.client;
+      
+      await supabase
+          .from('blocked_chats')
+          .delete()
+          .eq('booking_id', widget.bookingId)
+          .eq('blocked_by', widget.sender)
+          .eq('blocked_sender', sender);
+
+      if (mounted) {
+        setState(() => blockedSenders.remove(sender));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('User unblocked'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // 🔒 SHOW REPORT DIALOG
+  void _showReportDialog(String sender) {
+    final reasons = ['Offensive language', 'Spam', 'Inappropriate', 'Other'];
+    String? selectedReason;
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Report User',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: reasons
+              .map((reason) => RadioListTile<String>(
+                title: Text(
+                  reason,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                  ),
+                ),
+                value: reason,
+                groupValue: selectedReason,
+                activeColor: const Color(0xFFD4A017),
+                onChanged: (value) {
+                  Navigator.pop(context);
+                  selectedReason = value;
+                  if (selectedReason != null) {
+                    _submitReport(sender, selectedReason!);
+                  }
+                },
+              ))
+              .toList(),
+        ),
+      ),
+    );
+  }
+
+  // 🔒 SUBMIT REPORT
+  Future<void> _submitReport(String sender, String reason) async {
+    try {
+      final supabase = Supabase.instance.client;
+      
+      await supabase.from('chat_reports').insert({
+        'booking_id': widget.bookingId,
+        'reported_sender': sender,
+        'report_reason': reason,
+        'reporter': widget.sender,
+        'report_type': 'booking',
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Report submitted. Thank you!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
