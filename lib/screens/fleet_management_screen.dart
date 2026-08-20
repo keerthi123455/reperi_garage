@@ -7,7 +7,7 @@ class FleetManagementScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF262626),
       body: CustomScrollView(
         slivers: [
 
@@ -15,7 +15,7 @@ class FleetManagementScreen extends StatelessWidget {
           SliverAppBar(
             expandedHeight: 220,
             pinned: true,
-            backgroundColor: const Color(0xFF0A0A0A),
+            backgroundColor: const Color(0xFF262626),
             foregroundColor: Colors.white,
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
@@ -121,7 +121,7 @@ class FleetManagementScreen extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
+                          color: const Color(0xFF1C1C1C),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: const Color(0xFF222222)),
                         ),
@@ -226,7 +226,7 @@ class FleetManagementScreen extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 20, vertical: 8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
+                          color: const Color(0xFF1C1C1C),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: const Color(0xFF222222)),
                         ),
@@ -343,7 +343,7 @@ class FleetManagementScreen extends StatelessWidget {
     required bool gold,
     required List<String> items,
   }) {
-    final bg = gold ? const Color(0xFFD4A017) : const Color(0xFF1A1A1A);
+    final bg = gold ? const Color(0xFFD4A017) : const Color(0xFF262626);
     final titleColor = gold ? Colors.black : Colors.white;
     final subtitleColor =
         gold ? const Color(0xFF3A2800) : const Color(0xFF666666);
@@ -355,7 +355,7 @@ class FleetManagementScreen extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(20),
-          border: gold ? null : Border.all(color: const Color(0xFF2A2A2A)),
+          border: gold ? null : Border.all(color: const Color(0xFF3A3A3A)),
           boxShadow: gold
               ? [
                   BoxShadow(
@@ -401,7 +401,7 @@ class FleetManagementScreen extends StatelessWidget {
         border: last
             ? null
             : const Border(
-                bottom: BorderSide(color: Color(0xFF1A1A1A))),
+                bottom: BorderSide(color: Color(0xFF262626))),
       ),
       child: Row(
         children: [
@@ -460,7 +460,7 @@ class FleetManagementScreen extends StatelessWidget {
       builder: (_) => Container(
         padding: const EdgeInsets.all(28),
         decoration: const BoxDecoration(
-          color: Color(0xFF111111),
+          color: Color(0xFF1C1C1C),
           borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
         child: Column(

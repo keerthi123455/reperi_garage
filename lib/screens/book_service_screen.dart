@@ -151,7 +151,7 @@ class _BookServiceScreenState
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF111111),
+        backgroundColor: const Color(0xFF1C1C1C),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         child: Padding(
           padding: const EdgeInsets.all(28),
@@ -435,7 +435,7 @@ class _BookServiceScreenState
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 300),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF111111),
+                                    color: const Color(0xFF1C1C1C),
                                     border: Border.all(
                                       color: isSelected
                                           ? const Color(0xFFD4A017)

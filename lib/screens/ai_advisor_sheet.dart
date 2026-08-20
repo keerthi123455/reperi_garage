@@ -53,14 +53,14 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
   Uint8List? _attachedImage;
 
   // ── Theme ──────────────────────────────────────────────────────────────────
-  static const Color _bg         = Color(0xFF080808);
-  static const Color _surface    = Color(0xFF111111);
-  static const Color _surfaceAlt = Color(0xFF181818);
+  static const Color _bg         = Color(0xFF262626);
+  static const Color _surface    = Color(0xFF1C1C1C);
+  static const Color _surfaceAlt = Color(0xFF2A2A2A);
   static const Color _gold       = Color(0xFFD4A017);
   static const Color _goldLight  = Color(0xFFF5C842);
   static const Color _white      = Color(0xFFFFFFFF);
-  static const Color _grey       = Color(0xFF777777);
-  static const Color _border     = Color(0xFF222222);
+  static const Color _grey       = Color(0xFFAAAAAA);
+  static const Color _border     = Color(0xFF3A3A3A);
   static const Color _green      = Color(0xFF4CAF50);
 
   // ── Messages ───────────────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       showDialog(
         context: context,
         builder: (_) => Dialog(
-          backgroundColor: const Color(0xFF111111),
+          backgroundColor: const Color(0xFF1C1C1C),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           child: Padding(
             padding: const EdgeInsets.all(28),
@@ -267,7 +267,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
   void _showImageSourceSheet() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF111111),
+      backgroundColor: const Color(0xFF1C1C1C),
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => SafeArea(

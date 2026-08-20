@@ -270,7 +270,7 @@ class _SignupScreenState extends State<SignupScreen>
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
       decoration: BoxDecoration(
-        color: const Color(0xFF111111),
+        color: const Color(0xFF1C1C1C),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
           color: const Color(0xFFD4A017).withOpacity(0.25),
@@ -325,7 +325,7 @@ class _SignupScreenState extends State<SignupScreen>
                 padding: EdgeInsets.symmetric(horizontal: 12),
                 child: Text(
                   'secure sign up',
-                  style: TextStyle(color: Color(0xFF444444), fontSize: 11),
+                  style: TextStyle(color: Colors.white54, fontSize: 11),
                 ),
               ),
               Expanded(
@@ -346,9 +346,9 @@ class _SignupScreenState extends State<SignupScreen>
     return Container(
       height: 58,
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: const Color(0xFF262626),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
+        border: Border.all(color: const Color(0xFF3A3A3A)),
       ),
       child: Row(
         children: [
@@ -377,9 +377,9 @@ class _SignupScreenState extends State<SignupScreen>
     return Container(
       height: 58,
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: const Color(0xFF262626),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
+        border: Border.all(color: const Color(0xFF3A3A3A)),
       ),
       child: Row(
         children: [

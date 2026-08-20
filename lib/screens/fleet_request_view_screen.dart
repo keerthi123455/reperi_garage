@@ -459,9 +459,9 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
         color: Color(0xFF0F0F0F),
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         border: Border(
-          top: BorderSide(color: Color(0xFF2A2A2A)),
-          left: BorderSide(color: Color(0xFF2A2A2A)),
-          right: BorderSide(color: Color(0xFF2A2A2A)),
+          top: BorderSide(color: Color(0xFF3A3A3A)),
+          left: BorderSide(color: Color(0xFF3A3A3A)),
+          right: BorderSide(color: Color(0xFF3A3A3A)),
         ),
       ),
       child: Column(
@@ -635,9 +635,9 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
+                      color: const Color(0xFF262626),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFF2A2A2A)),
+                      border: Border.all(color: const Color(0xFF3A3A3A)),
                     ),
                     child: TextField(
                       controller: _chatController,
@@ -650,7 +650,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                       onSubmitted: (_) => _sendChatMessage(),
                       decoration: InputDecoration(
                         hintText: isBlockedByOther ? 'You are blocked' : 'Type a message…',
-                        hintStyle: const TextStyle(color: Color(0xFF444444)),
+                        hintStyle: const TextStyle(color: Colors.white54),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 12),
@@ -713,7 +713,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
               border: isFleet
                   ? Border.all(
                       color: const Color(0xFFD4A017).withOpacity(0.25))
-                  : Border.all(color: const Color(0xFF2A2A2A)),
+                  : Border.all(color: const Color(0xFF3A3A3A)),
             ),
             child: Text(
               message,
@@ -1041,10 +1041,10 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
         .toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF262626),
 
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF1C1C1C),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new,
@@ -1129,7 +1129,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                 children: [
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1A1A1A),
+                      backgroundColor: const Color(0xFF262626),
                       minimumSize: const Size(54, 54),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -1271,7 +1271,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                         ),
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 10),
-                          child: Divider(color: Color(0xFF2A2A2A), height: 1),
+                          child: Divider(color: Color(0xFF3A3A3A), height: 1),
                         ),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,

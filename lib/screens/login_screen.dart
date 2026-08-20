@@ -39,7 +39,7 @@ class _LoginScreenState extends State<LoginScreen>
           builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text('Reset Password'),
-              backgroundColor: const Color(0xFF1A1A1A),
+              backgroundColor: const Color(0xFF262626),
               titleTextStyle: const TextStyle(
                 color: Colors.white,
                 fontSize: 20,
@@ -67,9 +67,9 @@ class _LoginScreenState extends State<LoginScreen>
                       enabled: !isLoading,
                       decoration: InputDecoration(
                         hintText: 'your@email.com',
-                        hintStyle: const TextStyle(color: Color(0xFF444444)),
+                        hintStyle: const TextStyle(color: Colors.white54),
                         filled: true,
-                        fillColor: const Color(0xFF2A2A2A),
+                        fillColor: const Color(0xFF3A3A3A),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                           borderSide: const BorderSide(color: Color(0xFF333333)),
@@ -94,9 +94,9 @@ class _LoginScreenState extends State<LoginScreen>
                       enabled: !isLoading,
                       decoration: InputDecoration(
                         hintText: 'your_username',
-                        hintStyle: const TextStyle(color: Color(0xFF444444)),
+                        hintStyle: const TextStyle(color: Colors.white54),
                         filled: true,
-                        fillColor: const Color(0xFF2A2A2A),
+                        fillColor: const Color(0xFF3A3A3A),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                           borderSide: const BorderSide(color: Color(0xFF333333)),
@@ -122,9 +122,9 @@ class _LoginScreenState extends State<LoginScreen>
                       enabled: !isLoading,
                       decoration: InputDecoration(
                         hintText: 'Enter new password',
-                        hintStyle: const TextStyle(color: Color(0xFF444444)),
+                        hintStyle: const TextStyle(color: Colors.white54),
                         filled: true,
-                        fillColor: const Color(0xFF2A2A2A),
+                        fillColor: const Color(0xFF3A3A3A),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                           borderSide: const BorderSide(color: Color(0xFF333333)),
@@ -479,7 +479,7 @@ class _LoginScreenState extends State<LoginScreen>
     final isWide = screenWidth > 600;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0C0C0C),
+      backgroundColor: const Color(0xFF262626),
       body: Stack(
         children: [
           /// ── BACKGROUND GLOW ORBS ──────────────────────────────────
@@ -686,7 +686,7 @@ class _LoginScreenState extends State<LoginScreen>
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
       decoration: BoxDecoration(
-        color: const Color(0xFF111111),
+        color: const Color(0xFF1C1C1C),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
           color: const Color(0xFFD4A017).withOpacity(0.25),
@@ -764,9 +764,9 @@ class _LoginScreenState extends State<LoginScreen>
     return Container(
       height: 58,
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: const Color(0xFF262626),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
+        border: Border.all(color: const Color(0xFF3A3A3A)),
       ),
       child: Row(
         children: [
@@ -794,9 +794,9 @@ class _LoginScreenState extends State<LoginScreen>
     return Container(
       height: 58,
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: const Color(0xFF262626),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
+        border: Border.all(color: const Color(0xFF3A3A3A)),
       ),
       child: Row(
         children: [
@@ -928,7 +928,7 @@ class _LoginScreenState extends State<LoginScreen>
           border: Border.all(
             color: isSelected
                 ? const Color(0xFFD4A017)
-                : const Color(0xFF2A2A2A),
+                : const Color(0xFF3A3A3A),
             width: isSelected ? 1.5 : 1,
           ),
         ),

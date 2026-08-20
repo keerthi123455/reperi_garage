@@ -20,7 +20,7 @@ class _PaintCareScreenState
     extends State<PaintCareScreen> {
 
   static const Color _bg =
-      Color(0xFF0A0A0A);
+      Color(0xFF262626);
 
   static const Color _card =
       Color(0xFF141414);
@@ -35,7 +35,7 @@ class _PaintCareScreenState
       Color(0xFF9E9E9E);
 
   static const Color _cardBorder =
-      Color(0xFF2A2A2A);
+      Color(0xFF3A3A3A);
 
   int selectedPackage = -1;
 

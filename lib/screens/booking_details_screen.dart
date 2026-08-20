@@ -151,9 +151,9 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF262626),
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF1C1C1C),
         title: const Text(
           'Update Booking',
           style: TextStyle(color: Color(0xFFD4A017)),
@@ -171,7 +171,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF111111),
+                    color: const Color(0xFF1C1C1C),
                     borderRadius: BorderRadius.circular(28),
                   ),
                   child: Column(
@@ -203,7 +203,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF111111),
+                    color: const Color(0xFF1C1C1C),
                     borderRadius: BorderRadius.circular(28),
                     border: Border.all(
                       color: const Color(0xFFD4A017).withOpacity(0.2),
@@ -491,11 +491,11 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                 // ── DROPDOWN ──
                 DropdownButtonFormField(
                   value: selectedStage,
-                  dropdownColor: const Color(0xFF111111),
+                  dropdownColor: const Color(0xFF1C1C1C),
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: const Color(0xFF111111),
+                    fillColor: const Color(0xFF1C1C1C),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),
@@ -517,7 +517,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                     hintText: 'Add progress description',
                     hintStyle: const TextStyle(color: Colors.white38),
                     filled: true,
-                    fillColor: const Color(0xFF111111),
+                    fillColor: const Color(0xFF1C1C1C),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),
@@ -533,7 +533,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                     height: 220,
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF111111),
+                      color: const Color(0xFF1C1C1C),
                       borderRadius: BorderRadius.circular(24),
                     ),
                     child: selectedImageBytes == null
@@ -578,7 +578,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                   child: Container(
                     height: 68,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF111111),
+                      color: const Color(0xFF1C1C1C),
                       borderRadius: BorderRadius.circular(28),
                       border: Border.all(
                         color: const Color(0xFFD4A017).withOpacity(0.5),
@@ -644,7 +644,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                       Container(
                         height: 72,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
+                          color: const Color(0xFF1C1C1C),
                           borderRadius: BorderRadius.circular(28),
                           border: Border.all(
                             color: const Color(0xFFD4A017).withOpacity(0.3),

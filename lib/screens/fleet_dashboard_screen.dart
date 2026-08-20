@@ -94,10 +94,10 @@ class _FleetDashboardScreenState
 
     return Scaffold(
 
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF262626),
 
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF1C1C1C),
         centerTitle: true,
         title: Text(
           widget.fleetUser['company_name'],
@@ -223,7 +223,7 @@ class _FleetDashboardScreenState
 
                             color:
                                 const Color(
-                                    0xFF111111),
+                                    0xFF1C1C1C),
 
                             borderRadius:
                                 BorderRadius.circular(

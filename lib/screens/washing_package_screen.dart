@@ -176,7 +176,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen> {
   void _bookNow(_Tier tier) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF111111),
+      backgroundColor: const Color(0xFF1C1C1C),
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (sheetContext) => SafeArea(
@@ -254,7 +254,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen> {
                 width: double.infinity,
                 child: OutlinedButton(
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFF2A2A2A)),
+                    side: const BorderSide(color: Color(0xFF3A3A3A)),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16)),
@@ -284,7 +284,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen> {
     final selected = _tiers[_selectedTier];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF262626),
       body: Stack(
         children: [
           CustomScrollView(
@@ -303,10 +303,10 @@ class _WashingPackageScreenState extends State<WashingPackageScreen> {
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1A1A1A),
+                              color: const Color(0xFF262626),
                               shape: BoxShape.circle,
                               border:
-                                  Border.all(color: const Color(0xFF2A2A2A)),
+                                  Border.all(color: const Color(0xFF3A3A3A)),
                             ),
                             child: const Icon(Icons.arrow_back,
                                 color: Colors.white, size: 20),
@@ -587,7 +587,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen> {
                               decoration: const BoxDecoration(
                                 border: Border(
                                   bottom:
-                                      BorderSide(color: Color(0xFF2A2A2A)),
+                                      BorderSide(color: Color(0xFF3A3A3A)),
                                 ),
                               ),
                               children: const [
@@ -712,7 +712,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen> {
                                     color: const Color(0xFF141414),
                                     borderRadius: BorderRadius.circular(18),
                                     border: Border.all(
-                                        color: const Color(0xFF2A2A2A)),
+                                        color: const Color(0xFF3A3A3A)),
                                   ),
                                   child: Column(
                                     crossAxisAlignment:

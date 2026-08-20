@@ -29,7 +29,7 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: const Color(0xFF262626),
         title: Row(
           children: [
             const Icon(Icons.error_rounded, color: Colors.red),
@@ -75,7 +75,7 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: const Color(0xFF262626),
         title: Row(
           children: [
             const Icon(Icons.check_circle, color: Colors.green),
@@ -126,7 +126,7 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       decoration: const BoxDecoration(
-        color: Color(0xFF111111),
+        color: Color(0xFF1C1C1C),
         borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
       ),
       child: Center(
@@ -208,10 +208,10 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
 
                 Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
+                    color: const Color(0xFF262626),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: const Color(0xFF2A2A2A),
+                      color: const Color(0xFF3A3A3A),
                     ),
                   ),
                   child: TextField(
@@ -221,7 +221,7 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                     decoration: const InputDecoration(
                       hintText: 'Enter password',
                       hintStyle: TextStyle(
-                        color: Color(0xFF444444),
+                        color: Colors.white54,
                       ),
                       prefixIcon: Icon(
                         Icons.lock_rounded,
@@ -257,7 +257,7 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                             builder: (context, setDialogState) {
                               return AlertDialog(
                                 title: const Text('Reset Password'),
-                                backgroundColor: const Color(0xFF1A1A1A),
+                                backgroundColor: const Color(0xFF262626),
                                 titleTextStyle: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 20,
@@ -285,9 +285,9 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                                         enabled: !isLoading,
                                         decoration: InputDecoration(
                                           hintText: 'your@email.com',
-                                          hintStyle: const TextStyle(color: Color(0xFF444444)),
+                                          hintStyle: const TextStyle(color: Colors.white54),
                                           filled: true,
-                                          fillColor: const Color(0xFF2A2A2A),
+                                          fillColor: const Color(0xFF3A3A3A),
                                           border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(8),
                                             borderSide: const BorderSide(color: Color(0xFF333333)),
@@ -312,9 +312,9 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                                         enabled: !isLoading,
                                         decoration: InputDecoration(
                                           hintText: 'your_username',
-                                          hintStyle: const TextStyle(color: Color(0xFF444444)),
+                                          hintStyle: const TextStyle(color: Colors.white54),
                                           filled: true,
-                                          fillColor: const Color(0xFF2A2A2A),
+                                          fillColor: const Color(0xFF3A3A3A),
                                           border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(8),
                                             borderSide: const BorderSide(color: Color(0xFF333333)),
@@ -340,9 +340,9 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                                         enabled: !isLoading,
                                         decoration: InputDecoration(
                                           hintText: 'Enter new password',
-                                          hintStyle: const TextStyle(color: Color(0xFF444444)),
+                                          hintStyle: const TextStyle(color: Colors.white54),
                                           filled: true,
-                                          fillColor: const Color(0xFF2A2A2A),
+                                          fillColor: const Color(0xFF3A3A3A),
                                           border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(8),
                                             borderSide: const BorderSide(color: Color(0xFF333333)),
@@ -651,9 +651,9 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: const Color(0xFF262626),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
+        border: Border.all(color: const Color(0xFF3A3A3A)),
       ),
       child: TextField(
         controller: controller,
@@ -661,7 +661,7 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(color: Color(0xFF444444)),
+          hintStyle: const TextStyle(color: Colors.white54),
           prefixIcon: Icon(icon, color: const Color(0xFFD4A017), size: 20),
           border: InputBorder.none,
           contentPadding:

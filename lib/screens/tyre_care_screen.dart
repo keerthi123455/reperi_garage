@@ -18,7 +18,7 @@ class TyreCareScreen extends StatefulWidget {
 class _TyreCareScreenState extends State<TyreCareScreen> {
   // ── Theme constants ─────────────────────────────────────────────
   static const Color _bg = Color(0xFF080808);
-  static const Color _card = Color(0xFF111111);
+  static const Color _card = Color(0xFF1C1C1C);
   static const Color _gold = Color(0xFFD4A017);
   static const Color _goldLight = Color(0xFFF5C842);
   static const Color _white = Color(0xFFFFFFFF);
@@ -650,7 +650,7 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
                   'Select alloy brand',
                   style: TextStyle(color: _grey, fontSize: 14),
                 ),
-                dropdownColor: const Color(0xFF1A1A1A),
+                dropdownColor: const Color(0xFF262626),
                 icon: const Icon(Icons.keyboard_arrow_down, color: _gold),
                 isExpanded: true,
                 items: _alloyBrands
@@ -745,7 +745,7 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
                           errorBuilder: (_, __, ___) => Container(
                             width: 220,
                             height: 160,
-                            color: const Color(0xFF1A1A1A),
+                            color: const Color(0xFF262626),
                             child: const Icon(Icons.auto_awesome, color: _gold, size: 36),
                           ),
                         ),
@@ -999,7 +999,7 @@ class _PackageCard extends StatelessWidget {
   const _PackageCard({required this.package, required this.onTap});
 
   static const Color _gold = Color(0xFFD4A017);
-  static const Color _card = Color(0xFF111111);
+  static const Color _card = Color(0xFF1C1C1C);
   static const Color _white = Color(0xFFFFFFFF);
   static const Color _grey = Color(0xFF888888);
   static const Color _border = Color(0xFF222222);
@@ -1129,7 +1129,7 @@ class _PackageSheet extends StatelessWidget {
   const _PackageSheet({required this.package, required this.vehicleId});
 
   static const Color _bg = Color(0xFF0F0F0F);
-  static const Color _card = Color(0xFF1A1A1A);
+  static const Color _card = Color(0xFF262626);
   static const Color _gold = Color(0xFFD4A017);
   static const Color _white = Color(0xFFFFFFFF);
   static const Color _grey = Color(0xFF888888);
@@ -1212,7 +1212,7 @@ class _PackageSheet extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1A1A1A),
+                          color: const Color(0xFF262626),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(

@@ -20,7 +20,7 @@ class _DentingTinkeringScreenState
     extends State<DentingTinkeringScreen> {
 
   static const Color _bg =
-      Color(0xFF0A0A0A);
+      Color(0xFF262626);
 
   static const Color _card =
       Color(0xFF141414);
@@ -35,7 +35,7 @@ class _DentingTinkeringScreenState
       Color(0xFF9E9E9E);
 
   static const Color _cardBorder =
-      Color(0xFF2A2A2A);
+      Color(0xFF3A3A3A);
 
   int selectedPackage = -1;
 
@@ -311,31 +311,180 @@ class _DentingTinkeringScreenState
       backgroundColor: _bg,
 
       body: SingleChildScrollView(
-  child: Center(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 600),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
 
-          children: [
+              children: [
 
-            _buildHero(),
+                _buildHero(),
 
-            _buildPackages(),
+                _buildPackages(),
 
-            _buildWhyUs(),
+                _buildWhyUs(),
 
-            _buildLiveTracking(),
+                _buildLiveTracking(),
 
-            _buildBottomCTA(),
-
-            const SizedBox(height: 30),
-          ],
+                const SizedBox(height: 30),
+              ],
+            ),
+          ),
         ),
       ),
-    ),
-  ),
-);
+
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFD4A017).withOpacity(0.45),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: GestureDetector(
+            onTap: () {
+              if (selectedPackage == -1) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Please select a package',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    backgroundColor: Colors.red,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+                return;
+              }
+
+              final selected = packages[selectedPackage];
+
+              Navigator.push(
+
+                context,
+
+                MaterialPageRoute(
+
+                  builder: (_) =>
+                      PaymentScreen(
+
+                    title:
+                        selected[
+                            'title'],
+
+                    price:
+                        selected[
+                            'price'],
+
+                    duration:
+                        selected[
+                            'duration'],
+
+                    vehicleId:
+                        widget
+                            .vehicle[
+                                'id']
+                            .toString(),
+                  ),
+                ),
+              );
+            },
+
+            child: Container(
+
+              width:
+                  double.infinity,
+
+              padding:
+                  const EdgeInsets
+                      .symmetric(
+                vertical: 18,
+              ),
+
+              decoration:
+                  BoxDecoration(
+
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFFD4A017),
+                    Color(0xFFF5C842),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+
+                borderRadius:
+                    BorderRadius.circular(
+                        16),
+
+                boxShadow: [
+
+                  BoxShadow(
+
+                    color: const Color(0xFFD4A017)
+                        .withOpacity(
+                            0.35),
+
+                    blurRadius:
+                        18,
+                  ),
+                ],
+              ),
+
+              child: const Row(
+
+                mainAxisAlignment:
+                    MainAxisAlignment
+                        .center,
+
+                children: [
+
+                  Text(
+
+                    'BOOK NOW',
+
+                    style: TextStyle(
+
+                      color:
+                          Colors.black87,
+
+                      fontSize:
+                          16,
+
+                      fontWeight:
+                          FontWeight
+                              .w900,
+
+                      letterSpacing:
+                          2,
+                    ),
+                  ),
+
+                  SizedBox(
+                      width: 10),
+
+                  Icon(
+
+                    Icons
+                        .chevron_right,
+
+                    color:
+                        Colors.black87,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildHero() {
@@ -1362,153 +1511,4 @@ class _DentingTinkeringScreenState
     );
   }
 
-  Widget _buildBottomCTA() {
-
-    return Padding(
-
-      padding:
-          const EdgeInsets
-              .fromLTRB(
-                  20,
-                  0,
-                  20,
-                  0),
-
-      child: GestureDetector(
-
-        onTap: () {
-
-          if (selectedPackage ==
-              -1) {
-
-            ScaffoldMessenger.of(
-                    context)
-                .showSnackBar(
-
-              const SnackBar(
-
-                content: Text(
-                    'Please select a package'),
-              ),
-            );
-
-            return;
-          }
-
-          final selected =
-              packages[
-                  selectedPackage];
-
-          Navigator.push(
-
-            context,
-
-            MaterialPageRoute(
-
-              builder: (_) =>
-                  PaymentScreen(
-
-                title:
-                    selected[
-                        'title'],
-
-                price:
-                    selected[
-                        'price'],
-
-                duration:
-                    selected[
-                        'duration'],
-
-                vehicleId:
-                    widget
-                        .vehicle[
-                            'id']
-                        .toString(),
-              ),
-            ),
-          );
-        },
-
-        child: Container(
-
-          width:
-              double.infinity,
-
-          padding:
-              const EdgeInsets
-                  .symmetric(
-            vertical: 18,
-          ),
-
-          decoration:
-              BoxDecoration(
-
-            color:
-                _gold,
-
-            borderRadius:
-                BorderRadius.circular(
-                    16),
-
-            boxShadow: [
-
-              BoxShadow(
-
-                color: _gold
-                    .withOpacity(
-                        0.35),
-
-                blurRadius:
-                    18,
-              ),
-            ],
-          ),
-
-          child: const Row(
-
-            mainAxisAlignment:
-                MainAxisAlignment
-                    .center,
-
-            children: [
-
-              Text(
-
-                'BOOK NOW',
-
-                style: TextStyle(
-
-                  color:
-                      Colors.black,
-
-                  fontSize:
-                      16,
-
-                  fontWeight:
-                      FontWeight
-                          .w900,
-
-                  letterSpacing:
-                      2,
-                ),
-              ),
-
-              SizedBox(
-                  width: 10),
-
-              Icon(
-
-                Icons
-                    .chevron_right,
-
-                color:
-                    Colors.black,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

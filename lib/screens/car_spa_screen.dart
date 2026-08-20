@@ -27,7 +27,7 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
   ];
 
   static const Color _bg = Color(0xFF050505);
-  static const Color _card = Color(0xFF111111);
+  static const Color _card = Color(0xFF1C1C1C);
   static const Color _gold = Color(0xFFD4A017);
   static const Color _white = Color(0xFFFFFFFF);
   static const Color _grey = Color(0xFF9E9E9E);
@@ -165,7 +165,7 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF111111),
+        backgroundColor: const Color(0xFF1C1C1C),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         child: Padding(
           padding: const EdgeInsets.all(28),
@@ -309,7 +309,7 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                               'assets/images/car_spa_hero.jpg',
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) => Container(
-                                color: const Color(0xFF1A1A1A),
+                                color: const Color(0xFF262626),
                                 child: const Center(
                                   child: Icon(
                                     Icons.directions_car,

@@ -887,7 +887,7 @@ class _HomeScreenState extends State<HomeScreen>
                           style: TextStyle(color: Colors.white38, fontSize: 17),
                         ),
                         _NavLink('About', onTap: () async {
-                          final uri = Uri.parse('https://trustkon.com/');
+                          final uri = Uri.parse('https://trustkon.com/vendorform.html');
                           await launchUrl(uri, mode: LaunchMode.externalApplication);
                         }),
                         const Text(
@@ -996,7 +996,7 @@ class _HomeScreenState extends State<HomeScreen>
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
+                        color: const Color(0xFF262626),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: const Color(0xFFD4A017)),
                       ),
@@ -1271,7 +1271,7 @@ class _HomeScreenState extends State<HomeScreen>
                             const SizedBox(height: 4),
                             CarouselSlider(
                               options: CarouselOptions(
-                                height: 230,
+                                height: 180,
                                 autoPlay: true,
                                 enlargeCenterPage: false,
                                 viewportFraction: 1.0,
@@ -1405,18 +1405,18 @@ class _HomeScreenState extends State<HomeScreen>
                                 borderRadius: BorderRadius.circular(24),
                                 child: Container(
                                   width: double.infinity,
-                                  height: 252,
+                                  height: 180,
                                   color: Colors.black,
                                   child: Image.asset(
                                     'assets/images/roadside_assistance_banner.jpg',
                                     fit: BoxFit.cover,
                                     width: double.infinity,
-                                    height: 252,
+                                    height: 180,
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 18),
                             GridView.builder(
                               shrinkWrap: true,
                               physics:
@@ -1424,8 +1424,8 @@ class _HomeScreenState extends State<HomeScreen>
                               gridDelegate:
                                   const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 3,
-                                crossAxisSpacing: 10,
-                                mainAxisSpacing: 10,
+                                crossAxisSpacing: 14,
+                                mainAxisSpacing: 14,
                                 childAspectRatio: 0.85,
                               ),
                               itemCount: quickActions.length,
@@ -1562,7 +1562,7 @@ class _HomeScreenState extends State<HomeScreen>
                                                 } else if (item['type'] ==
                                                     'garage') {
                                                   final uri = Uri.parse(
-                                                      'https://trustkon.com/');
+                                                      'https://trustkon.com/vendorform.html');
                                                   launchUrl(uri,
                                                       mode: LaunchMode
                                                           .externalApplication);
@@ -1632,7 +1632,7 @@ class _HomeScreenState extends State<HomeScreen>
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: const Color(0xFF262626),
         drawer: GarageDrawer(
           profileData: profileData,
           activeVehicle: activeVehicle,
@@ -1690,15 +1690,7 @@ class _HomeScreenState extends State<HomeScreen>
               },
             ),
 
-            // ── LUXURY BACKGROUND PAINTER ──
-            Positioned.fill(
-              child: CustomPaint(
-                painter: GarageBackgroundPainter(
-                  bokehAnimation: _bokehController.value,
-                  sparkleAnimation: _sparkleController.value,
-                ),
-              ),
-            ),
+
 
             // ── Main content ──
             loading
@@ -1745,7 +1737,7 @@ class _HomeScreenState extends State<HomeScreen>
                                           width: 48,
                                           height: 48,
                                           decoration: BoxDecoration(
-                                            color: const Color(0xFF1A1A1A),
+                                            color: const Color(0xFF262626),
                                             borderRadius:
                                                 BorderRadius.circular(16),
                                             border: Border.all(
@@ -2086,9 +2078,11 @@ class _HomeScreenState extends State<HomeScreen>
                                   const SizedBox(height: 4),
 
                                   // ── PACKAGES CAROUSEL ──
-                                  CarouselSlider(
-                                    options: CarouselOptions(
-                                      height: 230,
+                                  SizedBox(
+                                    width: 800,
+                                    child: CarouselSlider(
+                                      options: CarouselOptions(
+                                        height: 180,
                                       autoPlay: true,
                                       enlargeCenterPage: false,
                                       viewportFraction: 1.0,
@@ -2242,6 +2236,7 @@ class _HomeScreenState extends State<HomeScreen>
                                         },
                                       );
                                     }).toList(),
+                                    ),
                                   ),
 
                                   const SizedBox(height: 4),
@@ -2265,19 +2260,19 @@ class _HomeScreenState extends State<HomeScreen>
                                       borderRadius: BorderRadius.circular(24),
                                       child: Container(
                                         width: double.infinity,
-                                        height: 252,
+                                        height: 180,
                                         color: Colors.black,
                                         child: Image.asset(
                                           'assets/images/roadside_assistance_banner.jpg',
                                           fit: BoxFit.cover,
                                           width: double.infinity,
-                                          height: 252,
+                                          height: 180,
                                         ),
                                       ),
                                     ),
                                   ),
 
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 18),
 
                                   // ── ACTION GRID ──
                                   GridView.builder(
@@ -2287,8 +2282,8 @@ class _HomeScreenState extends State<HomeScreen>
                                     gridDelegate:
                                         const SliverGridDelegateWithFixedCrossAxisCount(
                                       crossAxisCount: 2,
-                                      crossAxisSpacing: 10,
-                                      mainAxisSpacing: 10,
+                                      crossAxisSpacing: 14,
+                                      mainAxisSpacing: 14,
                                       childAspectRatio: 0.85,
                                     ),
                                     itemCount: quickActions.length,
@@ -2427,7 +2422,7 @@ class _HomeScreenState extends State<HomeScreen>
                                                             'garage') {
                                                           final uri =
                                                               Uri.parse(
-                                                                  'https://trustkon.com/');
+                                                                  'https://trustkon.com/vendorform.html');
                                                           launchUrl(uri,
                                                               mode: LaunchMode
                                                                   .externalApplication);
@@ -2505,7 +2500,7 @@ class _HomeScreenState extends State<HomeScreen>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.75),
+                          color: Colors.black.withOpacity(0.85),
                           borderRadius: BorderRadius.circular(30),
                           border: Border.all(
                               color: const Color(0xFFD4A017)
@@ -2517,9 +2512,9 @@ class _HomeScreenState extends State<HomeScreen>
                             const Text(
                               'scroll to view services',
                               style: TextStyle(
-                                color: Colors.black,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
                                 letterSpacing: 0.3,
                               ),
                             ),
@@ -2857,9 +2852,9 @@ class _HomeScreenState extends State<HomeScreen>
                     curve: Curves.easeInOut,
                     builder: (context, value, child) {
                       return Container(
-                        width: 74,
-                        height: 74,
-                        margin: const EdgeInsets.only(bottom: 20),
+                        width: 60,
+                        height: 60,
+                        margin: const EdgeInsets.only(bottom: 16),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: const LinearGradient(
@@ -2877,8 +2872,23 @@ class _HomeScreenState extends State<HomeScreen>
                             ),
                           ],
                         ),
-                        child: const Icon(Icons.auto_awesome_rounded,
-                            color: Colors.black, size: 34),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.auto_awesome_rounded,
+                                color: Colors.black, size: 24),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'ASK AI',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontSize: 8,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
                       );
                     },
                   ),
@@ -3039,7 +3049,7 @@ class _HomeScreenState extends State<HomeScreen>
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: const Color(0xFF262626),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFF2A2A2A)),
       ),
@@ -3053,31 +3063,35 @@ class _HomeScreenState extends State<HomeScreen>
       children: [
         // ── Shimmer border wrapper ──
         AnimatedBuilder(
-          animation: _shimmerController,
-          builder: (_, child) {
-            return Container(
-              padding: const EdgeInsets.all(1.5),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
-                gradient: SweepGradient(
-                  center: Alignment.center,
-                  startAngle: 0,
-                  endAngle: 2 * pi,
-                  transform:
-                      GradientRotation(_shimmerController.value * 2 * pi),
-                  colors: const [
-                    Color(0xFFD4A017),
-                    Color(0xFFF5C842),
-                    Color(0xFF6B4E00),
-                    Color(0xFFD4A017),
-                    Color(0xFF6B4E00),
-                    Color(0xFFD4A017),
-                  ],
-                ),
-              ),
-              child: child,
-            );
-          },
+  animation: _shimmerController,
+  builder: (_, child) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(1.5),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: SweepGradient(
+            center: Alignment.center,
+            startAngle: 0,
+            endAngle: 2 * pi,
+            transform:
+                GradientRotation(_shimmerController.value * 2 * pi),
+            colors: const [
+              Color(0xFFD4A017),
+              Color(0xFFF5C842),
+              Color(0xFF6B4E00),
+              Color(0xFFD4A017),
+              Color(0xFF6B4E00),
+              Color(0xFFD4A017),
+            ],
+          ),
+        ),
+        child: child,
+      ),
+    );
+  },
+
           child: _TappableScale(
             onTap: () async {
               await Navigator.push(
@@ -3270,7 +3284,7 @@ class _HomeScreenState extends State<HomeScreen>
               height: size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF1A1A1A),
+                color: const Color(0xFF262626),
                 border: Border.all(
                     color: const Color(0xFFD4A017).withOpacity(0.4),
                     width: 2),
@@ -3445,7 +3459,7 @@ class _HomeScreenState extends State<HomeScreen>
               width: 80,
               height: 80,
               decoration: const BoxDecoration(
-                color: Color(0xFF1A1A1A),
+                color: Color(0xFF262626),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.directions_car_outlined,
@@ -3476,13 +3490,13 @@ class _HomeScreenState extends State<HomeScreen>
         Icon(icon,
             color: active
                 ? const Color(0xFFD4A017)
-                : const Color(0xFF444444)),
+                : Colors.white70),
         const SizedBox(height: 4),
         Text(
           label,
           style: TextStyle(
             color:
-                active ? const Color(0xFFD4A017) : const Color(0xFF444444),
+                active ? const Color(0xFFD4A017) : Colors.white70,
             fontSize: 12,
           ),
         ),
@@ -3686,7 +3700,7 @@ class _BouncingArrowState extends State<_BouncingArrow>
       builder: (_, __) => Transform.translate(
         offset: Offset(0, _a.value),
         child: const Icon(Icons.keyboard_arrow_down_rounded,
-            color: Colors.black, size: 16),
+            color: Colors.white, size: 16),
       ),
     );
   }
@@ -3779,7 +3793,7 @@ class _ActionCard extends StatelessWidget {
                         tile.title.split('&').first.trim(),
                         style: const TextStyle(
                           color: Colors.black,
-                          fontSize: 10,
+                          fontSize: 13,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.3,
                         ),
@@ -3799,8 +3813,8 @@ class _ActionCard extends StatelessWidget {
                       child: Center(
                         child: Icon(
                           Icons.arrow_forward,
-                          color: Colors.black54,
-                          size: 12,
+                          color: Colors.black,
+                          size: 13,
                         ),
                       ),
                     ),
@@ -3992,7 +4006,7 @@ class GarageDrawer extends StatelessWidget {
                     await launchUrl(uri, mode: LaunchMode.externalApplication);
                   }),
                   _tile(context, Icons.handshake_rounded, 'Be a Partner', () async {
-                    final uri = Uri.parse('https://trustkon.com/');
+                    final uri = Uri.parse('https://trustkon.com/vendorform.html');
                     await launchUrl(uri, mode: LaunchMode.externalApplication);
                   }),
                   _tile(context, Icons.privacy_tip_outlined, 'Privacy Policy', () async {
@@ -4096,274 +4110,4 @@ class _PulseDotState extends State<_PulseDot>
       ),
     );
   }
-}
-
-// ── PREMIUM METALLIC BACKGROUND PAINTER ──────────────────────────────
-// 40% warm gold atmosphere, 35% charcoal, 25% graphite grey
-// Performance: ~2ms static paint + bokeh/sparkle animations
-// 60 FPS guaranteed
-
-class GarageBackgroundPainter extends CustomPainter {
-  final double bokehAnimation;
-  final double sparkleAnimation;
-
-  GarageBackgroundPainter({
-    this.bokehAnimation = 0.0,
-    this.sparkleAnimation = 0.0,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Layer order matters for depth
-    _paintLuxuryCharcoalGradient(canvas, size);
-    _paintGraphiteSmoke(canvas, size);
-    _paintSoftGoldClouds(canvas, size);
-    _paintCenterIllumination(canvas, size);
-    _paintMetallicStreaks(canvas, size);
-    _paintMetallicNoise(canvas, size);
-    _paintFloatingBokeh(canvas, size);
-    _paintTinySparkles(canvas, size);
-    _paintVignette(canvas, size);
-  }
-
-  void _paintLuxuryCharcoalGradient(Canvas canvas, Size size) {
-    final gradient = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [
-        const Color(0xFF2A2A2A),
-        const Color(0xFF1F1F1F),
-        const Color(0xFF181818),
-      ],
-      stops: const [0.0, 0.5, 1.0],
-    );
-
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-      Paint()
-        ..shader = gradient.createShader(
-          Rect.fromLTWH(0, 0, size.width, size.height),
-        ),
-    );
-  }
-
-  void _paintGraphiteSmoke(Canvas canvas, Size size) {
-    // Large graphite radial gradients to mix with gold - MORE AND BRIGHTER
-    final smokeGradient = RadialGradient(
-      radius: 1.0,
-      colors: [
-        const Color(0xFF2D2D2D).withOpacity(0.15),
-        const Color(0xFF2D2D2D).withOpacity(0.0),
-      ],
-    );
-
-    // 6 large smoke clouds spread across (increased from 4)
-    final smokeClouds = [
-      Offset(size.width * 0.25, size.height * 0.2),
-      Offset(size.width * 0.75, size.height * 0.3),
-      Offset(size.width * 0.3, size.height * 0.7),
-      Offset(size.width * 0.8, size.height * 0.75),
-      Offset(size.width * 0.5, size.height * 0.5),
-      Offset(size.width * 0.15, size.height * 0.65),
-    ];
-
-    for (final center in smokeClouds) {
-      canvas.drawCircle(
-        center,
-        size.width * 0.55,
-        Paint()
-          ..shader = smokeGradient.createShader(
-            Rect.fromCircle(center: center, radius: size.width * 0.55),
-          ),
-      );
-    }
-  }
-
-  void _paintSoftGoldClouds(Canvas canvas, Size size) {
-    // 12 soft gold radial gradients - INCREASED OPACITY
-    final goldClouds = [
-      // (position, radius, opacity)
-      (Offset(size.width * 0.15, size.height * 0.1), size.width * 0.28, 0.06),
-      (Offset(size.width * 0.5, size.height * 0.05), size.width * 0.18, 0.04),
-      (Offset(size.width * 0.85, size.height * 0.12), size.width * 0.32, 0.07),
-      (Offset(size.width * 0.1, size.height * 0.5), size.width * 0.26, 0.05),
-      (Offset(size.width * 0.9, size.height * 0.45), size.width * 0.24, 0.04),
-      (Offset(size.width * 0.2, size.height * 0.9), size.width * 0.35, 0.07),
-      (Offset(size.width * 0.65, size.height * 0.75), size.width * 0.22, 0.05),
-      (Offset(size.width * 0.45, size.height * 0.5), size.width * 0.3, 0.04),
-      (Offset(size.width * 0.75, size.height * 0.6), size.width * 0.28, 0.06),
-      (Offset(size.width * 0.35, size.height * 0.35), size.width * 0.25, 0.04),
-      (Offset(size.width * 0.6, size.height * 0.2), size.width * 0.26, 0.05),
-      (Offset(size.width * 0.05, size.height * 0.65), size.width * 0.24, 0.06),
-    ];
-
-    for (final cloud in goldClouds) {
-      final goldGradient = RadialGradient(
-        radius: 1.0,
-        colors: [
-          const Color(0xFFFFD45A).withOpacity(cloud.$3),
-          const Color(0xFFFFD45A).withOpacity(0.0),
-        ],
-      );
-
-      canvas.drawCircle(
-        cloud.$1,
-        cloud.$2,
-        Paint()
-          ..shader = goldGradient.createShader(
-            Rect.fromCircle(center: cloud.$1, radius: cloud.$2),
-          ),
-      );
-    }
-  }
-
-  void _paintCenterIllumination(Canvas canvas, Size size) {
-    // Large grey radial gradient in center - MUCH BRIGHTER
-    final centerGradient = RadialGradient(
-      radius: 1.0,
-      colors: [
-        const Color(0xFFE8E8E8).withOpacity(0.15),
-        const Color(0xFFE8E8E8).withOpacity(0.0),
-      ],
-    );
-
-    canvas.drawCircle(
-      Offset(size.width * 0.5, size.height * 0.45),
-      size.width * 0.7,
-      Paint()
-        ..shader = centerGradient.createShader(
-          Rect.fromCircle(
-            center: Offset(size.width * 0.5, size.height * 0.45),
-            radius: size.width * 0.7,
-          ),
-        ),
-    );
-  }
-
-  void _paintMetallicStreaks(Canvas canvas, Size size) {
-    // 5 diagonal gold streaks - BRIGHTER
-    final streakPaint = Paint()
-      ..color = const Color(0xFFFFD45A).withOpacity(0.04)
-      ..strokeWidth = 2.0
-      ..style = PaintingStyle.stroke;
-
-    // Create 5 diagonal lines at different angles
-    final streaks = [
-      (Offset(0, size.height * 0.1), Offset(size.width * 0.4, size.height * 0.3)),
-      (Offset(size.width * 0.6, 0), Offset(size.width, size.height * 0.25)),
-      (Offset(0, size.height * 0.5), Offset(size.width * 0.5, size.height * 0.8)),
-      (Offset(size.width * 0.7, size.height * 0.2), Offset(size.width, size.height * 0.6)),
-      (Offset(size.width * 0.2, size.height * 0.7), Offset(size.width * 0.9, size.height)),
-    ];
-
-    for (final streak in streaks) {
-      canvas.drawLine(streak.$1, streak.$2, streakPaint);
-    }
-  }
-
-  void _paintMetallicNoise(Canvas canvas, Size size) {
-    // Tiny random dots - MORE VISIBLE
-    final random = math.Random(42);
-    final noisePaint = Paint()..style = PaintingStyle.fill;
-
-    for (int i = 0; i < 120; i++) {
-      final x = random.nextDouble() * size.width;
-      final y = random.nextDouble() * size.height;
-      final isGold = random.nextBool();
-
-      noisePaint.color = isGold
-          ? const Color(0xFFFFD45A).withOpacity(0.015)
-          : const Color(0xFFCCCCCC).withOpacity(0.015);
-
-      canvas.drawCircle(
-        Offset(x, y),
-        0.5 + random.nextDouble(),
-        noisePaint,
-      );
-    }
-  }
-
-  void _paintFloatingBokeh(Canvas canvas, Size size) {
-    // Large blurred circles drifting - BRIGHTER
-    final bokehData = [
-      (Offset(size.width * 0.2, size.height * 0.3), 60.0, 0.04),
-      (Offset(size.width * 0.8, size.height * 0.5), 100.0, 0.03),
-      (Offset(size.width * 0.4, size.height * 0.7), 80.0, 0.04),
-      (Offset(size.width * 0.75, size.height * 0.2), 70.0, 0.03),
-      (Offset(size.width * 0.15, size.height * 0.55), 90.0, 0.035),
-    ];
-
-    for (final bokeh in bokehData) {
-      // Slow drift based on animation value
-      final driftOffset = bokeh.$1 +
-          Offset(math.sin(bokehAnimation * 2 * math.pi) * 30,
-              math.cos(bokehAnimation * 2 * math.pi) * 20);
-
-      final bokehGradient = RadialGradient(
-        radius: 1.0,
-        colors: [
-          const Color(0xFFFFD45A).withOpacity(bokeh.$3),
-          const Color(0xFFFFD45A).withOpacity(0.0),
-        ],
-      );
-
-      canvas.drawCircle(
-        driftOffset,
-        bokeh.$2,
-        Paint()
-          ..shader = bokehGradient.createShader(
-            Rect.fromCircle(center: driftOffset, radius: bokeh.$2),
-          ),
-      );
-    }
-  }
-
-  void _paintTinySparkles(Canvas canvas, Size size) {
-    // 20 tiny sparkles - BRIGHTER
-    final random = math.Random(123);
-    final sparklePaint = Paint()..style = PaintingStyle.fill;
-
-    for (int i = 0; i < 20; i++) {
-      final x = random.nextDouble() * size.width;
-      final y = random.nextDouble() * size.height;
-
-      // Twinkle based on sparkleAnimation and index
-      final twinklePhase = (sparkleAnimation + i / 20) % 1.0;
-      final opacity = (math.sin(twinklePhase * 2 * math.pi) * 0.5 + 0.5) * 0.035;
-
-      sparklePaint.color = const Color(0xFFFFD45A).withOpacity(opacity);
-
-      canvas.drawCircle(
-        Offset(x, y),
-        1.0 + random.nextDouble() * 0.5,
-        sparklePaint,
-      );
-    }
-  }
-
-  void _paintVignette(Canvas canvas, Size size) {
-    // Darken edges - SOFTER VIGNETTE
-    final vignetteGradient = RadialGradient(
-      radius: 1.2,
-      colors: [
-        Colors.black.withOpacity(0.0),
-        Colors.black.withOpacity(0.08),
-        Colors.black.withOpacity(0.12),
-      ],
-      stops: const [0.0, 0.6, 1.0],
-    );
-
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-      Paint()
-        ..shader = vignetteGradient.createShader(
-          Rect.fromLTWH(0, 0, size.width, size.height),
-        ),
-    );
-  }
-
-  @override
-  bool shouldRepaint(GarageBackgroundPainter oldDelegate) =>
-      bokehAnimation != oldDelegate.bokehAnimation ||
-      sparkleAnimation != oldDelegate.sparkleAnimation;
 }

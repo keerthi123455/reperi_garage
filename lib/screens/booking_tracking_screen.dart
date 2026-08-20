@@ -99,9 +99,9 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF262626),
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF1C1C1C),
         title: Text(
           widget.booking['package_name'],
           style: const TextStyle(color: Color(0xFFD4A017)),
@@ -121,7 +121,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF111111),
+                        color: const Color(0xFF1C1C1C),
                         borderRadius: BorderRadius.circular(28),
                       ),
                       child: Column(
@@ -182,7 +182,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                         margin: const EdgeInsets.only(bottom: 24),
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
+                          color: const Color(0xFF1C1C1C),
                           borderRadius: BorderRadius.circular(26),
                         ),
                         child: Column(
@@ -241,7 +241,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF111111),
+                        color: const Color(0xFF1C1C1C),
                         borderRadius: BorderRadius.circular(26),
                       ),
                       child: Column(
@@ -284,7 +284,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                           Container(
                             height: 68,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF111111),
+                              color: const Color(0xFF1C1C1C),
                               borderRadius: BorderRadius.circular(24),
                               border: Border.all(
                                 color: const Color(0xFFD4A017).withOpacity(0.3),
@@ -938,11 +938,11 @@ class _ChatSheetState extends State<ChatSheet> {
                     decoration: InputDecoration(
                       hintText: isBlockedByOther ? 'You are blocked' : 'Type a message...',
                       hintStyle:
-                          const TextStyle(color: Color(0xFF444444)),
+                          const TextStyle(color: Colors.white54),
                       filled: true,
                       fillColor: isBlockedByOther 
                           ? const Color(0xFF2A1A1A)
-                          : const Color(0xFF1A1A1A),
+                          : const Color(0xFF262626),
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 18, vertical: 14),
                       border: OutlineInputBorder(

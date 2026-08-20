@@ -73,9 +73,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF262626),
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF1C1C1C),
         elevation: 0,
         title: Text(
           widget.carModel,
@@ -103,11 +103,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                         gradient: const LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: [Color(0xFF1A1A1A), Color(0xFF111111)],
+                          colors: [Color(0xFF262626), Color(0xFF1C1C1C)],
                         ),
                         borderRadius: BorderRadius.circular(30),
                         border:
-                            Border.all(color: const Color(0xFF2A2A2A)),
+                            Border.all(color: const Color(0xFF3A3A3A)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,7 +178,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       Container(
                         padding: const EdgeInsets.all(30),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
+                          color: const Color(0xFF1C1C1C),
                           borderRadius: BorderRadius.circular(26),
                         ),
                         child: const Center(
@@ -211,10 +211,10 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                           margin: const EdgeInsets.only(bottom: 22),
                           padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF111111),
+                            color: const Color(0xFF1C1C1C),
                             borderRadius: BorderRadius.circular(28),
                             border: Border.all(
-                                color: const Color(0xFF2A2A2A)),
+                                color: const Color(0xFF3A3A3A)),
                           ),
                           child: Column(
                             crossAxisAlignment:

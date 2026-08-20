@@ -174,7 +174,7 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen> {
     final selected = _tiers[_selectedTier];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF262626),
       body: Stack(
         children: [
           CustomScrollView(
@@ -193,10 +193,10 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen> {
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1A1A1A),
+                              color: const Color(0xFF262626),
                               shape: BoxShape.circle,
                               border:
-                                  Border.all(color: const Color(0xFF2A2A2A)),
+                                  Border.all(color: const Color(0xFF3A3A3A)),
                             ),
                             child: const Icon(Icons.arrow_back,
                                 color: Colors.white, size: 20),
@@ -443,7 +443,7 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen> {
                     decoration: BoxDecoration(
                       color: const Color(0xFF141414),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF2A2A2A)),
+                      border: Border.all(color: const Color(0xFF3A3A3A)),
                     ),
                     child: Column(
                       children: [
@@ -562,7 +562,7 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen> {
                               decoration: const BoxDecoration(
                                 border: Border(
                                   bottom:
-                                      BorderSide(color: Color(0xFF2A2A2A)),
+                                      BorderSide(color: Color(0xFF3A3A3A)),
                                 ),
                               ),
                               children: const [
@@ -687,7 +687,7 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen> {
                                     color: const Color(0xFF141414),
                                     borderRadius: BorderRadius.circular(18),
                                     border: Border.all(
-                                        color: const Color(0xFF2A2A2A)),
+                                        color: const Color(0xFF3A3A3A)),
                                   ),
                                   child: Column(
                                     crossAxisAlignment:

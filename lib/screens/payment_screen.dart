@@ -124,7 +124,7 @@ class _PaymentScreenState
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: const Color(0xFF262626),
         title: const Text(
           'Address Required',
           style: TextStyle(
@@ -427,7 +427,7 @@ class _PaymentScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor:
-          const Color(0xFF0A0A0A),
+          const Color(0xFF262626),
 
       body: orderPlaced
           ? Center(
@@ -538,7 +538,7 @@ class _PaymentScreenState
                             decoration:
                                 BoxDecoration(
                               color: const Color(
-                                  0xFF1A1A1A),
+                                  0xFF262626),
 
                               borderRadius:
                                   BorderRadius
@@ -588,7 +588,7 @@ class _PaymentScreenState
                           BoxDecoration(
                         color:
                             const Color(
-                                0xFF111111),
+                                0xFF1C1C1C),
 
                         borderRadius:
                             BorderRadius
@@ -597,7 +597,7 @@ class _PaymentScreenState
 
                         border: Border.all(
                           color: const Color(
-                              0xFF2A2A2A),
+                              0xFF3A3A3A),
                         ),
                       ),
 
@@ -787,10 +787,10 @@ class _PaymentScreenState
                     Container(
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
+                        color: const Color(0xFF262626),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: const Color(0xFF2A2A2A),
+                          color: const Color(0xFF3A3A3A),
                         ),
                       ),
                       child: Column(
@@ -943,10 +943,10 @@ class _PaymentScreenState
                         height: 72,
 
                         decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
+                          color: const Color(0xFF1C1C1C),
                           borderRadius: BorderRadius.circular(28),
                           border: Border.all(
-                            color: const Color(0xFF2A2A2A),
+                            color: const Color(0xFF3A3A3A),
                           ),
                         ),
 

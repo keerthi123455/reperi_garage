@@ -207,7 +207,7 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
     final selected = _tiers[_selectedTier];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF262626),
       body: Stack(
         children: [
           CustomScrollView(
@@ -226,10 +226,10 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1A1A1A),
+                              color: const Color(0xFF262626),
                               shape: BoxShape.circle,
                               border:
-                                  Border.all(color: const Color(0xFF2A2A2A)),
+                                  Border.all(color: const Color(0xFF3A3A3A)),
                             ),
                             child: const Icon(Icons.arrow_back,
                                 color: Colors.white, size: 20),
@@ -534,7 +534,7 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
                               decoration: const BoxDecoration(
                                 border: Border(
                                   bottom:
-                                      BorderSide(color: Color(0xFF2A2A2A)),
+                                      BorderSide(color: Color(0xFF3A3A3A)),
                                 ),
                               ),
                               children: const [
@@ -651,7 +651,7 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
                           color: const Color(0xFF141414),
                           borderRadius: BorderRadius.circular(18),
                           border:
-                              Border.all(color: const Color(0xFF2A2A2A)),
+                              Border.all(color: const Color(0xFF3A3A3A)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,

@@ -170,9 +170,9 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF262626),
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF1C1C1C),
         title: const Text(
           'Car Inspection',
           style: TextStyle(color: Color(0xFFD4A017)),
@@ -190,7 +190,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF111111),
+                    color: const Color(0xFF1C1C1C),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Column(
@@ -453,7 +453,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                         'Describe the car condition, damages, notes, etc.',
                     hintStyle: const TextStyle(color: Colors.white38),
                     filled: true,
-                    fillColor: const Color(0xFF111111),
+                    fillColor: const Color(0xFF1C1C1C),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide:

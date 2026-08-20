@@ -154,9 +154,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final activeList = selectedTab == 0 ? filteredBookings : filteredFleet;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF262626),
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF1C1C1C),
         elevation: 0,
         title: const Text(
           'GARAGE ADMIN',
@@ -175,7 +175,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF1C1C1C),
         currentIndex: selectedTab,
         selectedItemColor: const Color(0xFFD4A017),
         unselectedItemColor: Colors.white54,
@@ -213,20 +213,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               ? 'Search by model, number, status…'
                               : 'Search by company, number, status…',
                           hintStyle:
-                              const TextStyle(color: Color(0xFF444444)),
+                              const TextStyle(color: Colors.white54),
                           prefixIcon: const Icon(Icons.search,
                               color: Color(0xFFD4A017)),
                           filled: true,
-                          fillColor: const Color(0xFF111111),
+                          fillColor: const Color(0xFF1C1C1C),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
                             borderSide:
-                                const BorderSide(color: Color(0xFF2A2A2A)),
+                                const BorderSide(color: Color(0xFF3A3A3A)),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
                             borderSide:
-                                const BorderSide(color: Color(0xFF2A2A2A)),
+                                const BorderSide(color: Color(0xFF3A3A3A)),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
@@ -320,9 +320,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         margin: const EdgeInsets.only(bottom: 20),
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: const Color(0xFF111111),
+          color: const Color(0xFF1C1C1C),
           borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: const Color(0xFF2A2A2A)),
+          border: Border.all(color: const Color(0xFF3A3A3A)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,9 +369,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         margin: const EdgeInsets.only(bottom: 20),
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: const Color(0xFF111111),
+          color: const Color(0xFF1C1C1C),
           borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: const Color(0xFF2A2A2A)),
+          border: Border.all(color: const Color(0xFF3A3A3A)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.25),
@@ -653,9 +653,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         margin: const EdgeInsets.only(bottom: 20),
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: const Color(0xFF111111),
+          color: const Color(0xFF1C1C1C),
           borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: const Color(0xFF2A2A2A)),
+          border: Border.all(color: const Color(0xFF3A3A3A)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.25),

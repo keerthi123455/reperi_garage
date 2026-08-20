@@ -61,7 +61,7 @@ class _FleetOrderSheetState
   Future<ImageSource?> _showImageSourceSheet() {
     return showModalBottomSheet<ImageSource>(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: const Color(0xFF262626),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -216,10 +216,10 @@ class _FleetOrderSheetState
   Widget build(BuildContext context) {
 
     return Scaffold(
-      backgroundColor: const Color(0xFF111111),
+      backgroundColor: const Color(0xFF1C1C1C),
 
       appBar: AppBar(
-        backgroundColor: const Color(0xFF111111),
+        backgroundColor: const Color(0xFF1C1C1C),
         title: const Text(
           'Fleet Pickup Request',
         ),

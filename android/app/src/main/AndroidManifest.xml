@@ -59,7 +59,6 @@
         android:label="Reperi Garage"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
-        android:debuggable="false"
         android:usesCleartextTraffic="false">
 
         <!-- ════════════════════════════════════════════════════════════════

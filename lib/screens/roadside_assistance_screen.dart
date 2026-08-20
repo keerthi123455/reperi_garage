@@ -102,7 +102,7 @@ class _RoadsideAssistanceScreenState
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFF111111),
+          backgroundColor: const Color(0xFF1C1C1C),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20)),
           title: const Text(
@@ -128,7 +128,7 @@ class _RoadsideAssistanceScreenState
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF111111),
+        backgroundColor: const Color(0xFF1C1C1C),
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20)),
         title: const Text(
@@ -173,10 +173,10 @@ class _RoadsideAssistanceScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF262626),
 
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: const Color(0xFF262626),
         elevation: 0,
         title: const Text(
           'Roadside Assistance',
@@ -406,7 +406,7 @@ class _RoadsideAssistanceScreenState
       isScrollControlled: true,
       builder: (_) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF111111),
+          color: Color(0xFF1C1C1C),
           borderRadius: BorderRadius.vertical(
             top: Radius.circular(30),
           ),

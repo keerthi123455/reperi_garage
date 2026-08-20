@@ -89,7 +89,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        backgroundColor: const Color(0xFF111111),
+        backgroundColor: const Color(0xFF1C1C1C),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         child: Padding(
           padding: const EdgeInsets.all(28),
