@@ -561,7 +561,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
 
                 const SizedBox(height: 28),
 
-                // ── INSPECTION BUTTON ──
+                // ── PICKUP INSPECTION BUTTON ──
                 GestureDetector(
                   onTap: () {
                     Navigator.push(
@@ -569,6 +569,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                       MaterialPageRoute(
                         builder: (_) => InspectionUploadScreen(
                           booking: widget.booking,
+                          type: 'pickup',
                         ),
                       ),
                     ).then((_) {
@@ -584,19 +585,65 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                         color: const Color(0xFFD4A017).withOpacity(0.5),
                       ),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.photo_camera_rounded,
+                        const Icon(Icons.directions_car_rounded,
                             color: Color(0xFFD4A017), size: 22),
-                        SizedBox(width: 10),
+                        const SizedBox(width: 10),
                         Text(
-                          'ADD INSPECTION PHOTOS',
+                          'PICKUP INSPECTION',
                           style: TextStyle(
-                            color: Color(0xFFD4A017),
+                            color: const Color(0xFFD4A017),
                             fontWeight: FontWeight.bold,
                             letterSpacing: 1,
-                            fontSize: 15,
+                            fontSize: selectedStage == 'Car Picked Up' ? 15 : 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                // ── DELIVERY INSPECTION BUTTON ──
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => InspectionUploadScreen(
+                          booking: widget.booking,
+                          type: 'delivery',
+                        ),
+                      ),
+                    ).then((_) {
+                      // Optionally refresh data after inspection upload
+                    });
+                  },
+                  child: Container(
+                    height: 68,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1C1C1C),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: const Color(0xFFD4A017).withOpacity(0.5),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.local_shipping_rounded,
+                            color: Color(0xFFD4A017), size: 22),
+                        const SizedBox(width: 10),
+                        Text(
+                          'DELIVERY INSPECTION',
+                          style: TextStyle(
+                            color: const Color(0xFFD4A017),
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                            fontSize: selectedStage == 'Delivered' ? 15 : 13,
                           ),
                         ),
                       ],

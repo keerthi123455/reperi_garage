@@ -36,9 +36,16 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   Future<void> fetchBookings() async {
     final supabase = Supabase.instance.client;
 
+    // ── UPDATED QUERY: Now includes admin table data (garage name & address) ──
     final response = await supabase
         .from('bookings')
-        .select()
+        .select('''
+          *,
+          admin:assigned_to_admin_id (
+            username,
+            address
+          )
+        ''')
         .eq('vehicle_id', widget.vehicleId)
         .order('created_at', ascending: false);
 
@@ -196,6 +203,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       final hasUnread = unreadBookingIds
                           .contains(booking['id'].toString());
 
+                      // ── GET GARAGE INFO FROM ADMIN DATA ──
+                      final adminData = booking['admin'] as Map<String, dynamic>?;
+                      final garageName = adminData?['username'] ?? 'Garage';
+                      final garageAddress = adminData?['address'] ?? '';
+
                       return GestureDetector(
                         onTap: () {
                           Navigator.push(
@@ -333,6 +345,76 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                   color: Color(0xFFD4A017),
                                   fontSize: 22,
                                   fontWeight: FontWeight.bold,
+                                ),
+                              ),
+
+                              const SizedBox(height: 20),
+
+                              // ── NEW: GARAGE INFO SECTION ──
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF262626),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: const Color(0xFF3A3A3A),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    // Garage Name
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.location_on_outlined,
+                                          color:
+                                              const Color(0xFFD4A017),
+                                          size: 16,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Garage: $garageName',
+                                            style: const TextStyle(
+                                              color: Color(0xFFD4A017),
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    // Garage Address
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(
+                                          Icons.home_outlined,
+                                          color: Colors.white54,
+                                          size: 16,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            garageAddress,
+                                            style: const TextStyle(
+                                              color: Colors.white54,
+                                              fontSize: 12,
+                                              height: 1.4,
+                                            ),
+                                            maxLines: 2,
+                                            overflow:
+                                                TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ),
 

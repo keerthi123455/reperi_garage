@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -117,51 +118,29 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                 child: ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
-                    // ── HEADER CARD ──
+                    // ── STATUS BUTTON ONLY ──
                     Container(
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1C1C1C),
-                        borderRadius: BorderRadius.circular(28),
+                        color: const Color(0xFFD4A017).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.booking['package_name'],
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 30,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Text(
-                            widget.booking['package_price'],
-                            style: const TextStyle(
-                              color: Color(0xFFD4A017),
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFD4A017).withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Text(
-                              widget.booking['booking_status'],
-                              style: const TextStyle(
-                                color: Color(0xFFD4A017),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        widget.booking['booking_status'],
+                        style: const TextStyle(
+                          color: Color(0xFFD4A017),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
+                    ),
+
+                    const SizedBox(height: 30),
+
+                    // ── INSPECTION SECTION ──
+                    InspectionViewWidget(
+                      bookingId: widget.booking['id'],
                     ),
 
                     const SizedBox(height: 30),
@@ -212,13 +191,35 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                               ],
                             ),
                             const SizedBox(height: 20),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(22),
-                              child: Image.network(
-                                u['image_url'],
-                                height: 220,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
+                            RepaintBoundary(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(22),
+                                child: CachedNetworkImage(
+                                  imageUrl: u['image_url'],
+                                  height: 220,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  fadeInDuration: Duration.zero,
+                                  fadeOutDuration: Duration.zero,
+                                  useOldImageOnUrlChange: false,
+                                  placeholder: (context, url) => Container(
+                                    color: const Color(0xFF111111),
+                                    child: const Center(
+                                      child: CircularProgressIndicator(
+                                        color: Color(0xFFD4A017),
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  ),
+                                  errorWidget: (context, url, error) =>
+                                      Container(
+                                    color: const Color(0xFF111111),
+                                    child: const Icon(
+                                      Icons.broken_image_rounded,
+                                      color: Colors.white38,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                             const SizedBox(height: 20),
@@ -234,44 +235,6 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                         ),
                       );
                     }).toList(),
-
-                    const SizedBox(height: 30),
-
-                    // ── INSPECTION SECTION ──
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1C1C1C),
-                        borderRadius: BorderRadius.circular(26),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
-                            children: [
-                              Icon(
-                                Icons.camera_alt_rounded,
-                                color: Color(0xFFD4A017),
-                                size: 24,
-                              ),
-                              SizedBox(width: 10),
-                              Text(
-                                'Inspection Report',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          InspectionViewWidget(
-                            bookingId: widget.booking['id'],
-                          ),
-                        ],
-                      ),
-                    ),
 
                     const SizedBox(height: 30),
 

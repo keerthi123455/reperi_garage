@@ -1,12 +1,15 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class InspectionViewWidget extends StatefulWidget {
   final String bookingId;
+  final bool showBothTypes;
 
   const InspectionViewWidget({
     super.key,
     required this.bookingId,
+    this.showBothTypes = true,
   });
 
   @override
@@ -14,45 +17,73 @@ class InspectionViewWidget extends StatefulWidget {
 }
 
 class _InspectionViewWidgetState extends State<InspectionViewWidget> {
-  Map? inspection;
-  List<Map> inspectionPhotos = [];
+  Map? pickupInspection;
+  Map? deliveryInspection;
+  List<Map> pickupPhotos = [];
+  List<Map> deliveryPhotos = [];
   bool loading = true;
+
+  // Collapse/expand states
+  bool mainSectionExpanded = false;
+  bool pickupExpanded = false;
+  bool deliveryExpanded = false;
 
   @override
   void initState() {
     super.initState();
-    fetchInspection();
+    fetchInspections();
   }
 
-  Future<void> fetchInspection() async {
+  Future<void> fetchInspections() async {
     final supabase = Supabase.instance.client;
 
     try {
-      // Fetch inspection data
-      final inspectionData = await supabase
+      // Fetch pickup inspection
+      final pickupData = await supabase
           .from('car_inspections')
           .select()
           .eq('booking_id', widget.bookingId)
+          .eq('type', 'pickup')
           .maybeSingle();
 
-      if (inspectionData == null) {
-        if (!mounted) return;
-        setState(() => loading = false);
-        return;
+      // Fetch delivery inspection
+      final deliveryData = await supabase
+          .from('car_inspections')
+          .select()
+          .eq('booking_id', widget.bookingId)
+          .eq('type', 'delivery')
+          .maybeSingle();
+
+      List<Map> pickupPhotosList = [];
+      List<Map> deliveryPhotosList = [];
+
+      // Fetch pickup photos if inspection exists
+      if (pickupData != null) {
+        final photos = await supabase
+            .from('inspection_photos')
+            .select()
+            .eq('inspection_id', pickupData['id'])
+            .order('photo_order', ascending: true);
+        pickupPhotosList = List<Map>.from(photos);
       }
 
-      // Fetch inspection photos
-      final photos = await supabase
-          .from('inspection_photos')
-          .select()
-          .eq('inspection_id', inspectionData['id'])
-          .order('photo_order', ascending: true);
+      // Fetch delivery photos if inspection exists
+      if (deliveryData != null) {
+        final photos = await supabase
+            .from('inspection_photos')
+            .select()
+            .eq('inspection_id', deliveryData['id'])
+            .order('photo_order', ascending: true);
+        deliveryPhotosList = List<Map>.from(photos);
+      }
 
       if (!mounted) return;
 
       setState(() {
-        inspection = inspectionData;
-        inspectionPhotos = List<Map>.from(photos);
+        pickupInspection = pickupData;
+        deliveryInspection = deliveryData;
+        pickupPhotos = pickupPhotosList;
+        deliveryPhotos = deliveryPhotosList;
         loading = false;
       });
     } catch (e) {
@@ -61,12 +92,12 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
     }
   }
 
-  void openFullscreenImage(String imageUrl, int index) {
+  void openFullscreenImage(String imageUrl, int index, List<Map> photos) {
     showDialog(
       context: context,
       builder: (_) => FullscreenImageGallery(
         imageUrl: imageUrl,
-        allImages: inspectionPhotos.map((p) => p['photo_url'] as String).toList(),
+        allImages: photos.map((p) => p['photo_url'] as String).toList(),
         initialIndex: index,
       ),
     );
@@ -80,7 +111,10 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
       );
     }
 
-    if (inspection == null) {
+    final hasPickup = pickupInspection != null;
+    final hasDelivery = deliveryInspection != null;
+
+    if (!hasPickup && !hasDelivery) {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -89,7 +123,7 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
         ),
         child: const Center(
           child: Text(
-            'No inspection data yet',
+            'No inspection reports yet',
             style: TextStyle(
               color: Colors.white54,
               fontSize: 14,
@@ -102,141 +136,399 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── DESCRIPTION SECTION ──
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF111111),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: const Color(0xFFD4A017).withOpacity(0.2),
+        // ── MAIN HEADER: VIEW INSPECTION REPORTS ──
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              mainSectionExpanded = !mainSectionExpanded;
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1C),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFFD4A017).withOpacity(0.3),
+              ),
             ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                children: [
-                  Icon(
-                    Icons.description_rounded,
-                    color: Color(0xFFD4A017),
-                    size: 22,
-                  ),
-                  SizedBox(width: 10),
-                  Text(
-                    'Inspection Notes',
-                    style: TextStyle(
-                      color: Color(0xFFD4A017),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.document_scanner_rounded,
+                      color: const Color(0xFFD4A017),
+                      size: 20,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                inspection!['description'] ?? '',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                  height: 1.6,
+                    const SizedBox(width: 10),
+                    const Text(
+                      'View Inspection Reports',
+                      style: TextStyle(
+                        color: Color(0xFFD4A017),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+                Icon(
+                  mainSectionExpanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  color: const Color(0xFFD4A017),
+                  size: 24,
+                ),
+              ],
+            ),
           ),
         ),
 
-        const SizedBox(height: 24),
+        // ── INSPECTION CONTENT (EXPANDED ONLY) ──
+        if (mainSectionExpanded) ...[
+          const SizedBox(height: 16),
 
-        // ── PHOTOS SECTION ──
-        if (inspectionPhotos.isNotEmpty) ...[
+        // ── AFTER PICKUP DROPDOWN ──
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  pickupExpanded = !pickupExpanded;
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F0F0F),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFF2A2A2A),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.directions_car_rounded,
+                          color: const Color(0xFFD4A017),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 10),
+                        const Text(
+                          'After Pickup',
+                          style: TextStyle(
+                            color: Color(0xFFD4A017),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Icon(
+                      pickupExpanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      color: const Color(0xFFD4A017),
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Pickup inspection content
+            if (pickupExpanded)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: hasPickup
+                    ? _buildInspectionSection(
+                        pickupInspection!,
+                        pickupPhotos,
+                        'After Pickup Inspection',
+                        Icons.directions_car_rounded,
+                      )
+                    : Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF111111),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFF2A2A2A),
+                          ),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'No updates here',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+
+            const SizedBox(height: 12),
+          ],
+        ),
+
+        // ── BEFORE DELIVERY DROPDOWN ──
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  deliveryExpanded = !deliveryExpanded;
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F0F0F),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFF2A2A2A),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.local_shipping_rounded,
+                          color: const Color(0xFFD4A017),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 10),
+                        const Text(
+                          'Before Delivery',
+                          style: TextStyle(
+                            color: Color(0xFFD4A017),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Icon(
+                      deliveryExpanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      color: const Color(0xFFD4A017),
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Delivery inspection content
+            if (deliveryExpanded)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: hasDelivery
+                    ? _buildInspectionSection(
+                        deliveryInspection!,
+                        deliveryPhotos,
+                        'Before Delivery Inspection',
+                        Icons.local_shipping_rounded,
+                      )
+                    : Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF111111),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFF2A2A2A),
+                          ),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'No updates here',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+          ],
+        ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildInspectionSection(
+    Map inspection,
+    List<Map> photos,
+    String title,
+    IconData icon,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111111),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFD4A017).withOpacity(0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── INSPECTION NOTES ──
           Row(
             children: [
-              const Icon(
-                Icons.photo_library_rounded,
-                color: Color(0xFFD4A017),
-                size: 22,
+              Icon(
+                Icons.description_rounded,
+                color: const Color(0xFFD4A017),
+                size: 20,
               ),
               const SizedBox(width: 10),
-              Text(
-                'Inspection Photos (${inspectionPhotos.length})',
-                style: const TextStyle(
+              const Text(
+                'Inspection Notes',
+                style: TextStyle(
                   color: Color(0xFFD4A017),
-                  fontSize: 16,
+                  fontSize: 13,
                   fontWeight: FontWeight.w700,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
+          const SizedBox(height: 12),
+          Text(
+            inspection['description'] ?? 'No notes added',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              height: 1.6,
             ),
-            itemCount: inspectionPhotos.length,
-            itemBuilder: (context, index) {
-              final photo = inspectionPhotos[index];
-              return GestureDetector(
-                onTap: () =>
-                    openFullscreenImage(photo['photo_url'], index),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: const Color(0xFF1A1A1A),
-                    border: Border.all(
-                      color: const Color(0xFF2A2A2A),
-                    ),
-                  ),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.network(
-                          photo['photo_url'],
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: const Color(0xFF111111),
-                              child: const Icon(
-                                Icons.broken_image_rounded,
-                                color: Colors.white38,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD4A017)
-                                .withOpacity(0.9),
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(8),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.zoom_in_rounded,
-                            color: Colors.black,
-                            size: 14,
-                          ),
-                        ),
-                      ),
-                    ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // ── PHOTOS SECTION ──
+          if (photos.isNotEmpty) ...[
+            Row(
+              children: [
+                Icon(
+                  Icons.photo_library_rounded,
+                  color: const Color(0xFFD4A017),
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Photos (${photos.length})',
+                  style: const TextStyle(
+                    color: Color(0xFFD4A017),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-              );
-            },
-          ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              itemCount: photos.length,
+              itemBuilder: (context, index) {
+                final photo = photos[index];
+                return GestureDetector(
+                  onTap: () => openFullscreenImage(
+                    photo['photo_url'],
+                    index,
+                    photos,
+                  ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      color: const Color(0xFF1A1A1A),
+                      border: Border.all(
+                        color: const Color(0xFF2A2A2A),
+                      ),
+                    ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        RepaintBoundary(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: CachedNetworkImage(
+                              imageUrl: photo['photo_url'],
+                              fit: BoxFit.cover,
+                              fadeInDuration: Duration.zero,
+                              fadeOutDuration: Duration.zero,
+                              useOldImageOnUrlChange: false,
+                              placeholder: (context, url) => Container(
+                                color: const Color(0xFF111111),
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      color: Color(0xFFD4A017),
+                                      strokeWidth: 1,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              errorWidget: (context, url, error) =>
+                                  Container(
+                                color: const Color(0xFF111111),
+                                child: const Icon(
+                                  Icons.broken_image_rounded,
+                                  color: Colors.white38,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFD4A017)
+                                  .withOpacity(0.9),
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(8),
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.zoom_in_rounded,
+                              color: Colors.black,
+                              size: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -321,9 +613,26 @@ class _FullscreenImageGalleryState extends State<FullscreenImageGallery> {
               itemCount: widget.allImages.length,
               itemBuilder: (context, index) {
                 return InteractiveViewer(
-                  child: Image.network(
-                    widget.allImages[index],
-                    fit: BoxFit.contain,
+                  child: RepaintBoundary(
+                    child: CachedNetworkImage(
+                      imageUrl: widget.allImages[index],
+                      fit: BoxFit.contain,
+                      fadeInDuration: Duration.zero,
+                      fadeOutDuration: Duration.zero,
+                      useOldImageOnUrlChange: false,
+                      placeholder: (context, url) => Center(
+                        child: CircularProgressIndicator(
+                          color: const Color(0xFFD4A017),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: Colors.black,
+                        child: const Icon(
+                          Icons.broken_image_rounded,
+                          color: Colors.white38,
+                        ),
+                      ),
+                    ),
                   ),
                 );
               },

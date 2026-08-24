@@ -27,6 +27,7 @@ import 'service_details_screen.dart';
 import 'servicing_package_screen.dart';
 import 'wheel_management_package_screen.dart';
 import 'paint_care_package_screen.dart';
+import 'washing_package_screen.dart';
 import 'package:reperi_garage/services/address_service.dart';
 import 'package:reperi_garage/screens/address_management_screen.dart';
 import 'package:geolocator/geolocator.dart';
@@ -794,7 +795,7 @@ class _HomeScreenState extends State<HomeScreen>
               ctx,
               MaterialPageRoute(
                 builder: (_) =>
-                    CarSpaScreen(vehicle: activeVehicle!),
+                    WashingPackageScreen(vehicleId: activeVehicle!['id']),
               ),
             ).then((_) {
               if (activeVehicle != null) {
@@ -1094,8 +1095,9 @@ class _HomeScreenState extends State<HomeScreen>
                                       Navigator.push(context,
                                           MaterialPageRoute(
                                         builder: (_) =>
-                                            BookServiceScreen(
-                                              vehicle: activeVehicle!,
+                                            ServicingPackageScreen(
+                                              vehicleId:
+                                                  activeVehicle!['id'],
                                             ),
                                       )).then((_) {
                                         if (activeVehicle != null) {
@@ -1157,7 +1159,7 @@ class _HomeScreenState extends State<HomeScreen>
                                             'Book Service',
                                             style: TextStyle(
                                               color: Colors.black87,
-                                              fontSize: 15,
+                                              fontSize: 13,
                                               fontWeight:
                                                   FontWeight.w900,
                                               letterSpacing: 0.6,
@@ -1177,9 +1179,9 @@ class _HomeScreenState extends State<HomeScreen>
                                       Navigator.push(context,
                                           MaterialPageRoute(
                                         builder: (_) =>
-                                            CarSpaScreen(
-                                              vehicle:
-                                                  activeVehicle!,
+                                            WashingPackageScreen(
+                                              vehicleId:
+                                                  activeVehicle!['id'],
                                             ),
                                       )).then((_) {
                                         if (activeVehicle != null) {
@@ -1242,7 +1244,7 @@ class _HomeScreenState extends State<HomeScreen>
                                             'Book Washing',
                                             style: TextStyle(
                                               color: Colors.black87,
-                                              fontSize: 15,
+                                              fontSize: 13,
                                               fontWeight:
                                                   FontWeight.w900,
                                               letterSpacing: 0.6,
@@ -1267,13 +1269,91 @@ class _HomeScreenState extends State<HomeScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _goldSeparator(),
+                            
+                            // ── CAR WASH SUBSCRIPTION BANNER ──
+                            GestureDetector(
+                              onTap: () {
+                                if (activeVehicle == null) {
+                                  _showNoProfileDialog(context);
+                                  return;
+                                }
+                                // Navigate to subscription screen
+                                // TODO: Replace with actual subscription screen
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Subscription screen coming soon'),
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 12,
+                                ),
+                                margin: const EdgeInsets.only(bottom: 20),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: const Color(0xFFD4A017).withOpacity(0.2),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.05),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    // Image on left - autoscaling
+                                    SizedBox(
+                                      width: 60,
+                                      height: 60,
+                                      child: Image.asset(
+                                        'assets/images/subscription.png',
+                                        fit: BoxFit.contain,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    // Text in middle - single line
+                                    Expanded(
+                                      child: Text(
+                                        'Washing Subscription',
+                                        style: const TextStyle(
+                                          color: Colors.black87,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 0.3,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    // Arrow on right
+                                    Icon(
+                                      Icons.arrow_forward_rounded,
+                                      color: Colors.black54,
+                                      size: 20,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            
                             _sectionTitle('Our Packages'),
                             const SizedBox(height: 4),
-                            CarouselSlider(
+                                                        CarouselSlider(
                               options: CarouselOptions(
-                                height: 180,
+                                height: 200,
                                 autoPlay: true,
-                                enlargeCenterPage: false,
+                                autoPlayAnimationDuration: const Duration(milliseconds: 250),
+                                enlargeCenterPage: true,
                                 viewportFraction: 1.0,
                               ),
                               items: sliderItems.map((item) {
@@ -1307,9 +1387,9 @@ class _HomeScreenState extends State<HomeScreen>
                                           context,
                                           MaterialPageRoute(
                                             builder: (_) =>
-                                                CarSpaScreen(
-                                              vehicle:
-                                                  activeVehicle!,
+                                                WashingPackageScreen(
+                                              vehicleId:
+                                                  activeVehicle!['id'],
                                             ),
                                           ),
                                         ).then((_) {
@@ -1355,31 +1435,73 @@ class _HomeScreenState extends State<HomeScreen>
                                       }
                                     },
                                     child: Container(
-                                      decoration: BoxDecoration(
-                                        borderRadius:
-                                            BorderRadius.circular(28),
-                                        border: Border.all(
-                                          color: const Color(0xFFD4A017)
-                                              .withOpacity(0.5),
-                                          width: 1.5,
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: const Color(0xFFD4A017)
-                                                .withOpacity(0.08),
-                                            blurRadius: 22,
-                                            offset: const Offset(0, 10),
-                                          ),
-                                        ],
-                                      ),
+                                      margin: const EdgeInsets.symmetric(
+                                          horizontal: 2),
                                       child: ClipRRect(
                                         borderRadius:
                                             BorderRadius.circular(28),
-                                        child: Image.asset(
-                                          item['image'] as String,
-                                          fit: BoxFit.cover,
-                                          width: double.infinity,
-                                          height: double.infinity,
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            // Image background
+                                            Image.asset(
+                                              item['image'] as String,
+                                              fit: BoxFit.cover,
+                                            ),
+                                            // Dark gradient overlay
+                                            Container(
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  begin: Alignment
+                                                      .bottomCenter,
+                                                  end: Alignment.topCenter,
+                                                  colors: [
+                                                    Colors.black
+                                                        .withOpacity(0.55),
+                                                    Colors.transparent,
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                            // Title + Price at bottom-left
+                                            Positioned(
+                                              left: 18,
+                                              bottom: 18,
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment
+                                                        .start,
+                                                mainAxisSize:
+                                                    MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    item['title']
+                                                        as String,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.w900,
+                                                      letterSpacing: 0.5,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(
+                                                      height: 3),
+                                                  Text(
+                                                    item['price']
+                                                        as String,
+                                                    style: const TextStyle(
+                                                      color:
+                                                          Colors.white70,
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ),
@@ -1391,6 +1513,7 @@ class _HomeScreenState extends State<HomeScreen>
                             _goldSeparator(),
                             _sectionTitle('Our Services'),
                             const SizedBox(height: 4),
+                                                        // ── ROADSIDE ASSISTANCE BANNER ──
                             _TappableScale(
                               onTap: () {
                                 Navigator.push(
@@ -1403,15 +1526,63 @@ class _HomeScreenState extends State<HomeScreen>
                               },
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(24),
-                                child: Container(
+                                child: SizedBox(
                                   width: double.infinity,
-                                  height: 180,
-                                  color: Colors.black,
-                                  child: Image.asset(
-                                    'assets/images/roadside_assistance_banner.jpg',
-                                    fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    height: 180,
+                                  height: 220,
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      Image.asset(
+                                        'assets/images/roadside_assistance_banner.jpg',
+                                        fit: BoxFit.cover,
+                                      ),
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.bottomCenter,
+                                            end: Alignment.topCenter,
+                                            colors: [
+                                              Colors.black.withOpacity(0.55),
+                                              Colors.transparent,
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        right: 18,
+                                        bottom: 18,
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFF6C3FD4),
+                                            foregroundColor: Colors.white,
+                                            elevation: 8,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 18,
+                                              vertical: 12,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(14),
+                                            ),
+                                          ),
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const RoadsideAssistanceScreen(),
+                                              ),
+                                            );
+                                          },
+                                          child: const Text(
+                                            'LEARN MORE',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w900,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -1709,9 +1880,9 @@ class _HomeScreenState extends State<HomeScreen>
                             child: SingleChildScrollView(
                               controller: _scrollController,
                               padding:
-                                  const EdgeInsets.fromLTRB(20, 2, 20, 10),
+                                  const EdgeInsets.fromLTRB(16, 2, 16, 10),
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   // ── TOP BAR ──
                                   Row(
@@ -1909,8 +2080,9 @@ class _HomeScreenState extends State<HomeScreen>
                                             Navigator.push(context,
                                                 MaterialPageRoute(
                                               builder: (_) =>
-                                                  BookServiceScreen(
-                                                    vehicle: activeVehicle!,
+                                                  ServicingPackageScreen(
+                                                    vehicleId:
+                                                        activeVehicle!['id'],
                                                   ),
                                             )).then((_) {
                                               if (activeVehicle != null) {
@@ -1971,7 +2143,7 @@ class _HomeScreenState extends State<HomeScreen>
                                                   'Book Service',
                                                   style: TextStyle(
                                                     color: Colors.black87,
-                                                    fontSize: 16,
+                                                    fontSize: 13,
                                                     fontWeight:
                                                         FontWeight.w900,
                                                     letterSpacing: 0.6,
@@ -1993,9 +2165,9 @@ class _HomeScreenState extends State<HomeScreen>
                                             Navigator.push(context,
                                                 MaterialPageRoute(
                                               builder: (_) =>
-                                                  CarSpaScreen(
-                                                    vehicle:
-                                                        activeVehicle!,
+                                                  WashingPackageScreen(
+                                                    vehicleId:
+                                                        activeVehicle!['id'],
                                                   ),
                                             )).then((_) {
                                               if (activeVehicle != null) {
@@ -2057,7 +2229,7 @@ class _HomeScreenState extends State<HomeScreen>
                                                   'Book Washing',
                                                   style: TextStyle(
                                                     color: Colors.black87,
-                                                    fontSize: 16,
+                                                    fontSize: 13,
                                                     fontWeight:
                                                         FontWeight.w900,
                                                     letterSpacing: 0.6,
@@ -2074,17 +2246,93 @@ class _HomeScreenState extends State<HomeScreen>
                                   const SizedBox(height: 20),
 
                                   _goldSeparator(),
+                                  
+                                  // ── CAR WASH SUBSCRIPTION BANNER ──
+                                  GestureDetector(
+                                    onTap: () {
+                                      if (activeVehicle == null) {
+                                        _showNoProfileDialog(context);
+                                        return;
+                                      }
+                                      // Navigate to subscription screen
+                                      // TODO: Replace with actual subscription screen
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Subscription screen coming soon'),
+                                        ),
+                                      );
+                                    },
+                                    child: Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 1,
+                                      ),
+                                      margin: const EdgeInsets.only(bottom: 20),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: const Color(0xFFD4A017).withOpacity(0.2),
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.05),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          // Image on left - autoscaling
+                                          SizedBox(
+                                            width: 85,
+                                            height: 85,
+                                            child: Image.asset(
+                                              'assets/images/subscription.png',
+                                              fit: BoxFit.contain,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          // Text in middle - single line
+                                          Expanded(
+                                            child: Text(
+                                              'Washing Subscriptions',
+                                              style: const TextStyle(
+                                                color: Colors.black87,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w600,
+                                                letterSpacing: 0.3,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          // Arrow on right
+                                          Icon(
+                                            Icons.arrow_forward_rounded,
+                                            color: Colors.black54,
+                                            size: 20,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  
                                   _sectionTitle('Our Packages'),
                                   const SizedBox(height: 4),
 
                                   // ── PACKAGES CAROUSEL ──
-                                  SizedBox(
-                                    width: 800,
-                                    child: CarouselSlider(
-                                      options: CarouselOptions(
-                                        height: 180,
+                                  CarouselSlider(
+                                    options: CarouselOptions(
+                                      height: 220,
                                       autoPlay: true,
-                                      enlargeCenterPage: false,
+                                      autoPlayAnimationDuration: const Duration(milliseconds: 250),
+                                      enlargeCenterPage: true,
                                       viewportFraction: 1.0,
                                     ),
                                     items: sliderItems.map((item) {
@@ -2120,9 +2368,9 @@ class _HomeScreenState extends State<HomeScreen>
                                                   context,
                                                   MaterialPageRoute(
                                                     builder: (_) =>
-                                                        CarSpaScreen(
-                                                      vehicle:
-                                                          activeVehicle!,
+                                                        WashingPackageScreen(
+                                                      vehicleId:
+                                                          activeVehicle!['id'],
                                                     ),
                                                   ),
                                                 ).then((_) {
@@ -2200,52 +2448,68 @@ class _HomeScreenState extends State<HomeScreen>
                                             },
                                             child: Container(
                                               margin: const EdgeInsets
-                                                  .symmetric(horizontal: 0),
-                                              decoration: BoxDecoration(
-                                                borderRadius:
-                                                    BorderRadius.circular(28),
-                                                border: Border.all(
-                                                  color: const Color(
-                                                          0xFFD4A017)
-                                                      .withOpacity(0.5),
-                                                  width: 1.5,
-                                                ),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: const Color(
-                                                            0xFFD4A017)
-                                                        .withOpacity(0.08),
-                                                    blurRadius: 22,
-                                                    offset:
-                                                        const Offset(0, 10),
-                                                  ),
-                                                ],
-                                              ),
+                                                  .symmetric(horizontal: 2),
                                               child: ClipRRect(
                                                 borderRadius:
                                                     BorderRadius.circular(28),
-                                                child: Image.asset(
-                                                  item['image'] as String,
-                                                  fit: BoxFit.cover,
-                                                  width: double.infinity,
-                                                  height: double.infinity,
+                                                child: Stack(
+                                                  fit: StackFit.expand,
+                                                  children: [
+                                                    // Image background only
+                                                    Image.asset(
+                                                      item['image'] as String,
+                                                      fit: BoxFit.cover,
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                             ),
                                           );
                                         },
                                       );
-                                    }).toList(),
-                                    ),
+                                                                       }).toList(),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 12, top: 12),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        'Scroll to view',
+                                        style: TextStyle(
+                                          color: const Color.fromARGB(255, 250, 250, 250).withOpacity(0.5),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 0.3,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      TweenAnimationBuilder<double>(
+                                        tween: Tween(begin: 0, end: 1),
+                                        duration: const Duration(seconds: 1),
+                                        curve: Curves.easeInOut,
+                                        builder: (context, value, child) {
+                                          return Transform.translate(
+                                            offset: Offset(value * 6, 0),
+                                            child: Icon(
+                                              Icons.chevron_right_rounded,
+                                              color: const Color(0xFFD4A017).withOpacity(0.5 + (value * 0.3)),
+                                              size: 20,
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
                                   ),
+                                ),
 
                                   const SizedBox(height: 4),
 
                                   _goldSeparator(),
                                   _sectionTitle('Our Services'),
-                                  const SizedBox(height: 4),
-
-                                  // ── ROADSIDE ASSISTANCE BANNER ──
+const SizedBox(height: 8),
+                                                                    // ── ROADSIDE ASSISTANCE BANNER ──
                                   _TappableScale(
                                     onTap: () {
                                       Navigator.push(
@@ -2258,15 +2522,12 @@ class _HomeScreenState extends State<HomeScreen>
                                     },
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(24),
-                                      child: Container(
+                                      child: SizedBox(
                                         width: double.infinity,
-                                        height: 180,
-                                        color: Colors.black,
+                                        height: 220,
                                         child: Image.asset(
                                           'assets/images/roadside_assistance_banner.jpg',
                                           fit: BoxFit.cover,
-                                          width: double.infinity,
-                                          height: 180,
                                         ),
                                       ),
                                     ),
@@ -2488,39 +2749,49 @@ class _HomeScreenState extends State<HomeScreen>
             if (!loading)
               Positioned(
                 bottom: 12,
-                left: 0,
-                right: 0,
+                left: 20,
+                right: 20,
                 child: AnimatedOpacity(
                   opacity: _showScrollHint ? 1.0 : 0.0,
                   duration: const Duration(milliseconds: 400),
                   child: IgnorePointer(
                     ignoring: !_showScrollHint,
                     child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.85),
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(
-                              color: const Color(0xFFD4A017)
-                                  .withOpacity(0.5)),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width - 40,
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'scroll to view services',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.3,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.85),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                                color: const Color(0xFFD4A017)
+                                    .withOpacity(0.5)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  'scroll to view services',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.3,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 6),
-                            _BouncingArrow(),
-                          ],
+                              const SizedBox(width: 8),
+                              _BouncingArrow(),
+                            ],
+                          ),
                         ),
                       ),
                     ),
