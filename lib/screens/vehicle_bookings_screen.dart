@@ -26,14 +26,69 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   List bookings = [];
   Set<String> unreadBookingIds = {};
   List insuranceUpdates = [];
+  List washHistory = [];
   bool loading = true;
   bool _insuranceExpanded = false;
+  bool _subscriptionExpanded = false;
+  Map subscription = {};
 
   @override
   void initState() {
     super.initState();
     fetchBookings();
     fetchInsuranceUpdates();
+    fetchSubscription();
+    fetchWashHistory();
+  }
+
+  Future<void> fetchSubscription() async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      final response = await supabase
+          .from('subscriptions')
+          .select('*')
+          .eq('vehicle_id', widget.vehicleId)
+          .single();
+
+      if (mounted) {
+        setState(() {
+          subscription = response;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching subscription: $e');
+    }
+  }
+
+  Future<void> fetchWashHistory() async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      final subResponse = await supabase
+          .from('subscriptions')
+          .select('id')
+          .eq('vehicle_id', widget.vehicleId)
+          .single();
+
+      if (subResponse == null) return;
+
+      final subscriptionId = subResponse['id'];
+
+      final response = await supabase
+          .from('service_history')
+          .select('*')
+          .eq('subscription_id', subscriptionId)
+          .order('created_at', ascending: false);
+
+      if (mounted) {
+        setState(() {
+          washHistory = response as List;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching wash history: $e');
+    }
   }
 
   Future<void> fetchInsuranceUpdates() async {
@@ -115,6 +170,26 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       unreadBookingIds = unreadIds;
       loading = false;
     });
+  }
+
+  String formatDate(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return '${date.day} ${months[date.month - 1]} ${date.year}';
+    } catch (e) {
+      return dateStr;
+    }
+  }
+
+  String formatDay(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      final days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      return days[date.weekday - 1];
+    } catch (e) {
+      return '';
+    }
   }
 
   @override
@@ -222,59 +297,243 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
                     const SizedBox(height: 20),
 
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD4A017).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: const Color(0xFFD4A017).withOpacity(0.5),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Car Wash Subscription - Luxury Cars',
-                            style: TextStyle(
-                              color: Color(0xFFD4A017),
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                            ),
+                    // ── EXPANDABLE SUBSCRIPTION TILE ──
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _subscriptionExpanded = !_subscriptionExpanded;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD4A017).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: const Color(0xFFD4A017).withOpacity(0.5),
                           ),
-                          const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                '₹1200/month',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFD4A017),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Text(
-                                  'Active',
-                                  style: TextStyle(
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 12,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Car Wash Subscription - Luxury Cars',
+                                        style: TextStyle(
+                                          color: Color(0xFFD4A017),
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            '₹${subscription['price'] ?? '1200'}/month',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 6,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFD4A017),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Text(
+                                              'Active',
+                                              style: TextStyle(
+                                                color: Colors.black,
+                                                fontWeight: FontWeight.w900,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
                                 ),
+                                Icon(
+                                  _subscriptionExpanded ? Icons.expand_less : Icons.expand_more,
+                                  color: const Color(0xFFD4A017),
+                                  size: 28,
+                                ),
+                              ],
+                            ),
+
+                            // ── EXPANDED WASH HISTORY ──
+                            if (_subscriptionExpanded) ...[
+                              const SizedBox(height: 20),
+                              const Divider(color: Color(0xFFD4A017)),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Wash History',
+                                style: TextStyle(
+                                  color: Color(0xFFD4A017),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
+                              const SizedBox(height: 12),
+                              if (washHistory.isEmpty)
+                                const Text(
+                                  'No washes yet',
+                                  style: TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 12,
+                                  ),
+                                )
+                              else
+                                ...washHistory.map((wash) {
+                                  final dateStr = formatDate(wash['created_at'] ?? '');
+                                  final dayStr = formatDay(wash['created_at'] ?? '');
+
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 16),
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF262626),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: const Color(0xFF3A3A3A),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Date and Day
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  dateStr,
+                                                  style: const TextStyle(
+                                                    color: Color(0xFFD4A017),
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  dayStr,
+                                                  style: const TextStyle(
+                                                    color: Colors.white54,
+                                                    fontSize: 11,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: (wash['status'] ?? 'Not Completed') == 'Completed'
+                                                    ? Colors.green.withOpacity(0.2)
+                                                    : Colors.orange.withOpacity(0.2),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                wash['status'] ?? 'Not Completed',
+                                                style: TextStyle(
+                                                  color: (wash['status'] ?? 'Not Completed') == 'Completed'
+                                                      ? Colors.green
+                                                      : Colors.orange,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+
+                                        // Before and After Photos
+                                        if (wash['before_photo_url'] != null || wash['after_photo_url'] != null)
+                                          Row(
+                                            children: [
+                                              if (wash['before_photo_url'] != null)
+                                                Expanded(
+                                                  child: Column(
+                                                    children: [
+                                                      ClipRRect(
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        child: Image.network(
+                                                          wash['before_photo_url'],
+                                                          height: 70,
+                                                          fit: BoxFit.cover,
+                                                          errorBuilder: (_, __, ___) => Container(
+                                                            height: 70,
+                                                            color: const Color(0xFF333333),
+                                                            child: const Icon(Icons.image_not_supported, color: Colors.white54),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      const Text(
+                                                        'Before',
+                                                        style: TextStyle(
+                                                          color: Colors.white54,
+                                                          fontSize: 9,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              const SizedBox(width: 8),
+                                              if (wash['after_photo_url'] != null)
+                                                Expanded(
+                                                  child: Column(
+                                                    children: [
+                                                      ClipRRect(
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        child: Image.network(
+                                                          wash['after_photo_url'],
+                                                          height: 70,
+                                                          fit: BoxFit.cover,
+                                                          errorBuilder: (_, __, ___) => Container(
+                                                            height: 70,
+                                                            color: const Color(0xFF333333),
+                                                            child: const Icon(Icons.image_not_supported, color: Colors.white54),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      const Text(
+                                                        'After',
+                                                        style: TextStyle(
+                                                          color: Colors.white54,
+                                                          fontSize: 9,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
                             ],
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
 

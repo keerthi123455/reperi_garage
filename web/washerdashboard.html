@@ -653,7 +653,38 @@
 
                 console.log('✅ Updated washers table:', washerUpdateData);
 
-                showUploadStatus(statusDiv, 'success', `✅ Service completed! (${newCount} total)`);
+                // INSERT RECORD INTO SERVICE_HISTORY TABLE
+                const beforeUrl = sbClient.storage
+                    .from('subscription-services')
+                    .getPublicUrl(beforePath).data.publicUrl;
+
+                const afterUrl = sbClient.storage
+                    .from('subscription-services')
+                    .getPublicUrl(afterPath).data.publicUrl;
+
+                console.log('📝 Inserting into service_history:');
+                console.log('subscription_id:', subscriptionId);
+                console.log('before_photo_url:', beforeUrl);
+                console.log('after_photo_url:', afterUrl);
+
+                const { error: historyError } = await sbClient
+                    .from('service_history')
+                    .insert({
+                        subscription_id: subscriptionId,
+                        status: 'Not Completed',
+                        before_photo_url: beforeUrl,
+                        after_photo_url: afterUrl,
+                        created_at: new Date().toISOString(),
+                    });
+
+                if (historyError) {
+                    console.error('❌ Service history insert error:', historyError);
+                    throw new Error('Could not save service history: ' + historyError.message);
+                }
+
+                console.log('✅ Service history record created successfully');
+
+                showUploadStatus(statusDiv, 'success', `✅ Service uploaded! (${newCount} total)`);
                 
                 beforeInput.value = '';
                 afterInput.value = '';
