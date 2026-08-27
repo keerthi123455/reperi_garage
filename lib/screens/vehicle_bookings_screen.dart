@@ -25,12 +25,52 @@ class VehicleBookingsScreen extends StatefulWidget {
 class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   List bookings = [];
   Set<String> unreadBookingIds = {};
+  List insuranceUpdates = [];
   bool loading = true;
+  bool _insuranceExpanded = false;
 
   @override
   void initState() {
     super.initState();
     fetchBookings();
+    fetchInsuranceUpdates();
+  }
+
+  Future<void> fetchInsuranceUpdates() async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      // Get all insurance claims for this vehicle
+      final claimsResponse = await supabase
+          .from('insurance_claims')
+          .select('id')
+          .eq('vehicle_id', widget.vehicleId);
+
+      if ((claimsResponse as List).isEmpty) {
+        if (!mounted) return;
+        setState(() => insuranceUpdates = []);
+        return;
+      }
+
+      // Get all claim IDs
+      final claimIds =
+          (claimsResponse as List).map((c) => c['id']).toList();
+
+      // Get all updates for these claims
+      final updatesResponse = await supabase
+          .from('insurance_claims_updates')
+          .select('*')
+          .inFilter('claim_id', claimIds)
+          .order('created_at', ascending: false);
+
+      if (!mounted) return;
+
+      setState(() {
+        insuranceUpdates = updatesResponse;
+      });
+    } catch (e) {
+      print('Error fetching insurance updates: $e');
+    }
   }
 
   Future<void> fetchBookings() async {
@@ -171,11 +211,193 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                     const SizedBox(height: 34),
 
                     const Text(
+                      'Washing Subscription',
+                      style: TextStyle(
+                        color: Color(0xFFD4A017),
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD4A017).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: const Color(0xFFD4A017).withOpacity(0.5),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Car Wash Subscription - Luxury Cars',
+                            style: TextStyle(
+                              color: Color(0xFFD4A017),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                '₹1200/month',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFD4A017),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text(
+                                  'Active',
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 34),
+
+                    const Text(
                       'Booked Services',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 28,
                         fontWeight: FontWeight.w900,
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // ── INSURANCE UPDATES SECTION ──
+                    GestureDetector(
+                      onTap: () => setState(() => _insuranceExpanded = !_insuranceExpanded),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1C1C1C),
+                          borderRadius: BorderRadius.circular(26),
+                          border: Border.all(
+                            color: insuranceUpdates.isNotEmpty
+                                ? const Color(0xFFD4A017).withOpacity(0.3)
+                                : Colors.grey.withOpacity(0.2),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Insurance Updates',
+                                  style: TextStyle(
+                                    color: Color(0xFFD4A017),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                Icon(
+                                  _insuranceExpanded
+                                      ? Icons.expand_less
+                                      : Icons.expand_more,
+                                  color: const Color(0xFFD4A017),
+                                ),
+                              ],
+                            ),
+                            if (_insuranceExpanded) ...[
+                              const SizedBox(height: 16),
+                              if (insuranceUpdates.isEmpty)
+                                const Center(
+                                  child: Text(
+                                    'No insurance updates yet',
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                )
+                              else
+                                ...insuranceUpdates.map((update) {
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF262626),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: Colors.grey.withOpacity(0.2),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        if (update['photo_url'] != null)
+                                          Container(
+                                            height: 120,
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              image: DecorationImage(
+                                                image: NetworkImage(
+                                                    update['photo_url']),
+                                                fit: BoxFit.cover,
+                                              ),
+                                            ),
+                                            margin: const EdgeInsets.only(
+                                                bottom: 8),
+                                          ),
+                                        Text(
+                                          update['description'] ??
+                                              'No description',
+                                          style: TextStyle(
+                                            color:
+                                                Colors.grey.withOpacity(0.9),
+                                            fontSize: 12,
+                                            height: 1.5,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          DateTime.parse(update['created_at'])
+                                              .toString()
+                                              .split('.')[0],
+                                          style: TextStyle(
+                                            color:
+                                                Colors.grey.withOpacity(0.5),
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
 

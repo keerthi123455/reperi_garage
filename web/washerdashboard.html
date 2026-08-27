@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reperi Washer - Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        #loadingScreen {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #333;
+            border-top: 4px solid #D4A017;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #999;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        #dashboardScreen {
+            display: none;
+            background: #1a1a1a;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            border: 1px solid #333;
+        }
+
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #333;
+        }
+
+        .dashboard-header h2 {
+            color: #D4A017;
+            font-size: 24px;
+            font-weight: 900;
+        }
+
+        .logout-btn {
+            padding: 8px 16px;
+            background: #d32f2f;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .logout-btn:hover {
+            background: #b71c1c;
+        }
+
+        .washer-info {
+            background: #262626;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            border: 1px solid #333;
+        }
+
+        .washer-info p {
+            color: #999;
+            font-size: 13px;
+            margin: 5px 0;
+        }
+
+        .washer-info .email {
+            color: #D4A017;
+            font-weight: 600;
+        }
+
+        .subscriptions-title {
+            color: #D4A017;
+            font-size: 18px;
+            font-weight: 900;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .subscriptions-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .subscription-card {
+            background: #262626;
+            border: 1px solid #3a3a3a;
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .subscription-card:hover {
+            border-color: #D4A017;
+            box-shadow: 0 4px 12px rgba(212, 160, 23, 0.15);
+        }
+
+        .subscription-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 12px;
+        }
+
+        .subscription-vehicle {
+            color: #fff;
+            font-weight: 700;
+            font-size: 15px;
+        }
+
+        .subscription-status {
+            padding: 4px 10px;
+            background: rgba(212, 160, 23, 0.15);
+            color: #D4A017;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .subscription-details {
+            color: #999;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .subscription-details p {
+            margin: 5px 0;
+        }
+
+        .subscription-details strong {
+            color: #D4A017;
+        }
+
+        .no-subscriptions {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .no-subscriptions p {
+            font-size: 14px;
+        }
+
+        #errorScreen {
+            display: none;
+            text-align: center;
+            padding: 60px 20px;
+            background: #1a1a1a;
+            border-radius: 20px;
+            margin: 20px 0;
+        }
+
+        .error-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .error-text {
+            color: #ff4444;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        .redirect-btn {
+            padding: 10px 20px;
+            background: #D4A017;
+            color: #000;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .redirect-btn:hover {
+            background: #e6b820;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- LOADING SCREEN -->
+        <div id="loadingScreen">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Verifying authentication...</p>
+        </div>
+
+        <!-- ERROR SCREEN -->
+        <div id="errorScreen">
+            <div class="error-icon">🔐</div>
+            <p class="error-text" id="errorText">You must be logged in to access this page</p>
+            <button class="redirect-btn" onclick="window.location.href='washer.html'">Go to Login</button>
+        </div>
+
+        <!-- DASHBOARD SCREEN -->
+        <div id="dashboardScreen">
+            <div class="dashboard-header">
+                <h2>Dashboard</h2>
+                <button class="logout-btn" onclick="handleLogout()">LOGOUT</button>
+            </div>
+
+            <div class="washer-info">
+                <p>Welcome, <span class="email" id="washerEmail"></span></p>
+                <p>Washer ID: <strong id="washerId"></strong></p>
+            </div>
+
+            <div id="subscriptionsContent">
+                <div style="text-align: center; padding: 40px; color: #999;">
+                    <div class="loading-spinner"></div>
+                    <p style="margin-top: 15px;">Loading subscriptions...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Supabase
+        // ⚠️ UPDATE THESE WITH YOUR SUPABASE CREDENTIALS (same as washerlogin.html)
+        const SUPABASE_URL = 'https://rmvxqjyoqfinbrpubsvp.supabase.co/';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E';
+
+        const { createClient } = window.supabase;
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let currentWasherId = null;
+
+        // Check authentication on page load
+        window.addEventListener('load', async () => {
+            await checkAuthentication();
+        });
+
+        async function checkAuthentication() {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+
+                if (!session) {
+                    // Not logged in, show error and redirect
+                    showErrorScreen('You must be logged in to access this page');
+                    return;
+                }
+
+                // User is logged in, show dashboard
+                showDashboard(session.user.email);
+            } catch (err) {
+                showErrorScreen('Authentication error. Please try again.');
+            }
+        }
+
+        function showErrorScreen(message) {
+            document.getElementById('loadingScreen').style.display = 'none';
+            document.getElementById('dashboardScreen').style.display = 'none';
+            document.getElementById('errorScreen').style.display = 'block';
+            document.getElementById('errorText').textContent = message;
+        }
+
+        async function showDashboard(email) {
+            document.getElementById('loadingScreen').style.display = 'none';
+            document.getElementById('dashboardScreen').style.display = 'block';
+            document.getElementById('washerEmail').textContent = email;
+
+            await fetchWasherData(email);
+        }
+
+        async function fetchWasherData(email) {
+            try {
+                // Get washer data from washers table using email
+                const { data: washerData, error: washerError } = await supabase
+                    .from('washers')
+                    .select('id, email')
+                    .eq('email', email)
+                    .single();
+
+                if (washerError) {
+                    throw new Error('Washer profile not found');
+                }
+
+                currentWasherId = washerData.id;
+                document.getElementById('washerId').textContent = currentWasherId;
+
+                console.log('✅ Washer found:', { id: currentWasherId, email });
+
+                // Fetch subscriptions for this washer
+                await fetchSubscriptions(currentWasherId);
+            } catch (err) {
+                console.error('Error fetching washer data:', err);
+                document.getElementById('subscriptionsContent').innerHTML = `
+                    <div class="no-subscriptions">
+                        <p>❌ Error: ${err.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function fetchSubscriptions(washerId) {
+            try {
+                console.log('🔍 Fetching subscriptions for washer_id:', washerId);
+
+                const { data: subscriptions, error } = await supabase
+                    .from('subscriptions')
+                    .select('*')
+                    .eq('washer_id', washerId)
+                    .order('created_at', { ascending: false });
+
+                if (error) {
+                    console.error('Supabase error:', error);
+                    throw error;
+                }
+
+                console.log('✅ Subscriptions fetched:', subscriptions);
+                displaySubscriptions(subscriptions);
+            } catch (err) {
+                console.error('Error fetching subscriptions:', err);
+                document.getElementById('subscriptionsContent').innerHTML = `
+                    <div class="no-subscriptions">
+                        <p>❌ Error loading subscriptions: ${err.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function displaySubscriptions(subscriptions) {
+            const content = document.getElementById('subscriptionsContent');
+
+            if (!subscriptions || subscriptions.length === 0) {
+                content.innerHTML = `
+                    <div class="no-subscriptions">
+                        <p>📋 No subscriptions assigned yet</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `<div class="subscriptions-title">Your Subscriptions (${subscriptions.length})</div>
+                       <div class="subscriptions-list">`;
+
+            subscriptions.forEach((sub, index) => {
+                html += `
+                    <div class="subscription-card">
+                        <div class="subscription-header">
+                            <div class="subscription-vehicle">
+                                ${sub.car_brand || 'Vehicle'} ${sub.car_model || ''}
+                            </div>
+                            <div class="subscription-status">
+                                ${sub.status || 'Active'}
+                            </div>
+                        </div>
+                        <div class="subscription-details">
+                            <p><strong>Vehicle ID:</strong> ${sub.vehicle_id || 'N/A'}</p>
+                            <p><strong>Subscription Type:</strong> ${sub.subscription_type || 'N/A'}</p>
+                            <p><strong>Price:</strong> ₹${sub.price || '0'}</p>
+                            <p><strong>Frequency:</strong> ${sub.frequency || 'N/A'}</p>
+                            <p><strong>Date Started:</strong> ${new Date(sub.created_at).toLocaleDateString('en-IN')}</p>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            content.innerHTML = html;
+        }
+
+        async function handleLogout() {
+            await supabase.auth.signOut();
+            window.location.href = 'washer.html';
+        }
+    </script>
+</body>
+</html>

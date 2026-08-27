@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'booking_details_screen.dart';
 import 'fleet_request_details_screen.dart';
+import 'insurance_claim_details_screen.dart';
 import 'login_screen.dart';
 import '../services/push_notification_service.dart';
 
@@ -19,7 +20,9 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List bookings = [];
   List fleetRequests = [];
+  List insuranceClaims = [];
   Set<String> unreadBookingIds = {};
+  String adminUsername = '';
 
   bool loading = true;
 
@@ -73,6 +76,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             .order('created_at', ascending: false)
         : [];
 
+    // Only fetch insurance claims if admin is newexpert_care
+    final insuranceResponse = adminUsername == 'newexpert_care'
+        ? await supabase
+            .from('insurance_claims')
+            .select('*')
+            .eq('assigned_to_admin_id', 'newexpert_care')
+            .order('created_at', ascending: false)
+        : [];
+
     // fetch all unread consumer messages in one query
     final unreadChats = await supabase
         .from('booking_chats')
@@ -89,7 +101,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     setState(() {
       bookings = clientResponse;
       fleetRequests = fleetResponse;
+      insuranceClaims = insuranceResponse;
       unreadBookingIds = unreadIds;
+      this.adminUsername = adminUsername;
       loading = false;
     });
   }
@@ -128,6 +142,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
+  String _getStatusEmoji(String status) {
+    switch (status) {
+      case 'submitted':
+        return '🟡';
+      case 'inspection_scheduled':
+        return '🔵';
+      case 'inspection_completed':
+        return '🟢';
+      case 'approved':
+        return '✅';
+      case 'rejected':
+        return '❌';
+      default:
+        return '⚪';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final filteredBookings = bookings.where((booking) {
@@ -151,7 +182,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           (fleet['status'] ?? '').toString().toLowerCase().contains(query);
     }).toList();
 
-    final activeList = selectedTab == 0 ? filteredBookings : filteredFleet;
+    final filteredInsuranceClaims = insuranceClaims;
+
+    final activeList = selectedTab == 0 
+        ? filteredBookings 
+        : selectedTab == 1
+            ? filteredFleet
+            : filteredInsuranceClaims;
 
     return Scaffold(
       backgroundColor: const Color(0xFF262626),
@@ -190,6 +227,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'CLIENT'),
           BottomNavigationBarItem(
               icon: Icon(Icons.local_shipping), label: 'FLEET'),
+          BottomNavigationBarItem(icon: Icon(Icons.shield), label: 'INSURANCE'),
         ],
       ),
       body: loading
@@ -201,48 +239,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 constraints: const BoxConstraints(maxWidth: 600),
                 child: Column(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                      child: TextField(
-                        controller: _searchController,
-                        style: const TextStyle(color: Colors.white),
-                        onChanged: (value) =>
-                            setState(() => searchText = value),
-                        decoration: InputDecoration(
-                          hintText: selectedTab == 0
-                              ? 'Search by model, number, status…'
-                              : 'Search by company, number, status…',
-                          hintStyle:
-                              const TextStyle(color: Colors.white54),
-                          prefixIcon: const Icon(Icons.search,
-                              color: Color(0xFFD4A017)),
-                          filled: true,
-                          fillColor: const Color(0xFF1C1C1C),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide:
-                                const BorderSide(color: Color(0xFF3A3A3A)),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide:
-                                const BorderSide(color: Color(0xFF3A3A3A)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide:
-                                const BorderSide(color: Color(0xFFD4A017)),
-                          ),
-                        ),
-                      ),
-                    ),
                     Expanded(
                       child: activeList.isEmpty
                           ? Center(
                               child: Text(
                                 selectedTab == 0
                                     ? 'No Bookings Found'
-                                    : 'No Fleet Requests Found',
+                                    : selectedTab == 1
+                                        ? 'No Fleet Requests Found'
+                                        : 'No Insurance Claims Found',
                                 style: const TextStyle(
                                     color: Colors.white54, fontSize: 18),
                               ),
@@ -255,8 +260,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 itemBuilder: (context, index) {
                                   if (selectedTab == 0) {
                                     return _buildClientCard(activeList[index]);
-                                  } else {
+                                  } else if (selectedTab == 1) {
                                     return _buildFleetCard(activeList[index]);
+                                  } else {
+                                    return _buildInsuranceClaimCard(activeList[index]);
                                   }
                                 },
                               ),
@@ -271,33 +278,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           _launchURL(garageInfoUrl);
                         },
                         child: Container(
-                          width: double.infinity,
-                          height: 58,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 12),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFD4A017), Color(0xFFF5C842)],
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                            ),
+                            color: const Color(0xFFD4A017),
                             borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFD4A017).withOpacity(0.45),
-                                blurRadius: 28,
-                                offset: const Offset(0, 10),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.info, color: Colors.black),
+                              SizedBox(width: 8),
+                              Text(
+                                'Update Garage Info',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
                             ],
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'UPDATE GARAGE INFO',
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 2,
-                              ),
-                            ),
                           ),
                         ),
                       ),
@@ -310,50 +310,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Widget _buildClientCard(Map booking) {
-    final vehicle = booking['vehicles'];
-    final hasUnread =
-        unreadBookingIds.contains(booking['id'].toString());
-    
-    // Safety check: if vehicle is null, return a placeholder card
-    if (vehicle == null) {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 20),
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1C),
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: const Color(0xFF3A3A3A)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Booking ID: ${booking['id'] ?? 'N/A'}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              '⚠️ Vehicle data unavailable',
-              style: TextStyle(
-                color: Color(0xFFD4A017),
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              booking['booking_status'] ?? 'Unknown',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-      );
+    final status = (booking['booking_status'] ?? 'PENDING').toString().toUpperCase();
+    final hasUnread = unreadBookingIds.contains(booking['id'].toString());
+
+    Color statusColor;
+    switch (status) {
+      case 'PENDING':
+        statusColor = const Color(0xFFD4A017);
+        break;
+      case 'ACCEPTED':
+        statusColor = Colors.blueAccent;
+        break;
+      case 'IN GARAGE':
+        statusColor = Colors.orangeAccent;
+        break;
+      case 'COMPLETED':
+        statusColor = Colors.greenAccent;
+        break;
+      case 'CANCELLED':
+        statusColor = Colors.redAccent;
+        break;
+      default:
+        statusColor = const Color(0xFFD4A017);
     }
 
     return _TappableScale(
@@ -389,11 +367,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   width: 70,
                   height: 70,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD4A017).withOpacity(0.12),
+                    color: statusColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(22),
                   ),
-                  child: const Icon(Icons.directions_car,
-                      color: Color(0xFFD4A017), size: 38),
+                  child: Icon(Icons.build_rounded,
+                      color: statusColor, size: 36),
                 ),
                 const SizedBox(width: 18),
                 Expanded(
@@ -401,221 +379,105 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        vehicle['car_model'] ?? '',
+                        '${booking['vehicles']['car_brand']} ${booking['vehicles']['car_model']}',
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 24,
+                          fontSize: 20,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Text(
-                        vehicle['car_brand'] ?? '',
-                        style: const TextStyle(color: Colors.white54),
+                        booking['service_type']?.toString().replaceAll('_', ' ').toUpperCase() ?? 'SERVICE',
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 14),
                       ),
                     ],
                   ),
                 ),
-                // ── UNREAD CHAT BADGE ──
-                if (hasUnread)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.red.withOpacity(0.5),
-                          blurRadius: 8,
-                        ),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.chat_bubble_rounded,
-                            color: Colors.white, size: 11),
-                        SizedBox(width: 5),
-                        Text(
-                          'CHAT',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.8,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
               ],
             ),
-            const SizedBox(height: 24),
-            Text(
-              booking['package_name'] ?? '',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-              ),
+            const SizedBox(height: 20),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  booking['vehicles']['car_number'].toString().toUpperCase(),
+                  style: const TextStyle(
+                    color: Color(0xFFD4A017),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 2,
+                  ),
+                ),
+                if (hasUnread) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'NEW MESSAGE',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              vehicle['car_number'] ?? '',
-              style: const TextStyle(
-                color: Color(0xFFD4A017),
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  booking['package_price'] ?? '',
-                  style: const TextStyle(
-                    color: Color(0xFFD4A017),
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD4A017).withOpacity(0.12),
+                    color: statusColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
-                    booking['booking_status'] ?? '',
-                    style: const TextStyle(
-                      color: Color(0xFFD4A017),
+                    status,
+                    style: TextStyle(
+                      color: statusColor,
                       fontWeight: FontWeight.bold,
+                      letterSpacing: 1,
                     ),
                   ),
+                ),
+                const Row(
+                  children: [
+                    Text(
+                      'Tap to update',
+                      style:
+                          TextStyle(color: Colors.white38, fontSize: 13),
+                    ),
+                    SizedBox(width: 8),
+                    Icon(Icons.arrow_forward_ios,
+                        size: 14, color: Colors.white38),
+                  ],
                 ),
               ],
             ),
-            // ── LOCATION SECTION ──
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: const Color(0xFFD4A017).withOpacity(0.3),
+          
+            // Customer Name (if available)
+            if (booking['customer_name'] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Customer: ${booking['customer_name']}',
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 11,
+                  ),
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Location Icon and Title
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.location_on_rounded,
-                        color: Color(0xFFD4A017),
-                        size: 18,
-                      ),
-                      const SizedBox(width: 10),
-                      const Text(
-                        'Pickup Location',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  
-                  // Address Text
-                  Text(
-                    booking['pickup_address'] ?? 'Not specified',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      height: 1.4,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  
-                  // GPS Coordinates (if available)
-                  if (booking['pickup_latitude'] != null &&
-                      booking['pickup_longitude'] != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        '📍 ${booking['pickup_latitude']?.toStringAsFixed(4)}, ${booking['pickup_longitude']?.toStringAsFixed(4)}',
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 11,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ),
-                  
-                  // Customer Phone (if available)
-                  if (booking['customer_phone'] != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.phone_rounded,
-                            color: Color(0xFFD4A017),
-                            size: 14,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            booking['customer_phone'] ?? '',
-                            style: const TextStyle(
-                              color: Color(0xFFD4A017),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  
-                  // Customer Name (if available)
-                  if (booking['customer_name'] != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        'Customer: ${booking['customer_name']}',
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 22),
-            const Row(
-              children: [
-                Spacer(),
-                Text(
-                  'Tap to update progress',
-                  style: TextStyle(color: Colors.white38, fontSize: 13),
-                ),
-                SizedBox(width: 8),
-                Icon(Icons.arrow_forward_ios,
-                    size: 14, color: Colors.white38),
-              ],
-            ),
           ],
         ),
       ),
@@ -776,11 +638,128 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
     );
   }
+
+  Widget _buildInsuranceClaimCard(Map claim) {
+    final status = (claim['claim_status'] ?? 'SUBMITTED').toString().toUpperCase();
+    final emoji = _getStatusEmoji(claim['claim_status']);
+    final vehicleId = claim['vehicle_id'] ?? 'Unknown';
+
+    return _TappableScale(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => InsuranceClaimDetailsScreen(
+              claimId: claim['id'],
+              adminUsername: adminUsername,
+            ),
+          ),
+        ).then((_) => fetchBookings());
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1C1C1C),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: const Color(0xFF3A3A3A)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.25),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Insurance Claim',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Vehicle ID: $vehicleId',
+                        style: const TextStyle(
+                          color: Color(0xFFD4A017),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  emoji,
+                  style: const TextStyle(fontSize: 32),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 6,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD4A017).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFFD4A017).withOpacity(0.3),
+                ),
+              ),
+              child: Text(
+                status.replaceAll('_', ' '),
+                style: const TextStyle(
+                  color: Color(0xFFD4A017),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Submitted: ${DateTime.parse(claim['created_at']).toString().split('.')[0]}',
+              style: TextStyle(
+                color: Colors.grey.withOpacity(0.7),
+                fontSize: 10,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text(
+                  'Tap to view details',
+                  style: TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+                SizedBox(width: 8),
+                Icon(Icons.arrow_forward_ios,
+                    size: 12, color: Colors.white38),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ── Reusable tap feedback wrapper ─────────────────────────────
-// Scales the child down slightly while pressed, and back up on
-// release, so cards give a visible "clicked" response.
 class _TappableScale extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;

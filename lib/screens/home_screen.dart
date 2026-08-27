@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:math';
 import 'dart:ui';
+import 'package:reperi_garage/screens/insurance_claim_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -28,6 +28,7 @@ import 'servicing_package_screen.dart';
 import 'wheel_management_package_screen.dart';
 import 'paint_care_package_screen.dart';
 import 'washing_package_screen.dart';
+import 'subscriptions_screen.dart';
 import 'package:reperi_garage/services/address_service.dart';
 import 'package:reperi_garage/screens/address_management_screen.dart';
 import 'package:geolocator/geolocator.dart';
@@ -729,14 +730,26 @@ class _HomeScreenState extends State<HomeScreen>
         statIcon: Icons.support_agent_rounded,
         statColor: Colors.white70,
         onTap: (ctx) {
-          if (activeVehicle == null) {
-            _showNoProfileDialog(ctx);
-            return;
-          }
-          ScaffoldMessenger.of(ctx).showSnackBar(
-            const SnackBar(content: Text('This service is coming soon')),
-          );
-        },
+  if (activeVehicle == null) {
+    _showNoProfileDialog(ctx);
+    return;
+  }
+  Navigator.push(
+    ctx,
+    MaterialPageRoute(
+      builder: (_) => InsuranceClaimScreen(
+        vehicleId: activeVehicle!['id'],
+        carModel: activeVehicle!['car_model'],
+        carBrand: activeVehicle!['car_brand'],
+        carNumber: activeVehicle!['car_number'],
+      ),
+    ),
+  ).then((_) {
+    if (activeVehicle != null) {
+      _refreshVehicleBookingStatus(activeVehicle!['id']);
+    }
+  });
+},
       ),
     ];
 
@@ -1277,13 +1290,18 @@ class _HomeScreenState extends State<HomeScreen>
                                   _showNoProfileDialog(context);
                                   return;
                                 }
-                                // Navigate to subscription screen
-                                // TODO: Replace with actual subscription screen
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Subscription screen coming soon'),
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => SubscriptionsScreen(
+                                      vehicleId: activeVehicle!['id'],
+                                    ),
                                   ),
-                                );
+                                ).then((_) {
+                                  if (activeVehicle != null) {
+                                    _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                  }
+                                });
                               },
                               child: Container(
                                 width: double.infinity,
@@ -2254,13 +2272,18 @@ class _HomeScreenState extends State<HomeScreen>
                                         _showNoProfileDialog(context);
                                         return;
                                       }
-                                      // Navigate to subscription screen
-                                      // TODO: Replace with actual subscription screen
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Subscription screen coming soon'),
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => SubscriptionsScreen(
+                                            vehicleId: activeVehicle!['id'],
+                                          ),
                                         ),
-                                      );
+                                      ).then((_) {
+                                        if (activeVehicle != null) {
+                                          _refreshVehicleBookingStatus(activeVehicle!['id']);
+                                        }
+                                      });
                                     },
                                     child: Container(
                                       width: double.infinity,
@@ -3389,7 +3412,7 @@ const SizedBox(height: 8),
                 borderRadius: BorderRadius.circular(22),
               ),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // ── Bigger DP on the left ──
                   _vehicleDpCircle(v, size: 76),
@@ -3493,14 +3516,43 @@ const SizedBox(height: 8),
                     ),
                   ),
                   const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD4A017).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    child: const Icon(Icons.arrow_forward_ios_rounded,
-                        color: Color(0xFFD4A017), size: 12),
+                  // ── Top Right: ACTIVE SUBSCRIPTION + ARROW ──
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.2),
+                          ),
+                        ),
+                        child: const Text(
+                          'ACTIVE SUB',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 8,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.all(7),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD4A017).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: const Icon(Icons.arrow_forward_ios_rounded,
+                            color: Color.fromARGB(255, 255, 255, 255), size: 12),
+                      ),
+                    ],
                   ),
                 ],
               ),

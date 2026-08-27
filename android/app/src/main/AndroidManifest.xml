@@ -1,152 +1,64 @@
-<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.reperi.autocare">
 
-    <!-- ════════════════════════════════════════════════════════════════════
-         NETWORK PERMISSIONS
-         Required for: Supabase, Razorpay, OneSignal, API calls
-         ════════════════════════════════════════════════════════════════════ -->
-    <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-
-    <!-- ════════════════════════════════════════════════════════════════════
-         LOCATION PERMISSIONS
-         Required for: Service locator, roadside assistance
-         ════════════════════════════════════════════════════════════════════ -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-
-    <!-- ════════════════════════════════════════════════════════════════════
-         CAMERA PERMISSION
-         Required for: Photo uploads (inspection, updates, fleet orders)
-         ════════════════════════════════════════════════════════════════════ -->
-    <uses-permission android:name="android.permission.CAMERA"/>
-
-    <!-- ════════════════════════════════════════════════════════════════════
-         MEDIA/STORAGE PERMISSIONS
-         Required for: Photo gallery access, image uploads, file storage
-         
-         Android 6-12 (API 23-31): Legacy permissions
-         Android 13+ (API 33+): Granular media permissions
-         ════════════════════════════════════════════════════════════════════ -->
-    <!-- Legacy permissions for older Android versions -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <!-- ======================================
+         FILE PICKER PERMISSIONS
+         Required for insurance claim document uploads
+         ====================================== -->
     
-    <!-- Android 13+ (API 33+): Granular media permissions -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+    <!-- READ_EXTERNAL_STORAGE: Allows app to read files from device storage -->
+    <!-- Required for: Picking PDF files (RC, License, Aadhaar, PAN, Insurance) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    
+    <!-- WRITE_EXTERNAL_STORAGE: Allows app to write/save files to device storage -->
+    <!-- Required for: Saving temporary files during upload -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    
+    <!-- ======================================
+         ANDROID 13+ SPECIFIC PERMISSIONS
+         These replace READ/WRITE_EXTERNAL_STORAGE on newer Android versions
+         ====================================== -->
+    
+    <!-- READ_MEDIA_IMAGES: Allows app to read image files (damage photos) -->
+    <!-- Android API 33+: Required instead of READ_EXTERNAL_STORAGE for images -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    
+    <!-- READ_MEDIA_VIDEO: Allows app to read video files -->
+    <!-- Android API 33+: Future-proofing if video uploads are added -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    
+    <!-- READ_MEDIA_AUDIO: Allows app to read audio files -->
+    <!-- Android API 33+: Future-proofing if audio uploads are added -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
-    <!-- ════════════════════════════════════════════════════════════════════
-         PHONE PERMISSION
-         Required for: Calling garage support feature
-         ════════════════════════════════════════════════════════════════════ -->
-    <uses-permission android:name="android.permission.CALL_PHONE"/>
-
-    <!-- ════════════════════════════════════════════════════════════════════
-         OPTIONAL: VIBRATION
-         Required for: Haptic feedback on payment confirmation
-         ════════════════════════════════════════════════════════════════════ -->
-    <!-- Uncomment if using vibration feedback
-    <uses-permission android:name="android.permission.VIBRATE"/>
-    -->
-
-    <!-- ════════════════════════════════════════════════════════════════════
+    <!-- ======================================
          APPLICATION CONFIGURATION
-         ════════════════════════════════════════════════════════════════════ -->
+         ====================================== -->
     <application
         android:label="Reperi Garage"
         android:name="${applicationName}"
-        android:icon="@mipmap/launcher_icon"
-        android:usesCleartextTraffic="false">
-
-        <!-- ════════════════════════════════════════════════════════════════
-             MAIN ACTIVITY - Flutter App Entry Point
-             ════════════════════════════════════════════════════════════════ -->
+        android:icon="@mipmap/launcher_icon">
+        
+        <!-- Main Activity for Flutter app -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-
-            <!-- Flutter Theme Metadata -->
-            <meta-data
-                android:name="io.flutter.embedding.android.NormalTheme"
-                android:resource="@style/NormalTheme"/>
-
-            <!-- Main Launcher Intent Filter -->
+            
+            <!-- Specifies the default intent filters for the activity -->
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
-            <!-- Deep Linking: Password Reset -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data
-                    android:scheme="reperi"
-                    android:host="reset-password"/>
-            </intent-filter>
-
-            <!-- Deep Linking: HTTPS URLs (Optional, if needed) -->
-            <!-- 
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data
-                    android:scheme="https"
-                    android:host="reperi.in"
-                    android:path="/"/>
-            </intent-filter>
-            -->
         </activity>
-
-        <!-- Flutter Embedding v2 Metadata -->
+        
+        <!-- Don't delete the meta-data below -->
         <meta-data
             android:name="flutterEmbedding"
-            android:value="2"/>
+            android:value="2" />
     </application>
-
-    <!-- ════════════════════════════════════════════════════════════════════
-         PACKAGE VISIBILITY QUERIES (Android 11+)
-         Required to detect installed apps on device
-         ════════════════════════════════════════════════════════════════════ -->
-    <queries>
-        <!-- For text processing (Flutter engine requirement) -->
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
-        </intent>
-
-        <!-- For phone dialing (WhatsApp, call buttons) -->
-        <intent>
-            <action android:name="android.intent.action.DIAL"/>
-        </intent>
-
-        <!-- For opening URLs (Razorpay, browser links) -->
-        <intent>
-            <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="https"/>
-        </intent>
-
-        <!-- For camera access -->
-        <intent>
-            <action android:name="android.media.action.IMAGE_CAPTURE"/>
-        </intent>
-
-        <!-- For photo picker/gallery -->
-        <intent>
-            <action android:name="android.intent.action.PICK"/>
-            <data android:mimeType="image/*"/>
-        </intent>
-    </queries>
-
 </manifest>
