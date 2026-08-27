@@ -163,6 +163,7 @@
             border-radius: 4px;
             font-size: 11px;
             font-weight: 700;
+            margin-top: 8px;
         }
 
         .expand-icon {
@@ -301,16 +302,6 @@
             text-align: center;
         }
 
-        .no-subscriptions {
-            text-align: center;
-            padding: 40px 20px;
-            color: #666;
-        }
-
-        .no-subscriptions p {
-            font-size: 14px;
-        }
-
         #errorScreen {
             display: none;
             text-align: center;
@@ -345,24 +336,31 @@
         .redirect-btn:hover {
             background: #e6b820;
         }
+
+        .no-subscriptions {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .no-subscriptions p {
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- LOADING SCREEN -->
         <div id="loadingScreen">
             <div class="loading-spinner"></div>
             <p class="loading-text">Verifying authentication...</p>
         </div>
 
-        <!-- ERROR SCREEN -->
         <div id="errorScreen">
             <div class="error-icon">🔐</div>
             <p class="error-text" id="errorText">You must be logged in to access this page</p>
             <button class="redirect-btn" onclick="window.location.href='washerlogin.html'">Go to Login</button>
         </div>
 
-        <!-- DASHBOARD SCREEN -->
         <div id="dashboardScreen">
             <div class="dashboard-header">
                 <h2>Dashboard</h2>
@@ -384,32 +382,34 @@
     </div>
 
     <script>
-        // Initialize Supabase
         const SUPABASE_URL = 'https://rmvxqjyoqfinbrpubsvp.supabase.co/';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E';
 
-        const { createClient } = window.supabase;
-        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
+        const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         let currentWasherId = null;
 
-        // Check authentication on page load
         window.addEventListener('load', async () => {
+            console.log('🔍 Starting authentication check...');
             await checkAuthentication();
         });
 
         async function checkAuthentication() {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
+                console.log('📡 Calling getSession()...');
+                const { data: { session } } = await sbClient.auth.getSession();
+                console.log('✅ Session check complete. Session:', session ? 'Found' : 'Not found');
 
                 if (!session) {
+                    console.log('❌ No session found - redirecting to login');
                     showErrorScreen('You must be logged in to access this page');
                     return;
                 }
 
+                console.log('✅ User authenticated:', session.user.email);
                 showDashboard(session.user.email);
             } catch (err) {
-                showErrorScreen('Authentication error. Please try again.');
+                console.error('❌ Auth error:', err);
+                showErrorScreen(`Authentication error: ${err.message}`);
             }
         }
 
@@ -424,29 +424,23 @@
             document.getElementById('loadingScreen').style.display = 'none';
             document.getElementById('dashboardScreen').style.display = 'block';
             document.getElementById('washerEmail').textContent = email;
-
             await fetchWasherData(email);
         }
 
         async function fetchWasherData(email) {
             try {
-                // Get washer data from washers table using email
-                const { data: washerData, error: washerError } = await supabase
+                const { data: washerData, error: washerError } = await sbClient
                     .from('washers')
                     .select('id, email')
                     .eq('email', email)
                     .single();
 
-                if (washerError) {
-                    throw new Error('Washer profile not found');
-                }
+                if (washerError) throw new Error('Washer profile not found');
 
                 currentWasherId = washerData.id;
                 document.getElementById('washerId').textContent = currentWasherId;
-
                 console.log('✅ Washer found:', { id: currentWasherId, email });
 
-                // Fetch subscriptions for this washer
                 await fetchSubscriptions(currentWasherId);
             } catch (err) {
                 console.error('Error:', err);
@@ -462,16 +456,13 @@
             try {
                 console.log('🔍 Fetching subscriptions for washer_id:', washerId);
 
-                const { data: subscriptions, error } = await supabase
+                const { data: subscriptions, error } = await sbClient
                     .from('subscriptions')
                     .select('*')
                     .eq('washer_id', washerId)
                     .order('created_at', { ascending: false });
 
-                if (error) {
-                    console.error('Supabase error:', error);
-                    throw error;
-                }
+                if (error) throw error;
 
                 console.log('✅ Subscriptions fetched:', subscriptions);
                 displaySubscriptions(subscriptions);
@@ -500,18 +491,14 @@
             let html = `<div class="subscriptions-title">Your Subscriptions (${subscriptions.length})</div>
                        <div class="subscriptions-list">`;
 
-            subscriptions.forEach((sub, index) => {
+            subscriptions.forEach((sub) => {
                 const totalCompleted = sub.total_services_completed || 0;
                 html += `
-                    <div class="subscription-card" id="sub-${sub.id}">
+                    <div class="subscription-card">
                         <div class="subscription-header" onclick="toggleSubscription(${sub.id})">
                             <div>
-                                <div class="subscription-vehicle">
-                                    ${sub.car_brand || 'Vehicle'} ${sub.car_model || ''}
-                                </div>
-                                <div class="subscription-status" style="margin-top: 8px;">
-                                    ${sub.status || 'Active'}
-                                </div>
+                                <div class="subscription-vehicle">${sub.car_brand || 'Vehicle'} ${sub.car_model || ''}</div>
+                                <div class="subscription-status">${sub.status || 'Active'}</div>
                             </div>
                             <span class="expand-icon" id="icon-${sub.id}">▼</span>
                         </div>
@@ -527,7 +514,6 @@
                         <div class="subscription-expanded" id="expanded-${sub.id}">
                             <div class="upload-section">
                                 <div class="upload-title">📸 Add Today's Service</div>
-                                
                                 <div class="photo-inputs">
                                     <div class="photo-input-group">
                                         <label for="before-${sub.id}">Before Photo</label>
@@ -538,16 +524,9 @@
                                         <input type="file" id="after-${sub.id}" accept="image/*" />
                                     </div>
                                 </div>
-
-                                <button class="upload-btn" onclick="uploadServicePhotos(${sub.id})">
-                                    UPLOAD & COMPLETE
-                                </button>
-
+                                <button class="upload-btn" onclick="uploadServicePhotos(${sub.id})">UPLOAD & COMPLETE</button>
                                 <div class="upload-status" id="status-${sub.id}"></div>
-
-                                <div class="completed-count">
-                                    ✅ Services Completed: <strong>${totalCompleted}</strong>
-                                </div>
+                                <div class="completed-count">✅ Services Completed: <strong>${totalCompleted}</strong></div>
                             </div>
                         </div>
                     </div>
@@ -561,7 +540,6 @@
         function toggleSubscription(subscriptionId) {
             const expanded = document.getElementById(`expanded-${subscriptionId}`);
             const icon = document.getElementById(`icon-${subscriptionId}`);
-            
             expanded.classList.toggle('show');
             icon.classList.toggle('expanded');
         }
@@ -570,82 +548,55 @@
             const beforeInput = document.getElementById(`before-${subscriptionId}`);
             const afterInput = document.getElementById(`after-${subscriptionId}`);
             const statusDiv = document.getElementById(`status-${subscriptionId}`);
-            const uploadBtn = event.target;
 
-            // Validate
             if (!beforeInput.files[0] || !afterInput.files[0]) {
-                showUploadStatus(statusDiv, 'error', '❌ Please select both before and after photos');
+                showUploadStatus(statusDiv, 'error', '❌ Please select both photos');
                 return;
             }
-
-            uploadBtn.disabled = true;
-            showUploadStatus(statusDiv, 'success', '⏳ Uploading photos...');
 
             try {
                 const beforeFile = beforeInput.files[0];
                 const afterFile = afterInput.files[0];
                 const timestamp = Date.now();
-                const date = new Date().toLocaleDateString('en-IN');
 
-                // Upload before photo
                 const beforePath = `service-photos/${subscriptionId}/before-${timestamp}.jpg`;
-                const { error: beforeError } = await supabase.storage
+                const afterPath = `service-photos/${subscriptionId}/after-${timestamp}.jpg`;
+
+                const { error: beforeError } = await sbClient.storage
                     .from('subscription-services')
                     .upload(beforePath, beforeFile);
 
-                if (beforeError) throw new Error('Before photo upload failed');
+                if (beforeError) throw beforeError;
 
-                // Upload after photo
-                const afterPath = `service-photos/${subscriptionId}/after-${timestamp}.jpg`;
-                const { error: afterError } = await supabase.storage
+                const { error: afterError } = await sbClient.storage
                     .from('subscription-services')
                     .upload(afterPath, afterFile);
 
-                if (afterError) throw new Error('After photo upload failed');
+                if (afterError) throw afterError;
 
-                // Get public URLs
-                const beforeUrl = supabase.storage
-                    .from('subscription-services')
-                    .getPublicUrl(beforePath).data.publicUrl;
-
-                const afterUrl = supabase.storage
-                    .from('subscription-services')
-                    .getPublicUrl(afterPath).data.publicUrl;
-
-                // Increment total_services_completed
-                const { data: currentSub, error: fetchError } = await supabase
+                const { data: currentSub } = await sbClient
                     .from('subscriptions')
                     .select('total_services_completed')
                     .eq('id', subscriptionId)
                     .single();
 
-                if (fetchError) throw fetchError;
-
                 const newCount = (currentSub.total_services_completed || 0) + 1;
 
-                const { error: updateError } = await supabase
+                const { error: updateError } = await sbClient
                     .from('subscriptions')
                     .update({ total_services_completed: newCount })
                     .eq('id', subscriptionId);
 
                 if (updateError) throw updateError;
 
-                // Success
                 showUploadStatus(statusDiv, 'success', `✅ Service completed! (${newCount} total)`);
-                
-                // Clear inputs
                 beforeInput.value = '';
                 afterInput.value = '';
 
-                // Refresh subscriptions
-                setTimeout(() => {
-                    fetchSubscriptions(currentWasherId);
-                }, 1500);
-
+                setTimeout(() => fetchSubscriptions(currentWasherId), 1500);
             } catch (err) {
                 console.error('Upload error:', err);
                 showUploadStatus(statusDiv, 'error', `❌ ${err.message}`);
-                uploadBtn.disabled = false;
             }
         }
 
@@ -655,7 +606,7 @@
         }
 
         async function handleLogout() {
-            await supabase.auth.signOut();
+            await sbClient.auth.signOut();
             window.location.href = 'washerlogin.html';
         }
     </script>
