@@ -548,55 +548,96 @@
             const beforeInput = document.getElementById(`before-${subscriptionId}`);
             const afterInput = document.getElementById(`after-${subscriptionId}`);
             const statusDiv = document.getElementById(`status-${subscriptionId}`);
+            const uploadBtn = event.target;
 
             if (!beforeInput.files[0] || !afterInput.files[0]) {
                 showUploadStatus(statusDiv, 'error', '❌ Please select both photos');
                 return;
             }
 
+            // PREVENT DOUBLE CLICK
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = '⏳ PROCESSING...';
+
             try {
                 const beforeFile = beforeInput.files[0];
                 const afterFile = afterInput.files[0];
                 const timestamp = Date.now();
 
+                showUploadStatus(statusDiv, 'success', '📤 Uploading photos...');
+
                 const beforePath = `service-photos/${subscriptionId}/before-${timestamp}.jpg`;
                 const afterPath = `service-photos/${subscriptionId}/after-${timestamp}.jpg`;
 
+                console.log('📸 Uploading before photo to:', beforePath);
                 const { error: beforeError } = await sbClient.storage
                     .from('subscription-services')
                     .upload(beforePath, beforeFile);
 
-                if (beforeError) throw beforeError;
+                if (beforeError) {
+                    console.error('Before photo error:', beforeError);
+                    throw new Error('Before photo upload failed: ' + beforeError.message);
+                }
+
+                console.log('✅ Before photo uploaded');
+                showUploadStatus(statusDiv, 'success', '📤 Uploading after photo...');
 
                 const { error: afterError } = await sbClient.storage
                     .from('subscription-services')
                     .upload(afterPath, afterFile);
 
-                if (afterError) throw afterError;
+                if (afterError) {
+                    console.error('After photo error:', afterError);
+                    throw new Error('After photo upload failed: ' + afterError.message);
+                }
 
-                const { data: currentSub } = await sbClient
+                console.log('✅ After photo uploaded');
+                showUploadStatus(statusDiv, 'success', '⏳ Updating counter...');
+
+                const { data: currentSub, error: fetchError } = await sbClient
                     .from('subscriptions')
                     .select('total_services_completed')
                     .eq('id', subscriptionId)
                     .single();
 
-                const newCount = (currentSub.total_services_completed || 0) + 1;
+                if (fetchError) {
+                    console.error('Fetch error:', fetchError);
+                    throw new Error('Could not fetch subscription: ' + fetchError.message);
+                }
 
-                const { error: updateError } = await sbClient
+                console.log('📊 Current subscription:', currentSub);
+
+                const newCount = (currentSub.total_services_completed || 0) + 1;
+                console.log('🔢 Updating count to:', newCount);
+
+                const { error: updateError, data: updateData } = await sbClient
                     .from('subscriptions')
                     .update({ total_services_completed: newCount })
-                    .eq('id', subscriptionId);
+                    .eq('id', subscriptionId)
+                    .select();
 
-                if (updateError) throw updateError;
+                if (updateError) {
+                    console.error('Update error:', updateError);
+                    throw new Error('Could not update counter: ' + updateError.message);
+                }
 
+                console.log('✅ Updated subscription:', updateData);
                 showUploadStatus(statusDiv, 'success', `✅ Service completed! (${newCount} total)`);
+                
                 beforeInput.value = '';
                 afterInput.value = '';
 
-                setTimeout(() => fetchSubscriptions(currentWasherId), 1500);
+                setTimeout(() => {
+                    fetchSubscriptions(currentWasherId);
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = 'UPLOAD & COMPLETE';
+                }, 1500);
+
             } catch (err) {
-                console.error('Upload error:', err);
+                console.error('❌ Upload error:', err);
                 showUploadStatus(statusDiv, 'error', `❌ ${err.message}`);
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'UPLOAD & COMPLETE';
             }
         }
 
