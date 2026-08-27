@@ -170,20 +170,6 @@
             font-size: 12px;
             margin-top: 30px;
         }
-
-        .input-icon {
-            position: relative;
-        }
-
-        .input-icon::before {
-            content: attr(data-icon);
-            position: absolute;
-            right: 14px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #D4A017;
-            font-size: 16px;
-        }
     </style>
 </head>
 <body>
@@ -239,14 +225,14 @@
     <script>
         // ⚠️ UPDATE THESE WITH YOUR SUPABASE CREDENTIALS
         const SUPABASE_URL = 'https://rmvxqjyoqfinbrpubsvp.supabase.co/';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjI0MDEyNTAsImV4cCI6MjAzNzk3NzI1MH0.eyJpc2MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjI0MDEyNTAsImV4cCI6MjAzNzk3NzI1MH0';
 
         const { createClient } = window.supabase;
-        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const supabaseLogin = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // Check if already logged in
         window.addEventListener('load', async () => {
-            const { data: { session } } = await supabase.auth.getSession();
+            const { data: { session } } = await supabaseLogin.auth.getSession();
             if (session) {
                 window.location.href = 'washer-dashboard.html';
             }
@@ -289,7 +275,7 @@
 
             try {
                 // Login with Supabase Auth
-                const { data, error } = await supabase.auth.signInWithPassword({
+                const { data, error } = await supabaseLogin.auth.signInWithPassword({
                     email,
                     password,
                 });

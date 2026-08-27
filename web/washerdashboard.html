@@ -260,10 +260,10 @@
         // Initialize Supabase
         // ⚠️ UPDATE THESE WITH YOUR SUPABASE CREDENTIALS (same as washerlogin.html)
         const SUPABASE_URL = 'https://rmvxqjyoqfinbrpubsvp.supabase.co/';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjI0MDEyNTAsImV4cCI6MjAzNzk3NzI1MH0.eyJpc2MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjI0MDEyNTAsImV4cCI6MjAzNzk3NzI1MH0';
 
         const { createClient } = window.supabase;
-        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const supabaseDash = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let currentWasherId = null;
 
@@ -274,7 +274,7 @@
 
         async function checkAuthentication() {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
+                const { data: { session } } = await supabaseDash.auth.getSession();
 
                 if (!session) {
                     // Not logged in, show error and redirect
@@ -403,7 +403,7 @@
         }
 
         async function handleLogout() {
-            await supabase.auth.signOut();
+            await supabaseDash.auth.signOut();
             window.location.href = 'washer.html';
         }
     </script>
