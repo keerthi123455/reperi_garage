@@ -234,7 +234,7 @@
         window.addEventListener('load', async () => {
             const { data: { session } } = await supabaseLogin.auth.getSession();
             if (session) {
-                window.location.href = 'washer-dashboard.html';
+                window.location.href = 'washerdashboard.html';
             }
         });
 
