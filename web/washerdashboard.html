@@ -622,6 +622,37 @@
                 }
 
                 console.log('✅ Updated subscription:', updateData);
+
+                // UPDATE WASHERS TABLE WITH INCREMENTED COUNTER
+                const { data: washerData, error: washerFetchError } = await sbClient
+                    .from('washers')
+                    .select('total_services_completed')
+                    .eq('id', currentWasherId)
+                    .single();
+
+                if (washerFetchError) {
+                    console.error('Washer fetch error:', washerFetchError);
+                    throw new Error('Could not fetch washer data: ' + washerFetchError.message);
+                }
+
+                console.log('📊 Current washer data:', washerData);
+
+                const washerNewCount = (washerData.total_services_completed || 0) + 1;
+                console.log('🔢 Updating washer count to:', washerNewCount);
+
+                const { error: washerUpdateError, data: washerUpdateData } = await sbClient
+                    .from('washers')
+                    .update({ total_services_completed: washerNewCount })
+                    .eq('id', currentWasherId)
+                    .select();
+
+                if (washerUpdateError) {
+                    console.error('Washer update error:', washerUpdateError);
+                    throw new Error('Could not update washer counter: ' + washerUpdateError.message);
+                }
+
+                console.log('✅ Updated washers table:', washerUpdateData);
+
                 showUploadStatus(statusDiv, 'success', `✅ Service completed! (${newCount} total)`);
                 
                 beforeInput.value = '';
