@@ -141,8 +141,13 @@
         .subscription-header {
             display: flex;
             justify-content: space-between;
-            align-items: start;
+            align-items: center;
             margin-bottom: 12px;
+            cursor: pointer;
+        }
+
+        .subscription-header:hover {
+            opacity: 0.8;
         }
 
         .subscription-vehicle {
@@ -160,6 +165,16 @@
             font-weight: 700;
         }
 
+        .expand-icon {
+            color: #D4A017;
+            font-size: 20px;
+            transition: transform 0.3s ease;
+        }
+
+        .expand-icon.expanded {
+            transform: rotate(180deg);
+        }
+
         .subscription-details {
             color: #999;
             font-size: 12px;
@@ -172,6 +187,118 @@
 
         .subscription-details strong {
             color: #D4A017;
+        }
+
+        .subscription-expanded {
+            display: none;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #3a3a3a;
+        }
+
+        .subscription-expanded.show {
+            display: block;
+        }
+
+        .upload-section {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+
+        .upload-title {
+            color: #D4A017;
+            font-weight: 700;
+            margin-bottom: 15px;
+            font-size: 13px;
+            text-transform: uppercase;
+        }
+
+        .photo-inputs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .photo-input-group {
+            flex: 1;
+        }
+
+        .photo-input-group label {
+            display: block;
+            color: #999;
+            font-size: 11px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .photo-input-group input[type="file"] {
+            display: block;
+            width: 100%;
+            padding: 8px;
+            background: #262626;
+            border: 1px solid #3a3a3a;
+            border-radius: 6px;
+            color: #999;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .upload-btn {
+            width: 100%;
+            padding: 10px;
+            background: #D4A017;
+            border: none;
+            border-radius: 6px;
+            color: #000;
+            font-weight: 700;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+        }
+
+        .upload-btn:hover:not(:disabled) {
+            background: #e6b820;
+        }
+
+        .upload-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .upload-status {
+            font-size: 12px;
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .upload-status.success {
+            display: block;
+            color: #51cf66;
+            background: rgba(81, 207, 102, 0.1);
+            border: 1px solid #51cf66;
+        }
+
+        .upload-status.error {
+            display: block;
+            color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.1);
+            border: 1px solid #ff6b6b;
+        }
+
+        .completed-count {
+            color: #D4A017;
+            font-weight: 700;
+            font-size: 13px;
+            margin-top: 10px;
+            padding: 8px;
+            background: rgba(212, 160, 23, 0.1);
+            border-radius: 6px;
+            text-align: center;
         }
 
         .no-subscriptions {
@@ -232,7 +359,7 @@
         <div id="errorScreen">
             <div class="error-icon">🔐</div>
             <p class="error-text" id="errorText">You must be logged in to access this page</p>
-            <button class="redirect-btn" onclick="window.location.href='washer.html'">Go to Login</button>
+            <button class="redirect-btn" onclick="window.location.href='washerlogin.html'">Go to Login</button>
         </div>
 
         <!-- DASHBOARD SCREEN -->
@@ -258,12 +385,11 @@
 
     <script>
         // Initialize Supabase
-        // ⚠️ UPDATE THESE WITH YOUR SUPABASE CREDENTIALS (same as washerlogin.html)
         const SUPABASE_URL = 'https://rmvxqjyoqfinbrpubsvp.supabase.co/';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E';
 
         const { createClient } = window.supabase;
-        const supabaseDash = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let currentWasherId = null;
 
@@ -274,15 +400,13 @@
 
         async function checkAuthentication() {
             try {
-                const { data: { session } } = await supabaseDash.auth.getSession();
+                const { data: { session } } = await supabase.auth.getSession();
 
                 if (!session) {
-                    // Not logged in, show error and redirect
                     showErrorScreen('You must be logged in to access this page');
                     return;
                 }
 
-                // User is logged in, show dashboard
                 showDashboard(session.user.email);
             } catch (err) {
                 showErrorScreen('Authentication error. Please try again.');
@@ -325,7 +449,7 @@
                 // Fetch subscriptions for this washer
                 await fetchSubscriptions(currentWasherId);
             } catch (err) {
-                console.error('Error fetching washer data:', err);
+                console.error('Error:', err);
                 document.getElementById('subscriptionsContent').innerHTML = `
                     <div class="no-subscriptions">
                         <p>❌ Error: ${err.message}</p>
@@ -377,22 +501,54 @@
                        <div class="subscriptions-list">`;
 
             subscriptions.forEach((sub, index) => {
+                const totalCompleted = sub.total_services_completed || 0;
                 html += `
-                    <div class="subscription-card">
-                        <div class="subscription-header">
-                            <div class="subscription-vehicle">
-                                ${sub.car_brand || 'Vehicle'} ${sub.car_model || ''}
+                    <div class="subscription-card" id="sub-${sub.id}">
+                        <div class="subscription-header" onclick="toggleSubscription(${sub.id})">
+                            <div>
+                                <div class="subscription-vehicle">
+                                    ${sub.car_brand || 'Vehicle'} ${sub.car_model || ''}
+                                </div>
+                                <div class="subscription-status" style="margin-top: 8px;">
+                                    ${sub.status || 'Active'}
+                                </div>
                             </div>
-                            <div class="subscription-status">
-                                ${sub.status || 'Active'}
-                            </div>
+                            <span class="expand-icon" id="icon-${sub.id}">▼</span>
                         </div>
+
                         <div class="subscription-details">
                             <p><strong>Vehicle ID:</strong> ${sub.vehicle_id || 'N/A'}</p>
                             <p><strong>Subscription Type:</strong> ${sub.subscription_type || 'N/A'}</p>
                             <p><strong>Price:</strong> ₹${sub.price || '0'}</p>
                             <p><strong>Frequency:</strong> ${sub.frequency || 'N/A'}</p>
                             <p><strong>Date Started:</strong> ${new Date(sub.created_at).toLocaleDateString('en-IN')}</p>
+                        </div>
+
+                        <div class="subscription-expanded" id="expanded-${sub.id}">
+                            <div class="upload-section">
+                                <div class="upload-title">📸 Add Today's Service</div>
+                                
+                                <div class="photo-inputs">
+                                    <div class="photo-input-group">
+                                        <label for="before-${sub.id}">Before Photo</label>
+                                        <input type="file" id="before-${sub.id}" accept="image/*" />
+                                    </div>
+                                    <div class="photo-input-group">
+                                        <label for="after-${sub.id}">After Photo</label>
+                                        <input type="file" id="after-${sub.id}" accept="image/*" />
+                                    </div>
+                                </div>
+
+                                <button class="upload-btn" onclick="uploadServicePhotos(${sub.id})">
+                                    UPLOAD & COMPLETE
+                                </button>
+
+                                <div class="upload-status" id="status-${sub.id}"></div>
+
+                                <div class="completed-count">
+                                    ✅ Services Completed: <strong>${totalCompleted}</strong>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -402,9 +558,105 @@
             content.innerHTML = html;
         }
 
+        function toggleSubscription(subscriptionId) {
+            const expanded = document.getElementById(`expanded-${subscriptionId}`);
+            const icon = document.getElementById(`icon-${subscriptionId}`);
+            
+            expanded.classList.toggle('show');
+            icon.classList.toggle('expanded');
+        }
+
+        async function uploadServicePhotos(subscriptionId) {
+            const beforeInput = document.getElementById(`before-${subscriptionId}`);
+            const afterInput = document.getElementById(`after-${subscriptionId}`);
+            const statusDiv = document.getElementById(`status-${subscriptionId}`);
+            const uploadBtn = event.target;
+
+            // Validate
+            if (!beforeInput.files[0] || !afterInput.files[0]) {
+                showUploadStatus(statusDiv, 'error', '❌ Please select both before and after photos');
+                return;
+            }
+
+            uploadBtn.disabled = true;
+            showUploadStatus(statusDiv, 'success', '⏳ Uploading photos...');
+
+            try {
+                const beforeFile = beforeInput.files[0];
+                const afterFile = afterInput.files[0];
+                const timestamp = Date.now();
+                const date = new Date().toLocaleDateString('en-IN');
+
+                // Upload before photo
+                const beforePath = `service-photos/${subscriptionId}/before-${timestamp}.jpg`;
+                const { error: beforeError } = await supabase.storage
+                    .from('subscription-services')
+                    .upload(beforePath, beforeFile);
+
+                if (beforeError) throw new Error('Before photo upload failed');
+
+                // Upload after photo
+                const afterPath = `service-photos/${subscriptionId}/after-${timestamp}.jpg`;
+                const { error: afterError } = await supabase.storage
+                    .from('subscription-services')
+                    .upload(afterPath, afterFile);
+
+                if (afterError) throw new Error('After photo upload failed');
+
+                // Get public URLs
+                const beforeUrl = supabase.storage
+                    .from('subscription-services')
+                    .getPublicUrl(beforePath).data.publicUrl;
+
+                const afterUrl = supabase.storage
+                    .from('subscription-services')
+                    .getPublicUrl(afterPath).data.publicUrl;
+
+                // Increment total_services_completed
+                const { data: currentSub, error: fetchError } = await supabase
+                    .from('subscriptions')
+                    .select('total_services_completed')
+                    .eq('id', subscriptionId)
+                    .single();
+
+                if (fetchError) throw fetchError;
+
+                const newCount = (currentSub.total_services_completed || 0) + 1;
+
+                const { error: updateError } = await supabase
+                    .from('subscriptions')
+                    .update({ total_services_completed: newCount })
+                    .eq('id', subscriptionId);
+
+                if (updateError) throw updateError;
+
+                // Success
+                showUploadStatus(statusDiv, 'success', `✅ Service completed! (${newCount} total)`);
+                
+                // Clear inputs
+                beforeInput.value = '';
+                afterInput.value = '';
+
+                // Refresh subscriptions
+                setTimeout(() => {
+                    fetchSubscriptions(currentWasherId);
+                }, 1500);
+
+            } catch (err) {
+                console.error('Upload error:', err);
+                showUploadStatus(statusDiv, 'error', `❌ ${err.message}`);
+                uploadBtn.disabled = false;
+            }
+        }
+
+        function showUploadStatus(statusDiv, type, message) {
+            statusDiv.textContent = message;
+            statusDiv.className = `upload-status ${type}`;
+        }
+
         async function handleLogout() {
-            await supabaseDash.auth.signOut();
-            window.location.href = 'washer.html';
+            await supabase.auth.signOut();
+            window.location.href = 'washerlogin.html';
         }
     </script>
 </body>
