@@ -444,16 +444,16 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                                 vertical: 4,
                                               ),
                                               decoration: BoxDecoration(
-                                                color: (wash['status'] ?? 'Not Completed') == 'Completed'
-                                                    ? Colors.green.withOpacity(0.2)
+                                                color: (wash['status'] ?? 'Completed') == 'Completed'
+                                                    ? Colors.green.shade900.withOpacity(0.3)
                                                     : Colors.orange.withOpacity(0.2),
                                                 borderRadius: BorderRadius.circular(4),
                                               ),
                                               child: Text(
-                                                wash['status'] ?? 'Not Completed',
+                                                wash['status'] ?? 'Completed',
                                                 style: TextStyle(
-                                                  color: (wash['status'] ?? 'Not Completed') == 'Completed'
-                                                      ? Colors.green
+                                                  color: (wash['status'] ?? 'Completed') == 'Completed'
+                                                      ? Colors.green.shade400
                                                       : Colors.orange,
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.bold,
@@ -472,16 +472,21 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                                 Expanded(
                                                   child: Column(
                                                     children: [
-                                                      ClipRRect(
-                                                        borderRadius: BorderRadius.circular(8),
-                                                        child: Image.network(
-                                                          wash['before_photo_url'],
-                                                          height: 70,
-                                                          fit: BoxFit.cover,
-                                                          errorBuilder: (_, __, ___) => Container(
+                                                      GestureDetector(
+                                                        onTap: () {
+                                                          _showImageViewer(context, wash['before_photo_url'], 'Before Photo');
+                                                        },
+                                                        child: ClipRRect(
+                                                          borderRadius: BorderRadius.circular(8),
+                                                          child: Image.network(
+                                                            wash['before_photo_url'],
                                                             height: 70,
-                                                            color: const Color(0xFF333333),
-                                                            child: const Icon(Icons.image_not_supported, color: Colors.white54),
+                                                            fit: BoxFit.cover,
+                                                            errorBuilder: (_, __, ___) => Container(
+                                                              height: 70,
+                                                              color: const Color(0xFF333333),
+                                                              child: const Icon(Icons.image_not_supported, color: Colors.white54),
+                                                            ),
                                                           ),
                                                         ),
                                                       ),
@@ -501,16 +506,21 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                                 Expanded(
                                                   child: Column(
                                                     children: [
-                                                      ClipRRect(
-                                                        borderRadius: BorderRadius.circular(8),
-                                                        child: Image.network(
-                                                          wash['after_photo_url'],
-                                                          height: 70,
-                                                          fit: BoxFit.cover,
-                                                          errorBuilder: (_, __, ___) => Container(
+                                                      GestureDetector(
+                                                        onTap: () {
+                                                          _showImageViewer(context, wash['after_photo_url'], 'After Photo');
+                                                        },
+                                                        child: ClipRRect(
+                                                          borderRadius: BorderRadius.circular(8),
+                                                          child: Image.network(
+                                                            wash['after_photo_url'],
                                                             height: 70,
-                                                            color: const Color(0xFF333333),
-                                                            child: const Icon(Icons.image_not_supported, color: Colors.white54),
+                                                            fit: BoxFit.cover,
+                                                            errorBuilder: (_, __, ___) => Container(
+                                                              height: 70,
+                                                              color: const Color(0xFF333333),
+                                                              child: const Icon(Icons.image_not_supported, color: Colors.white54),
+                                                            ),
                                                           ),
                                                         ),
                                                       ),
@@ -601,8 +611,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                               else
                                 ...insuranceUpdates.map((update) {
                                   return Container(
-                                    margin: const EdgeInsets.only(bottom: 12),
-                                    padding: const EdgeInsets.all(12),
+                                    margin: const EdgeInsets.only(bottom: 16),
+                                    padding: const EdgeInsets.all(16),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFF262626),
                                       borderRadius: BorderRadius.circular(10),
@@ -616,7 +626,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                       children: [
                                         if (update['photo_url'] != null)
                                           Container(
-                                            height: 120,
+                                            height: 160,
                                             decoration: BoxDecoration(
                                               borderRadius:
                                                   BorderRadius.circular(8),
@@ -627,16 +637,16 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                               ),
                                             ),
                                             margin: const EdgeInsets.only(
-                                                bottom: 8),
+                                                bottom: 12),
                                           ),
                                         Text(
                                           update['description'] ??
                                               'No description',
                                           style: TextStyle(
-                                            color:
-                                                Colors.grey.withOpacity(0.9),
-                                            fontSize: 12,
+                                            color: Colors.white,
+                                            fontSize: 16,
                                             height: 1.5,
+                                            fontWeight: FontWeight.w500,
                                           ),
                                         ),
                                         const SizedBox(height: 8),
@@ -645,9 +655,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                               .toString()
                                               .split('.')[0],
                                           style: TextStyle(
-                                            color:
-                                                Colors.grey.withOpacity(0.5),
-                                            fontSize: 10,
+                                            color: Colors.white70,
+                                            fontSize: 12,
                                           ),
                                         ),
                                       ],
@@ -953,6 +962,67 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                 ),
               ),
             ),
+    );
+  }
+
+  void _showImageViewer(BuildContext context, String imageUrl, String title) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.black87,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFF1C1C1C),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  topRight: Radius.circular(12),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Color(0xFFD4A017),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Image
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Container(
+                  color: const Color(0xFF333333),
+                  child: const Icon(
+                    Icons.image_not_supported,
+                    color: Colors.white54,
+                    size: 64,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

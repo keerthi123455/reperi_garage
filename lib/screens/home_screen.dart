@@ -2265,6 +2265,7 @@ class _HomeScreenState extends State<HomeScreen>
 
                                   _goldSeparator(),
                                   
+                                  
                                   // ── CAR WASH SUBSCRIPTION BANNER ──
                                   GestureDetector(
                                     onTap: () {
