@@ -4,6 +4,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'payment_screen.dart';
 import '../services/catalog_service.dart';
+import 'book_service_screen.dart';
+import 'car_spa_screen.dart';
+import 'paint_care_screen.dart';
+import 'denting_tinkering_screen.dart';
+import 'tyre_care_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // pubspec.yaml dependencies needed:
@@ -224,18 +229,35 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       return;
     }
 
-    // Close the AI sheet first, then push PaymentScreen
+    // Close the AI sheet first, then push appropriate screen based on package name
     Navigator.pop(context);
+    
+    final packageName = (pkg['name'] as String).toLowerCase().trim();
+    Widget targetScreen;
+
+    if (packageName.contains('book service') || packageName.contains('quick service') || packageName.contains('full service') || packageName.contains('engine diagnostics')) {
+      targetScreen = BookServiceScreen(vehicle: widget.vehicle!);
+    } else if (packageName.contains('paint care')) {
+      targetScreen = PaintCareScreen(vehicle: widget.vehicle!);
+    } else if (packageName.contains('denting') || packageName.contains('tinkering')) {
+      targetScreen = DentingTinkeringScreen(vehicle: widget.vehicle!);
+    } else if (packageName.contains('tyre care') || packageName.contains('wheel')) {
+      targetScreen = TyreCareScreen(vehicle: widget.vehicle!);
+    } else if (packageName.contains('car spa') || packageName.contains('wash') || packageName.contains('clean')) {
+      targetScreen = CarSpaScreen(vehicle: widget.vehicle!);
+    } else {
+      // Default to PaymentScreen if package doesn't match
+      targetScreen = PaymentScreen(
+        title: pkg['name'] as String,
+        price: pkg['price'] as String,
+        duration: pkg['duration'] ?? '60 mins',
+        vehicleId: vehicleId,
+      );
+    }
+
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => PaymentScreen(
-          title:     pkg['name']  as String,
-          price:     pkg['price'] as String,
-          duration:  pkg['duration'] ?? '60 mins',
-          vehicleId: vehicleId,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => targetScreen),
     );
   }
 
@@ -593,9 +615,19 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
 
     if (!isVehicleRelated) {
       return {
-        'fallback': true,
+        'recommendation': {
+          'issue': '🛠️ General Service',
+          'packages': [
+            {
+              'name': 'Book Service',
+              'price': '${_cheapestByCategory['Book Service']?['price'] ?? '₹1499'} onwards',
+              'duration': _cheapestByCategory['Book Service']?['duration'] ?? '45 mins',
+              'features': ['Engine oil replacement', 'Filter replacement', 'Fluid top-up', 'Engine diagnostics'],
+            },
+          ],
+        },
         'text':
-            "I can't help with that, but I'm great with anything car-related! Here's what I can help you with:",
+            "I can't help you with that particularly but you can book a general service and add that with your garage partner or contact our expert @9353094672",
       };
     }
 
