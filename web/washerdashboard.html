@@ -671,7 +671,6 @@
                     .from('service_history')
                     .insert({
                         subscription_id: subscriptionId,
-                        status: 'COMPLETED',
                         before_photo_url: beforeUrl,
                         after_photo_url: afterUrl,
                         created_at: new Date().toISOString(),
