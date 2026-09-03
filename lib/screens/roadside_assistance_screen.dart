@@ -136,7 +136,7 @@ class _RoadsideAssistanceScreenState
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
         ),
         content: const Text(
-          'Base pay is ₹1000. Additional charges will apply based on distance and service required.',
+          'Base pay is ₹399. Additional charges will apply based on distance and service required.',
           style: TextStyle(color: Colors.white70, height: 1.5),
         ),
         actions: [
@@ -155,7 +155,7 @@ class _RoadsideAssistanceScreenState
                 MaterialPageRoute(
                   builder: (_) => PaymentScreen(
                     title: 'Roadside Assistance - $issueTitle',
-                    price: '₹1000',
+                    price: '₹399',
                     duration: 'On-demand',
                     vehicleId: '',
                   ),
@@ -243,17 +243,6 @@ class _RoadsideAssistanceScreenState
 
             const SizedBox(height: 20),
 
-            /// HERO IMAGE
-            ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Image.asset(
-                'assets/images/assistance_hero.jpg',
-                fit: BoxFit.cover,
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
             const Text(
               "What do you need help with?",
               style: TextStyle(
@@ -305,8 +294,6 @@ class _RoadsideAssistanceScreenState
                 ),
               ],
             ),
-
-            const SizedBox(height: 25),
 
             Container(
               padding: const EdgeInsets.all(18),

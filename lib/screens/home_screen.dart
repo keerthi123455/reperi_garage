@@ -29,6 +29,7 @@ import 'wheel_management_package_screen.dart';
 import 'paint_care_package_screen.dart';
 import 'washing_package_screen.dart';
 import 'subscriptions_screen.dart';
+import 'detailing_packages_screen.dart';
 import 'package:reperi_garage/services/address_service.dart';
 import 'package:reperi_garage/screens/address_management_screen.dart';
 import 'package:geolocator/geolocator.dart';
@@ -50,6 +51,10 @@ class _HomeScreenState extends State<HomeScreen>
   late final PageController _vehiclePageController =
       PageController(viewportFraction: 0.94);
   int _vehiclePageIndex = 0;
+
+  // ── Services Scrollbar Tracking ──
+  late final ScrollController _servicesScrollController;
+  int _currentServiceDotIndex = 0;
 
   bool hasActiveService = false;
   Map<String, bool> vehicleHasUpdate = {}; // Track per-vehicle instead of global
@@ -189,6 +194,10 @@ class _HomeScreenState extends State<HomeScreen>
       duration: const Duration(seconds: 4),
     )..repeat(reverse: true);
 
+    // ── Services Scrollbar: track active dot ──
+    _servicesScrollController = ScrollController();
+    _servicesScrollController.addListener(_updateServiceDotIndex);
+
     // ── Bokeh floating: continuous smooth drift ──
     _bokehController = AnimationController(
       vsync: this,
@@ -275,7 +284,22 @@ class _HomeScreenState extends State<HomeScreen>
     _searchController.dispose();
     _searchFocusNode.dispose();
     _vehiclePageController.dispose();
+    _servicesScrollController.dispose();
     super.dispose();
+  }
+
+  void _updateServiceDotIndex() {
+    if (!_servicesScrollController.hasClients) return;
+    
+    final currentScroll = _servicesScrollController.offset;
+    
+    // Calculate which tile is in view (each tile is 176px: 166px + 10px spacing)
+    final tileWidth = 176.0;
+    final newIndex = ((currentScroll + 88) / tileWidth).floor();
+    
+    if (_currentServiceDotIndex != newIndex && newIndex >= 0 && newIndex < 8) {
+      setState(() => _currentServiceDotIndex = newIndex);
+    }
   }
 
   void _openSearch() {
@@ -610,7 +634,7 @@ class _HomeScreenState extends State<HomeScreen>
       _ActionTile(
         image: 'assets/images/tile_denting.jpg',
         icon: Icons.car_repair_rounded,
-        title: 'Denting &\nTinkering',
+        title: 'Denting',
         subtitle: 'Body Repair & Finish',
         badge: 'POPULAR',
         badgeColor: const Color(0xFF6C3FD4),
@@ -694,8 +718,11 @@ class _HomeScreenState extends State<HomeScreen>
             _showNoProfileDialog(ctx);
             return;
           }
-          ScaffoldMessenger.of(ctx).showSnackBar(
-            const SnackBar(content: Text('This service is coming soon')),
+          Navigator.push(
+            ctx,
+            MaterialPageRoute(
+              builder: (_) => const DetailingPackagesScreen(),
+            ),
           );
         },
       ),
@@ -1276,7 +1303,8 @@ class _HomeScreenState extends State<HomeScreen>
                     const SizedBox(width: 22),
 
                     // ── CENTER: packages + services ──
-                    Expanded(
+                    SizedBox(
+  height: 190,
                       child: SingleChildScrollView(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1605,33 +1633,6 @@ class _HomeScreenState extends State<HomeScreen>
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 18),
-                            GridView.builder(
-                              shrinkWrap: true,
-                              physics:
-                                  const NeverScrollableScrollPhysics(),
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3,
-                                crossAxisSpacing: 14,
-                                mainAxisSpacing: 14,
-                                childAspectRatio: 0.85,
-                              ),
-                              itemCount: quickActions.length,
-                              itemBuilder: (context, index) {
-                                return _ActionCard(
-                                  tile: quickActions[index],
-                                  onTap: () {
-                                    if (quickActions[index].onTap !=
-                                        null) {
-                                      quickActions[index]
-                                          .onTap!(context);
-                                    }
-                                  },
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 20),
                           ],
                         ),
                       ),
@@ -1903,190 +1904,235 @@ class _HomeScreenState extends State<HomeScreen>
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   // ── TOP BAR ──
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Builder(
-                                        builder: (ctx) => _TappableScale(
-                                          onTap: () =>
-                                              Scaffold.of(ctx).openDrawer(),
-                                          child:
-                                              _darkIcon(Icons.menu_rounded),
+                                  // ── TOP SECTION: Light Grey Container with Circular Bottom ──
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF3A3A3A), // Light grey
+                                      borderRadius: const BorderRadius.only(
+                                        bottomLeft: Radius.circular(32),
+                                        bottomRight: Radius.circular(32),
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.1),
+                                          blurRadius: 16,
+                                          spreadRadius: 2,
+                                          offset: const Offset(0, 8),
                                         ),
-                                      ),
-                                      Image.asset(
-                                        'assets/images/login.png',
-                                        height: 120,
-                                        fit: BoxFit.contain,
-                                      ),
-                                      _TappableScale(
-                                        onTap: _openSearch,
-                                        child: Container(
-                                          width: 48,
-                                          height: 48,
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF262626),
-                                            borderRadius:
-                                                BorderRadius.circular(16),
-                                            border: Border.all(
-                                                color:
-                                                    const Color(0xFFD4A017)),
-                                          ),
-                                          child: const Icon(
-                                            Icons.search_rounded,
-                                            color: Color(0xFFD4A017),
-                                            size: 22,
-                                          ),
+                                        BoxShadow(
+                                          color: const Color(0xFFD4A017).withOpacity(0.15),
+                                          blurRadius: 20,
+                                          spreadRadius: 4,
+                                          offset: const Offset(0, 6),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-
-                                  // ── ACTIVE VEHICLE & ADDRESS ROW ──
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: Row(
-                                          children: [
-                                            const Text(
-                                              'Active vehicle:',
-                                              style: TextStyle(
-                                                  color: Colors.white70,
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w600,
-                                                  letterSpacing: 0.5),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Row(
-                                                children: [
-                                                  const Icon(
-                                                    Icons.location_on_rounded,
-                                                    color: Color(0xFFD4A017),
-                                                    size: 14,
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  Expanded(
-                                                    child: Text(
-                                                      pickupAddress,
-                                                      style: const TextStyle(
-                                                        color: Colors.white70,
-                                                        fontSize: 13,
-                                                        fontWeight: FontWeight.w600,
-                                                        letterSpacing: 0.5,
-                                                        overflow: TextOverflow.ellipsis,
-                                                      ),
-                                                      maxLines: 1,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      GestureDetector(
-                                        onTap: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => const AddressManagementScreen(),
-                                            ),
-                                          ).then((_) => setState(() {}));
-                                        },
-                                        child: const Text(
-                                          'Change',
-                                          style: TextStyle(
-                                            color: Color(0xFFD4A017),
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                            decoration: TextDecoration.underline,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-
-                                  const SizedBox(height: 6),
-
-                                  // ── VEHICLE CARD(S) ──
-                                  hasVehicle
-                                      ? Column(
-                                          children: [
-                                            SizedBox(
-                                              height: 150,
-                                              child: PageView.builder(
-                                                controller:
-                                                    _vehiclePageController,
-                                                itemCount: vehicles.length,
-                                                onPageChanged:
-                                                    _onVehiclePageChanged,
-                                                itemBuilder: (_, index) =>
-                                                    Padding(
-                                                  padding: const EdgeInsets
-                                                      .fromLTRB(4, 14, 4, 4),
-                                                  child: _vehicleCard(
-                                                      vehicles[index]),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        // ── TOP BAR (Menu, Logo, Search) ──
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Builder(
+                                                builder: (ctx) => _TappableScale(
+                                                  onTap: () =>
+                                                      Scaffold.of(ctx).openDrawer(),
+                                                  child:
+                                                      _darkIcon(Icons.menu_rounded),
                                                 ),
                                               ),
-                                            ),
-                                            if (vehicles.length > 1) ...[
-                                              const SizedBox(height: 10),
-                                              Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                children: List.generate(
-                                                  vehicles.length,
-                                                  (i) =>
-                                                      AnimatedContainer(
-                                                    duration: const Duration(
-                                                        milliseconds: 200),
-                                                    margin: const EdgeInsets
-                                                        .symmetric(
-                                                        horizontal: 3),
-                                                    width: i ==
-                                                            _vehiclePageIndex
-                                                        ? 18
-                                                        : 6,
-                                                    height: 6,
-                                                    decoration:
-                                                        BoxDecoration(
-                                                      color: i ==
-                                                              _vehiclePageIndex
-                                                          ? const Color(
-                                                              0xFFD4A017)
-                                                          : const Color(
-                                                              0xFF2A2A2A),
-                                                      borderRadius:
-                                                          BorderRadius
-                                                              .circular(3),
-                                                    ),
+                                              Image.asset(
+                                                'assets/images/login.png',
+                                                height: 120,
+                                                fit: BoxFit.contain,
+                                              ),
+                                              _TappableScale(
+                                                onTap: _openSearch,
+                                                child: Container(
+                                                  width: 48,
+                                                  height: 48,
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFF262626),
+                                                    borderRadius:
+                                                        BorderRadius.circular(16),
+                                                    border: Border.all(
+                                                        color:
+                                                            const Color(0xFFD4A017)),
+                                                  ),
+                                                  child: const Icon(
+                                                    Icons.search_rounded,
+                                                    color: Color(0xFFD4A017),
+                                                    size: 22,
                                                   ),
                                                 ),
                                               ),
                                             ],
-                                          ],
-                                        )
-                                      : _noProfileCard(),
+                                          ),
+                                        ),
 
-                                  const SizedBox(height: 16),
+                                        // ── ACTIVE VEHICLE & ADDRESS ROW ──
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Expanded(
+                                                child: Row(
+                                                  children: [
+                                                    const Text(
+                                                      'Active vehicle:',
+                                                      style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 13,
+                                                          fontWeight: FontWeight.w600,
+                                                          letterSpacing: 0.5),
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: Row(
+                                                        children: [
+                                                          const Icon(
+                                                            Icons.location_on_rounded,
+                                                            color: Color(0xFFD4A017),
+                                                            size: 14,
+                                                          ),
+                                                          const SizedBox(width: 6),
+                                                          Expanded(
+                                                            child: Text(
+                                                              pickupAddress,
+                                                              style: const TextStyle(
+                                                                color: Colors.white,
+                                                                fontSize: 13,
+                                                                fontWeight: FontWeight.w600,
+                                                                letterSpacing: 0.5,
+                                                                overflow: TextOverflow.ellipsis,
+                                                              ),
+                                                              maxLines: 1,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              GestureDetector(
+                                                onTap: () {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (_) => const AddressManagementScreen(),
+                                                    ),
+                                                  ).then((_) => setState(() {}));
+                                                },
+                                                child: const Text(
+                                                  'Change',
+                                                  style: TextStyle(
+                                                    color: Color(0xFFD4A017),
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w700,
+                                                    decoration: TextDecoration.underline,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+
+                                        const SizedBox(height: 12),
+
+                                        // ── VEHICLE CARD(S) ──
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                                          child: hasVehicle
+                                              ? Column(
+                                                  children: [
+                                                    SizedBox(
+                                                      height: 150,
+                                                      child: PageView.builder(
+                                                        controller:
+                                                            _vehiclePageController,
+                                                        itemCount: vehicles.length,
+                                                        onPageChanged:
+                                                            _onVehiclePageChanged,
+                                                        itemBuilder: (_, index) =>
+                                                            Padding(
+                                                          padding: const EdgeInsets
+                                                              .fromLTRB(4, 14, 4, 4),
+                                                          child: _vehicleCard(
+                                                              vehicles[index]),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if (vehicles.length > 1) ...[
+                                                      const SizedBox(height: 10),
+                                                      Row(
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment.center,
+                                                        children: List.generate(
+                                                          vehicles.length,
+                                                          (i) =>
+                                                              AnimatedContainer(
+                                                            duration: const Duration(
+                                                                milliseconds: 200),
+                                                            margin: const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal: 3),
+                                                            width: i ==
+                                                                    _vehiclePageIndex
+                                                                ? 18
+                                                                : 6,
+                                                            height: 6,
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              color: i ==
+                                                                      _vehiclePageIndex
+                                                                  ? const Color(
+                                                                      0xFFD4A017)
+                                                                  : const Color(
+                                                                      0xFF2A2A2A),
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(3),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ],
+                                                )
+                                              : _noProfileCard(),
+                                        ),
+
+                                        const SizedBox(height: 20),
+                                      ],
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 20),
 
                                   // ── WHAT DOES YOUR CAR NEED ──
-                                  const Text(
-                                    'What does your car need today?',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w500),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    child: const Text(
+                                      'What does your car need today?',
+                                      style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w500),
+                                    ),
                                   ),
 
                                   const SizedBox(height: 14),
 
                                   // ── PREMIUM SHINY ACTION BUTTONS ──
-                                  Row(
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    child: Row(
                                     children: [
                                       Expanded(
                                         child: _TappableScale(
@@ -2260,10 +2306,149 @@ class _HomeScreenState extends State<HomeScreen>
                                       ),
                                     ],
                                   ),
+                                  ),
 
                                   const SizedBox(height: 20),
 
                                   _goldSeparator(),
+                                  _sectionTitle('Our Services'),
+                                  const SizedBox(height: 16),
+
+                                  // ── HORIZONTAL SCROLL WITH 2 ROWS ──
+                                  SizedBox(
+                                    height: 340,
+                                    child: SingleChildScrollView(
+                                      controller: _servicesScrollController,
+                                      scrollDirection: Axis.horizontal,
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      child: Row(
+                                        children: [
+                                          for (int i = 0; i < quickActions.length; i += 2)
+                                            Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                                              child: Column(
+                                                children: [
+                                                GestureDetector(
+                                                  onTap: () {
+                                                    if (quickActions[i].onTap != null) {
+                                                      quickActions[i].onTap!(context);
+                                                    }
+                                                  },
+                                                  child: SizedBox(
+                                                    width: 183,
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                                      children: [
+                                                        ClipRRect(
+                                                          borderRadius: BorderRadius.only(
+                                                            topLeft: Radius.circular(8),
+                                                            topRight: Radius.circular(8),
+                                                          ),
+                                                          child: Image.asset(
+                                                            quickActions[i].image,
+                                                            width: 183,
+                                                            height: 136,
+                                                            fit: BoxFit.cover,
+                                                          ),
+                                                        ),
+                                                        Container(
+                                                          width: double.infinity,
+                                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                                                          decoration: BoxDecoration(
+                                                            color: const Color(0xFF424242),
+                                                            borderRadius: BorderRadius.only(
+                                                              bottomLeft: Radius.circular(8),
+                                                              bottomRight: Radius.circular(8),
+                                                            ),
+                                                          ),
+                                                          child: Text(
+                                                            quickActions[i].title,
+                                                            textAlign: TextAlign.center,
+                                                            maxLines: 2,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: const TextStyle(
+                                                              color: Colors.white,
+                                                              fontSize: 12,
+                                                              fontWeight: FontWeight.w600,
+                                                              height: 1.1,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 10),
+                                                if (i + 1 < quickActions.length)
+                                                  GestureDetector(
+                                                    onTap: () {
+                                                      if (quickActions[i + 1].onTap != null) {
+                                                        quickActions[i + 1].onTap!(context);
+                                                      }
+                                                    },
+                                                    child: SizedBox(
+                                                      width: 183,
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                                        children: [
+                                                          ClipRRect(
+                                                            borderRadius: BorderRadius.only(
+                                                              topLeft: Radius.circular(8),
+                                                              topRight: Radius.circular(8),
+                                                            ),
+                                                            child: Image.asset(
+                                                              quickActions[i + 1].image,
+                                                              width: 183,
+                                                              height: 136,
+                                                              fit: BoxFit.cover,
+                                                            ),
+                                                          ),
+                                                          Container(
+                                                            width: double.infinity,
+                                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                                                            decoration: BoxDecoration(
+                                                              color: const Color(0xFF424242),
+                                                              borderRadius: BorderRadius.only(
+                                                                bottomLeft: Radius.circular(8),
+                                                                bottomRight: Radius.circular(8),
+                                                              ),
+                                                            ),
+                                                            child: Text(
+                                                              quickActions[i + 1].title,
+                                                              textAlign: TextAlign.center,
+                                                              maxLines: 2,
+                                                              overflow: TextOverflow.ellipsis,
+                                                              style: const TextStyle(
+                                                                color: Colors.white,
+                                                                fontSize: 12,
+                                                                fontWeight: FontWeight.w600,
+                                                                height: 1.1,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                        
+                                              ),
+                                            ),
+                                          Padding(
+                                            padding: const EdgeInsets.only(right: 10),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+
+                                 
+
+                                  _goldSeparator(),
+                                  
+                                  _sectionTitle('Subscriptions'),
+                                  
+                                  const SizedBox(height: 16),
                                   
                                   // ── CAR WASH SUBSCRIPTION BANNER ──
                                   GestureDetector(
@@ -2293,61 +2478,88 @@ class _HomeScreenState extends State<HomeScreen>
                                       ),
                                       margin: const EdgeInsets.only(bottom: 20),
                                       decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(
-                                          color: const Color(0xFFD4A017).withOpacity(0.2),
+                                        gradient: const LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            Color(0xFFFFE6B3),
+                                            Color(0xFFF0C65A),
+                                            Color(0xFFE8B92A),
+                                          ],
                                         ),
+                                        borderRadius: BorderRadius.circular(16),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(0.05),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 2),
+                                            color: const Color(0xFFF0C65A).withOpacity(0.55),
+                                            blurRadius: 18,
+                                            spreadRadius: 1,
+                                            offset: const Offset(0, 7),
+                                          ),
+                                          BoxShadow(
+                                            color: const Color(0xFFFFD45A).withOpacity(0.35),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 3),
                                           ),
                                         ],
                                       ),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          // Image on left - autoscaling
-                                          SizedBox(
-                                            width: 85,
-                                            height: 85,
-                                            child: Image.asset(
-                                              'assets/images/subscription.png',
-                                              fit: BoxFit.contain,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          // Text in middle - single line
-                                          Expanded(
-                                            child: Text(
-                                              'Washing Subscriptions',
-                                              style: const TextStyle(
-                                                color: Colors.black87,
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                                letterSpacing: 0.3,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 8),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            // Left side - empty space
+                                            const SizedBox(width: 12),
+                                            // Text section in middle and right
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  // Main text - bigger
+                                                  const Text(
+                                                    'Manage subscriptions',
+                                                    style: TextStyle(
+                                                      color: Colors.black87,
+                                                      fontSize: 16,
+                                                      fontWeight: FontWeight.w900,
+                                                      letterSpacing: 0.5,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  // Services text - smaller with bullets
+                                                  const Text(
+                                                    '• WASHING  • SERVICING  • INSPECTION',
+                                                    style: TextStyle(
+                                                      color: Colors.black54,
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w600,
+                                                      letterSpacing: 0.3,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ],
                                               ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
                                             ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          // Arrow on right
-                                          Icon(
-                                            Icons.arrow_forward_rounded,
-                                            color: Colors.black54,
-                                            size: 20,
-                                          ),
-                                        ],
+                                            const SizedBox(width: 12),
+                                            // Arrow on right
+                                            Icon(
+                                              Icons.arrow_forward_rounded,
+                                              color: Colors.black87,
+                                              size: 20,
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                   
-                                  _sectionTitle('Our Packages'),
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 24),
+                                  
+                                  _sectionTitle('Our Packages', showScrollHint: true),
+                                  const SizedBox(height: 16),
 
                                   // ── PACKAGES CAROUSEL ──
                                   CarouselSlider(
@@ -2483,6 +2695,30 @@ class _HomeScreenState extends State<HomeScreen>
                                                       item['image'] as String,
                                                       fit: BoxFit.cover,
                                                     ),
+                                                    // Learn More button - bottom left
+                                                    Positioned(
+                                                      left: 16,
+                                                      bottom: 16,
+                                                      child: Container(
+                                                        padding: const EdgeInsets.symmetric(
+                                                          horizontal: 14,
+                                                          vertical: 8,
+                                                        ),
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.white,
+                                                          borderRadius: BorderRadius.circular(6),
+                                                        ),
+                                                        child: const Text(
+                                                          'LEARN MORE',
+                                                          style: TextStyle(
+                                                            color: Colors.black87,
+                                                            fontSize: 11,
+                                                            fontWeight: FontWeight.w800,
+                                                            letterSpacing: 0.5,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
                                                   ],
                                                 ),
                                               ),
@@ -2492,47 +2728,68 @@ class _HomeScreenState extends State<HomeScreen>
                                       );
                                                                        }).toList(),
                                 ),
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 12, top: 12),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    crossAxisAlignment: CrossAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        'Scroll to view',
-                                        style: TextStyle(
-                                          color: const Color.fromARGB(255, 250, 250, 250).withOpacity(0.5),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          letterSpacing: 0.3,
+                                
+                                const SizedBox(height: 12),
+                                
+                                const SizedBox(height: 20),
+                                
+                                _sectionTitle('Detailing'),
+                                
+                                const SizedBox(height: 4),
+                                
+                                // ── DETAILING BANNER ──
+                                GestureDetector(
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const DetailingPackagesScreen(),
+                                      ),
+                                    );
+                                  },
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(24),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.25),
+                                          blurRadius: 16,
+                                          spreadRadius: 2,
+                                          offset: const Offset(0, 8),
+                                        ),
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.1),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(24),
+                                      child: SizedBox(
+                                        width: double.infinity,
+                                        height: 180,
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                    Image.asset(
+                                              'assets/images/ppf_ceramic_banner.jpg',
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      const SizedBox(width: 6),
-                                      TweenAnimationBuilder<double>(
-                                        tween: Tween(begin: 0, end: 1),
-                                        duration: const Duration(seconds: 1),
-                                        curve: Curves.easeInOut,
-                                        builder: (context, value, child) {
-                                          return Transform.translate(
-                                            offset: Offset(value * 6, 0),
-                                            child: Icon(
-                                              Icons.chevron_right_rounded,
-                                              color: const Color(0xFFD4A017).withOpacity(0.5 + (value * 0.3)),
-                                              size: 20,
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                 ),
+                                
+                                const SizedBox(height: 20),
+                                
+                                _sectionTitle('Stranded vehicle ?'),
+                                
+                                const SizedBox(height: 16),
 
-                                  const SizedBox(height: 4),
-
-                                  _goldSeparator(),
-                                  _sectionTitle('Our Services'),
-const SizedBox(height: 8),
-                                                                    // ── ROADSIDE ASSISTANCE BANNER ──
+                                  // ── ROADSIDE ASSISTANCE BANNER ──
                                   _TappableScale(
                                     onTap: () {
                                       Navigator.push(
@@ -2558,32 +2815,6 @@ const SizedBox(height: 8),
 
                                   const SizedBox(height: 18),
 
-                                  // ── ACTION GRID ──
-                                  GridView.builder(
-                                    shrinkWrap: true,
-                                    physics:
-                                        const NeverScrollableScrollPhysics(),
-                                    gridDelegate:
-                                        const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 2,
-                                      crossAxisSpacing: 14,
-                                      mainAxisSpacing: 14,
-                                      childAspectRatio: 0.85,
-                                    ),
-                                    itemCount: quickActions.length,
-                                    itemBuilder: (context, index) {
-                                      return _ActionCard(
-                                        tile: quickActions[index],
-                                        onTap: () {
-                                          if (quickActions[index].onTap !=
-                                              null) {
-                                            quickActions[index]
-                                                .onTap!(context);
-                                          }
-                                        },
-                                      );
-                                    },
-                                  ),
                                   const SizedBox(height: 6),
                                   // ── CAR TIP CARD ──
                                   _TipCard(
@@ -2815,6 +3046,48 @@ const SizedBox(height: 8),
                               _BouncingArrow(),
                             ],
                           ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+            // ── SOS BUTTON ──
+            if (!loading)
+              Positioned(
+                right: 16,
+                bottom: 80,
+                child: _TappableScale(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const RoadsideAssistanceScreen(),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.red,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'SOS',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
                         ),
                       ),
                     ),
@@ -3307,34 +3580,69 @@ const SizedBox(height: 8),
     );
   }
 
-  Widget _sectionTitle(String title) {
+  Widget _sectionTitle(String title, {bool showScrollHint = false}) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Container(
-          width: 4,
-          height: 22,
-          decoration: BoxDecoration(
-            color: const Color(0xFFD4A017),
-            borderRadius: BorderRadius.circular(4),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFFD4A017).withOpacity(0.6),
-                blurRadius: 8,
-                spreadRadius: 1,
+        Row(
+          children: [
+            Container(
+              width: 4,
+              height: 22,
+              decoration: BoxDecoration(
+                color: const Color(0xFFD4A017),
+                borderRadius: BorderRadius.circular(4),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFD4A017).withOpacity(0.6),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                shadows: [Shadow(color: Color(0x55D4A017), blurRadius: 12)],
+              ),
+            ),
+          ],
+        ),
+        if (showScrollHint)
+          Row(
+            children: [
+              Text(
+                'Scroll to view',
+                style: TextStyle(
+                  color: const Color.fromARGB(255, 250, 250, 250).withOpacity(0.5),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(width: 6),
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(seconds: 1),
+                curve: Curves.easeInOut,
+                builder: (context, value, child) {
+                  return Transform.translate(
+                    offset: Offset(value * 6, 0),
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      color: const Color(0xFFD4A017).withOpacity(0.5 + (value * 0.3)),
+                      size: 20,
+                    ),
+                  );
+                },
               ),
             ],
           ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            shadows: [Shadow(color: Color(0x55D4A017), blurRadius: 12)],
-          ),
-        ),
       ],
     );
   }
@@ -3901,11 +4209,25 @@ class _TappableScaleState extends State<_TappableScale> {
       onTapDown: (_) => _setPressed(true),
       onTapUp: (_) => _setPressed(false),
       onTapCancel: () => _setPressed(false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.94 : 1.0,
+      child: AnimatedContainer(
         duration: const Duration(milliseconds: 100),
         curve: Curves.easeOut,
-        child: widget.child,
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(_pressed ? 0.15 : 0.25),
+              blurRadius: _pressed ? 8 : 16,
+              spreadRadius: _pressed ? 0 : 2,
+              offset: Offset(0, _pressed ? 2 : 8),
+            ),
+          ],
+        ),
+        child: AnimatedScale(
+          scale: _pressed ? 0.96 : 1.0,
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.easeOut,
+          child: widget.child,
+        ),
       ),
     );
   }
@@ -4113,10 +4435,10 @@ class _ActionCard extends StatelessWidget {
                     // Service Name - Black Text, Sleek
                     Expanded(
                       child: Text(
-                        tile.title.split('&').first.trim(),
+                        tile.title,
                         style: const TextStyle(
                           color: Colors.black,
-                          fontSize: 13,
+                          fontSize: 16,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.3,
                         ),

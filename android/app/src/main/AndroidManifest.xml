@@ -32,6 +32,46 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <!-- ======================================
+         LOCATION PERMISSIONS
+         Required for address detection via GPS
+         ====================================== -->
+    
+    <!-- ACCESS_FINE_LOCATION: Allows app to get precise GPS location -->
+    <!-- Required for: Detecting exact address using GPS coordinates -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    
+    <!-- ACCESS_COARSE_LOCATION: Allows app to get approximate location -->
+    <!-- Required for: Fallback location detection if GPS unavailable -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- ======================================
+         CAMERA PERMISSIONS
+         Required for vehicle photo capture
+         ====================================== -->
+    
+    <!-- CAMERA: Allows app to access device camera -->
+    <!-- Required for: Taking inspection photos, vehicle damage photos, vehicle registration photos -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- ======================================
+         NOTIFICATION PERMISSIONS
+         Required for push notifications
+         ====================================== -->
+    
+    <!-- POST_NOTIFICATIONS: Allows app to send notifications -->
+    <!-- Android API 33+: Required for push notifications (OneSignal) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- ======================================
+         NETWORK PERMISSIONS
+         Required for API calls and backend communication
+         ====================================== -->
+    
+    <!-- INTERNET: Allows app to access network connections -->
+    <!-- Required for: API calls, Supabase, Razorpay, push notifications -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- ======================================
          APPLICATION CONFIGURATION
          ====================================== -->
     <application
