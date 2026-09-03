@@ -654,18 +654,25 @@
                 console.log('✅ Updated washers table:', washerUpdateData);
 
                 // INSERT RECORD INTO SERVICE_HISTORY TABLE
-                const beforeUrl = sbClient.storage
+                const beforeUrlData = sbClient.storage
                     .from('subscription-services')
-                    .getPublicUrl(beforePath).data.publicUrl;
+                    .getPublicUrl(beforePath);
 
-                const afterUrl = sbClient.storage
+                const afterUrlData = sbClient.storage
                     .from('subscription-services')
-                    .getPublicUrl(afterPath).data.publicUrl;
+                    .getPublicUrl(afterPath);
+
+                const beforeUrl = beforeUrlData?.data?.publicUrl;
+                const afterUrl = afterUrlData?.data?.publicUrl;
 
                 console.log('📝 Inserting into service_history:');
                 console.log('subscription_id:', subscriptionId);
                 console.log('before_photo_url:', beforeUrl);
                 console.log('after_photo_url:', afterUrl);
+
+                if (!beforeUrl || !afterUrl) {
+                    throw new Error('Failed to generate photo URLs');
+                }
 
                 const { error: historyError } = await sbClient
                     .from('service_history')

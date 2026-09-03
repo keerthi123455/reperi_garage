@@ -444,17 +444,13 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                                 vertical: 4,
                                               ),
                                               decoration: BoxDecoration(
-                                                color: (wash['status'] ?? 'Completed') == 'Completed'
-                                                    ? Colors.green.shade900.withOpacity(0.3)
-                                                    : Colors.orange.withOpacity(0.2),
+                                                color: Colors.green.shade900.withOpacity(0.3),
                                                 borderRadius: BorderRadius.circular(4),
                                               ),
                                               child: Text(
-                                                wash['status'] ?? 'Completed',
+                                                'Completed',
                                                 style: TextStyle(
-                                                  color: (wash['status'] ?? 'Completed') == 'Completed'
-                                                      ? Colors.green.shade400
-                                                      : Colors.orange,
+                                                  color: Colors.green.shade400,
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.bold,
                                                 ),
