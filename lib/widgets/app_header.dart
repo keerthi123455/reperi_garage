@@ -80,9 +80,9 @@ class _ThemeToggleSwitch extends StatelessWidget {
   final bool isDark;
   final ValueChanged<bool> onChanged;
 
-  static const double _width = 40;
-  static const double _height = 22;
-  static const double _thumbSize = 16;
+  static const double _width = 52;
+  static const double _height = 28;
+  static const double _thumbSize = 22;
   static const double _pad = 3;
 
   @override
@@ -99,8 +99,8 @@ class _ThemeToggleSwitch extends StatelessWidget {
           border: Border.all(color: AppColors.line),
         ),
         child: AnimatedAlign(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOutCubic,
           alignment: isDark ? Alignment.centerLeft : Alignment.centerRight,
           child: Container(
             width: _thumbSize,
