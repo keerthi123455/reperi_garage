@@ -38,3 +38,17 @@ const String kPpfBanner = 'assets/images/PPFbanner.jpeg';
 
 /// Shown under "Stranded somewhere ?", below the PPF banner.
 const String kEmergencyBanner = 'assets/images/emergency.jpeg';
+
+
+/// `battery.jpeg` and `partner.jpeg` are not bundled yet — drop them into
+/// `assets/images/` (1280x720 each) for these slides to render; until then
+/// they'll fall back to the striped placeholder box.
+const String kBatteryBanner = 'assets/images/battery.jpeg';
+const String kFleetBanner = 'assets/images/fleet.jpeg';
+const String kPartnerBanner = 'assets/images/partner.jpeg';
+
+/// Not bundled yet — drop `pollution.jpeg` and `inspection.jpeg` into
+/// `assets/images/` for these to render; until then they fall back to the
+/// striped placeholder box.
+const String kPollutionBanner = 'assets/images/pollution.jpeg';
+const String kInspectionBanner = 'assets/images/inspection.jpeg';

@@ -5,7 +5,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/login_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'services/push_notification_service.dart';
-import 'theme/theme_controller.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -63,23 +62,16 @@ class GarageApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Listens to themeController directly — without this, flipping the
-    // light/dark switch mutated AppColors but nothing rebuilt the tree
-    // until some unrelated setState happened to fire later, which is what
-    // made the toggle feel like it was hanging.
-    return AnimatedBuilder(
-      animation: themeController,
-      builder: (context, _) => MaterialApp(
-        theme: ThemeData(
-          appBarTheme: const AppBarTheme(
-            iconTheme: IconThemeData(color: Color(0xFFD4A017)),
-            actionsIconTheme: IconThemeData(color: Color(0xFFD4A017)),
-          ),
+    return MaterialApp(
+      theme: ThemeData(
+        appBarTheme: const AppBarTheme(
+          iconTheme: IconThemeData(color: Color(0xFFD4A017)),
+          actionsIconTheme: IconThemeData(color: Color(0xFFD4A017)),
         ),
-        navigatorKey: navigatorKey,
-        debugShowCheckedModeBanner: false,
-        home: const SplashScreen(),
       ),
+      navigatorKey: navigatorKey,
+      debugShowCheckedModeBanner: false,
+      home: const SplashScreen(),
     );
   }
 }

@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
+import '../widgets/ask_ai_button.dart';
+import '../widgets/bottom_nav_actions.dart';
+import '../widgets/bottom_nav_bar.dart';
 import 'booking_tracking_screen.dart';
 
 class VehicleBookingsScreen extends StatefulWidget {
@@ -39,6 +44,20 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     fetchInsuranceUpdates();
     fetchSubscription();
     fetchWashHistory();
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    themeController.removeListener(_onThemeChanged);
+    super.dispose();
   }
 
   Future<void> fetchSubscription() async {
@@ -195,9 +214,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF262626),
+      backgroundColor: AppColors.ink,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1C1C1C),
+        backgroundColor: AppColors.surfaceRaised,
         elevation: 0,
         title: Text(
           widget.carModel,
@@ -222,14 +241,13 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
+                        gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: [Color(0xFF262626), Color(0xFF1C1C1C)],
+                          colors: [AppColors.ink, AppColors.surfaceRaised],
                         ),
                         borderRadius: BorderRadius.circular(30),
-                        border:
-                            Border.all(color: const Color(0xFF3A3A3A)),
+                        border: Border.all(color: AppColors.line),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,8 +263,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                           const SizedBox(height: 12),
                           Text(
                             widget.carModel,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: AppColors.txt,
                               fontSize: 34,
                               fontWeight: FontWeight.w900,
                             ),
@@ -254,8 +272,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                           const SizedBox(height: 10),
                           Text(
                             widget.carBrand,
-                            style: const TextStyle(
-                                color: Colors.white54, fontSize: 16),
+                            style: TextStyle(color: AppColors.mut, fontSize: 16),
                           ),
                           const SizedBox(height: 22),
                           Container(
@@ -337,8 +354,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                         children: [
                                           Text(
                                             '₹${subscription['price'] ?? '1200'}/month',
-                                            style: const TextStyle(
-                                              color: Colors.white,
+                                            style: TextStyle(
+                                              color: AppColors.txt,
                                               fontSize: 16,
                                               fontWeight: FontWeight.w700,
                                             ),
@@ -352,10 +369,10 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                               color: const Color(0xFFD4A017),
                                               borderRadius: BorderRadius.circular(8),
                                             ),
-                                            child: const Text(
+                                            child: Text(
                                               'Active',
                                               style: TextStyle(
-                                                color: Colors.black,
+                                                color: AppColors.onAccentDark,
                                                 fontWeight: FontWeight.w900,
                                                 fontSize: 12,
                                               ),
@@ -389,10 +406,10 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                               ),
                               const SizedBox(height: 12),
                               if (washHistory.isEmpty)
-                                const Text(
+                                Text(
                                   'No washes yet',
                                   style: TextStyle(
-                                    color: Colors.white54,
+                                    color: AppColors.mut,
                                     fontSize: 12,
                                   ),
                                 )
@@ -405,11 +422,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                     margin: const EdgeInsets.only(bottom: 16),
                                     padding: const EdgeInsets.all(14),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF262626),
+                                      color: AppColors.surfaceSunken,
                                       borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: const Color(0xFF3A3A3A),
-                                      ),
+                                      border: Border.all(color: AppColors.line),
                                     ),
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -431,8 +446,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                                 ),
                                                 Text(
                                                   dayStr,
-                                                  style: const TextStyle(
-                                                    color: Colors.white54,
+                                                  style: TextStyle(
+                                                    color: AppColors.mut,
                                                     fontSize: 11,
                                                   ),
                                                 ),
@@ -480,17 +495,17 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                                             fit: BoxFit.cover,
                                                             errorBuilder: (_, __, ___) => Container(
                                                               height: 70,
-                                                              color: const Color(0xFF333333),
-                                                              child: const Icon(Icons.image_not_supported, color: Colors.white54),
+                                                              color: AppColors.photoPlaceholder,
+                                                              child: Icon(Icons.image_not_supported, color: AppColors.mut),
                                                             ),
                                                           ),
                                                         ),
                                                       ),
                                                       const SizedBox(height: 4),
-                                                      const Text(
+                                                      Text(
                                                         'Before',
                                                         style: TextStyle(
-                                                          color: Colors.white54,
+                                                          color: AppColors.mut,
                                                           fontSize: 9,
                                                         ),
                                                       ),
@@ -514,17 +529,17 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                                             fit: BoxFit.cover,
                                                             errorBuilder: (_, __, ___) => Container(
                                                               height: 70,
-                                                              color: const Color(0xFF333333),
-                                                              child: const Icon(Icons.image_not_supported, color: Colors.white54),
+                                                              color: AppColors.photoPlaceholder,
+                                                              child: Icon(Icons.image_not_supported, color: AppColors.mut),
                                                             ),
                                                           ),
                                                         ),
                                                       ),
                                                       const SizedBox(height: 4),
-                                                      const Text(
+                                                      Text(
                                                         'After',
                                                         style: TextStyle(
-                                                          color: Colors.white54,
+                                                          color: AppColors.mut,
                                                           fontSize: 9,
                                                         ),
                                                       ),
@@ -545,10 +560,10 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
                     const SizedBox(height: 34),
 
-                    const Text(
+                    Text(
                       'Booked Services',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.txt,
                         fontSize: 28,
                         fontWeight: FontWeight.w900,
                       ),
@@ -562,12 +577,12 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1C1C1C),
+                          color: AppColors.surfaceRaised,
                           borderRadius: BorderRadius.circular(26),
                           border: Border.all(
                             color: insuranceUpdates.isNotEmpty
                                 ? const Color(0xFFD4A017).withOpacity(0.3)
-                                : Colors.grey.withOpacity(0.2),
+                                : AppColors.line,
                           ),
                         ),
                         child: Column(
@@ -595,11 +610,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                             if (_insuranceExpanded) ...[
                               const SizedBox(height: 16),
                               if (insuranceUpdates.isEmpty)
-                                const Center(
+                                Center(
                                   child: Text(
                                     'No insurance updates yet',
                                     style: TextStyle(
-                                      color: Colors.white54,
+                                      color: AppColors.mut,
                                       fontSize: 13,
                                     ),
                                   ),
@@ -610,11 +625,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                     margin: const EdgeInsets.only(bottom: 16),
                                     padding: const EdgeInsets.all(16),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF262626),
+                                      color: AppColors.surfaceSunken,
                                       borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: Colors.grey.withOpacity(0.2),
-                                      ),
+                                      border: Border.all(color: AppColors.line),
                                     ),
                                     child: Column(
                                       crossAxisAlignment:
@@ -639,7 +652,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                           update['description'] ??
                                               'No description',
                                           style: TextStyle(
-                                            color: Colors.white,
+                                            color: AppColors.txt,
                                             fontSize: 16,
                                             height: 1.5,
                                             fontWeight: FontWeight.w500,
@@ -651,7 +664,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                               .toString()
                                               .split('.')[0],
                                           style: TextStyle(
-                                            color: Colors.white70,
+                                            color: AppColors.mut,
                                             fontSize: 12,
                                           ),
                                         ),
@@ -671,14 +684,13 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       Container(
                         padding: const EdgeInsets.all(30),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1C1C1C),
+                          color: AppColors.surfaceRaised,
                           borderRadius: BorderRadius.circular(26),
                         ),
-                        child: const Center(
+                        child: Center(
                           child: Text(
                             'No Services Booked Yet',
-                            style: TextStyle(
-                                color: Colors.white54, fontSize: 16),
+                            style: TextStyle(color: AppColors.mut, fontSize: 16),
                           ),
                         ),
                       ),
@@ -709,10 +721,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                           margin: const EdgeInsets.only(bottom: 22),
                           padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1C1C1C),
+                            color: AppColors.surfaceRaised,
                             borderRadius: BorderRadius.circular(28),
-                            border: Border.all(
-                                color: const Color(0xFF3A3A3A)),
+                            border: Border.all(color: AppColors.line),
                           ),
                           child: Column(
                             crossAxisAlignment:
@@ -723,8 +734,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                   Expanded(
                                     child: Text(
                                       booking['package_name'],
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: AppColors.txt,
                                         fontSize: 24,
                                         fontWeight: FontWeight.w900,
                                       ),
@@ -774,9 +785,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                     ),
                                   ],
                                   const SizedBox(width: 10),
-                                  const Icon(
+                                  Icon(
                                     Icons.arrow_forward_ios,
-                                    color: Colors.white38,
+                                    color: AppColors.mut,
                                     size: 18,
                                   ),
                                 ],
@@ -841,11 +852,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 14, vertical: 12),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF262626),
+                                  color: AppColors.surfaceSunken,
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: const Color(0xFF3A3A3A),
-                                  ),
+                                  border: Border.all(color: AppColors.line),
                                 ),
                                 child: Column(
                                   crossAxisAlignment:
@@ -881,15 +890,15 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                       children: [
                                         Icon(
                                           Icons.home_outlined,
-                                          color: Colors.white54,
+                                          color: AppColors.mut,
                                           size: 16,
                                         ),
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
                                             garageAddress,
-                                            style: const TextStyle(
-                                              color: Colors.white54,
+                                            style: TextStyle(
+                                              color: AppColors.mut,
                                               fontSize: 12,
                                               height: 1.4,
                                             ),
@@ -923,8 +932,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                 ),
                                 child: Text(
                                   booking['booking_status'],
-                                  style: const TextStyle(
-                                    color: Colors.black,
+                                  style: TextStyle(
+                                    color: AppColors.onAccentDark,
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 1,
                                   ),
@@ -933,18 +942,18 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
                               const SizedBox(height: 22),
 
-                              const Row(
+                              Row(
                                 children: [
-                                  Spacer(),
+                                  const Spacer(),
                                   Text(
                                     'Tap to view live updates',
                                     style: TextStyle(
-                                        color: Colors.white38,
+                                        color: AppColors.mut,
                                         fontSize: 13),
                                   ),
-                                  SizedBox(width: 8),
+                                  const SizedBox(width: 8),
                                   Icon(Icons.arrow_forward_ios,
-                                      color: Colors.white38, size: 13),
+                                      color: AppColors.mut, size: 13),
                                 ],
                               ),
                             ],
@@ -958,23 +967,43 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                 ),
               ),
             ),
+      bottomNavigationBar: BottomNavBar(
+        currentIndex: 1,
+        onSelect: (i) => handleBottomNavSelect(
+          context,
+          i,
+          currentIndex: 1,
+          activeVehicle: _activeVehicleMap,
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: AskAiButton(
+        onTap: () => openAiAdvisor(context, _activeVehicleMap),
+      ),
     );
   }
+
+  Map<String, dynamic> get _activeVehicleMap => {
+        'id': widget.vehicleId,
+        'car_brand': widget.carBrand,
+        'car_model': widget.carModel,
+        'car_number': widget.carNumber,
+      };
 
   void _showImageViewer(BuildContext context, String imageUrl, String title) {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        backgroundColor: Colors.black87,
+        backgroundColor: AppColors.ink,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // Header
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: Color(0xFF1C1C1C),
-                borderRadius: BorderRadius.only(
+              decoration: BoxDecoration(
+                color: AppColors.surfaceRaised,
+                borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(12),
                   topRight: Radius.circular(12),
                 ),
@@ -992,9 +1021,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                   ),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
-                    child: const Icon(
+                    child: Icon(
                       Icons.close,
-                      color: Colors.white,
+                      color: AppColors.txt,
                     ),
                   ),
                 ],
@@ -1007,10 +1036,10 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                 imageUrl,
                 fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => Container(
-                  color: const Color(0xFF333333),
-                  child: const Icon(
+                  color: AppColors.photoPlaceholder,
+                  child: Icon(
                     Icons.image_not_supported,
-                    color: Colors.white54,
+                    color: AppColors.mut,
                     size: 64,
                   ),
                 ),

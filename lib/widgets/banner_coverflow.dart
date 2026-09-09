@@ -27,6 +27,7 @@ class BannerCoverflow extends StatefulWidget {
     required this.selectedIndex,
     required this.onSelect,
     this.onPositionChanged,
+    this.onTapSelected,
   });
 
   final List<String> imagePaths;
@@ -37,6 +38,11 @@ class BannerCoverflow extends StatefulWidget {
   /// every time it changes — lets a parent fade other UI in/out in lockstep
   /// with the coverflow instead of only reacting once a drag settles.
   final ValueChanged<double>? onPositionChanged;
+
+  /// Fired when the user taps the slide that's already centered/selected —
+  /// tapping any other slide just brings it to center (see [onSelect])
+  /// without opening anything, so a second, deliberate tap is what commits.
+  final ValueChanged<int>? onTapSelected;
 
   @override
   State<BannerCoverflow> createState() => _BannerCoverflowState();
@@ -151,7 +157,11 @@ class _BannerCoverflowState extends State<BannerCoverflow>
                     _controller.stop();
                     _dragging = false;
                     _settleTo(i);
-                    if (i != widget.selectedIndex) widget.onSelect(i);
+                    if (i != widget.selectedIndex) {
+                      widget.onSelect(i);
+                    } else {
+                      widget.onTapSelected?.call(i);
+                    }
                   },
                 ),
               ),

@@ -55,12 +55,12 @@ class ServicesGrid extends StatelessWidget {
     ];
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: GridView.count(
         crossAxisCount: 4,
-        mainAxisSpacing: 9,
-        crossAxisSpacing: 9,
-        childAspectRatio: 1 / 1.12,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 1 / 1.22,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         children: tiles,

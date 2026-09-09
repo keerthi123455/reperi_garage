@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:reperi_garage/services/address_service.dart';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 
-// Premium color palette - MATCHING HOME SCREEN
-const Color darkBg = Color(0xFF262626);
-const Color cardBg = Color(0xFF1C1C1C);
+// Brand gold — a fixed accent, not a themed surface, so it stays literal
+// across light and dark mode like it does on the other package screens.
 const Color goldAccent = Color(0xFFD4A017);
 const Color goldLight = Color(0xFFE8B923);
 const Color goldDark = Color(0xFFA68410);
@@ -30,10 +31,19 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
     super.initState();
     _addressService = AddressService();
     _loadAddresses();
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    themeController.removeListener(_onThemeChanged);
     _currentOverlay?.remove();
     super.dispose();
   }
@@ -161,19 +171,19 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: darkBg,
+      backgroundColor: AppColors.ink,
       appBar: AppBar(
-        backgroundColor: darkBg,
+        backgroundColor: AppColors.ink,
         elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'My Addresses',
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w900,
-                color: Colors.white,
+                color: AppColors.txt,
                 letterSpacing: -0.5,
               ),
             ),
@@ -182,7 +192,7 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w400,
-                color: Colors.grey.shade400,
+                color: AppColors.mut,
               ),
             ),
           ],
@@ -203,13 +213,13 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
                       Icon(
                         Icons.location_off,
                         size: 64,
-                        color: Colors.grey.shade600,
+                        color: AppColors.mut,
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'No addresses yet',
                         style: TextStyle(
-                          color: Colors.grey.shade300,
+                          color: AppColors.mut,
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                         ),
@@ -242,7 +252,7 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
-                          color: cardBg,
+                          color: AppColors.surfaceRaised,
                           borderRadius: BorderRadius.circular(16),
                           border: isSelected
                               ? Border.all(
@@ -250,7 +260,7 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
                                   width: 2,
                                 )
                               : Border.all(
-                                  color: Colors.grey.shade700,
+                                  color: AppColors.line,
                                   width: 1,
                                 ),
                         ),
@@ -280,8 +290,8 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
                                       children: [
                                         Text(
                                           addr['name'] ?? 'Unknown',
-                                          style: const TextStyle(
-                                            color: Colors.white,
+                                          style: TextStyle(
+                                            color: AppColors.txt,
                                             fontSize: 16,
                                             fontWeight: FontWeight.w700,
                                           ),
@@ -327,27 +337,27 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
                                     final confirmed = await showDialog<bool>(
                                       context: context,
                                       builder: (ctx) => AlertDialog(
-                                        backgroundColor: cardBg,
-                                        title: const Text(
+                                        backgroundColor: AppColors.surfaceRaised,
+                                        title: Text(
                                           'Delete Address?',
                                           style: TextStyle(
-                                            color: Colors.white,
+                                            color: AppColors.txt,
                                             fontWeight: FontWeight.w900,
                                           ),
                                         ),
-                                        content: const Text(
+                                        content: Text(
                                           'This action cannot be undone.',
                                           style: TextStyle(
-                                            color: Colors.white70,
+                                            color: AppColors.mut,
                                           ),
                                         ),
                                         actions: [
                                           TextButton(
                                             onPressed: () =>
                                                 Navigator.pop(ctx, false),
-                                            child: const Text('Cancel',
+                                            child: Text('Cancel',
                                                 style: TextStyle(
-                                                  color: Colors.grey,
+                                                  color: AppColors.mut,
                                                 )),
                                           ),
                                           TextButton(
@@ -386,7 +396,7 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
                             Text(
                               addr['address'] ?? '',
                               style: TextStyle(
-                                color: Colors.grey.shade400,
+                                color: AppColors.mut,
                                 fontSize: 13,
                                 height: 1.5,
                               ),
@@ -434,17 +444,18 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
                     width: 1.5,
                   ),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.add_rounded, color: Colors.black, size: 24),
-                    SizedBox(width: 10),
+                    Icon(Icons.add_rounded,
+                        color: AppColors.onAccentDark, size: 24),
+                    const SizedBox(width: 10),
                     Text(
                       'Add New Address',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
-                        color: Colors.black,
+                        color: AppColors.onAccentDark,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -491,10 +502,16 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    themeController.removeListener(_onThemeChanged);
     _tabController.dispose();
     super.dispose();
   }
@@ -640,14 +657,14 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            backgroundColor: cardBg,
+            backgroundColor: AppColors.surfaceRaised,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(18),
             ),
-            title: const Text(
+            title: Text(
               'Incomplete Address',
               style: TextStyle(
-                color: Colors.white,
+                color: AppColors.txt,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -657,8 +674,8 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
                   : name.isEmpty
                       ? 'Please enter an address name.'
                       : 'Please enter your full address.',
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: AppColors.mut,
                 height: 1.4,
               ),
             ),
@@ -704,21 +721,21 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            backgroundColor: cardBg,
+            backgroundColor: AppColors.surfaceRaised,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(18),
             ),
-            title: const Text(
+            title: Text(
               'Could Not Save Address',
               style: TextStyle(
-                color: Colors.white,
+                color: AppColors.txt,
                 fontWeight: FontWeight.w800,
               ),
             ),
             content: Text(
               'Something went wrong while saving your address.\n\n$e',
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: AppColors.mut,
                 height: 1.4,
               ),
             ),
@@ -751,7 +768,7 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
       child: Container(
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
         decoration: BoxDecoration(
-          color: darkBg,
+          color: AppColors.surfaceRaised,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
           boxShadow: [
             BoxShadow(
@@ -774,18 +791,18 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
                   width: 44,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade600,
+                    color: AppColors.line,
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'Add Address',
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.w900,
-                  color: Colors.white,
+                  color: AppColors.txt,
                 ),
               ),
               const SizedBox(height: 24),
@@ -804,21 +821,21 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
                 ),
                 child: TextField(
                   controller: widget.nameController,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppColors.txt,
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
                   ),
                   decoration: InputDecoration(
                     hintText: 'Address name (e.g., Home, Office)',
                     hintStyle: TextStyle(
-                      color: Colors.grey.shade600,
+                      color: AppColors.mut,
                       fontSize: 14,
                     ),
                     prefixIcon:
                         const Icon(Icons.label, color: goldAccent, size: 22),
                     filled: true,
-                    fillColor: cardBg,
+                    fillColor: AppColors.surfaceRaised,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
                       borderSide: BorderSide.none,
@@ -826,7 +843,7 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
                       borderSide: BorderSide(
-                        color: Colors.grey.shade700,
+                        color: AppColors.line,
                         width: 1,
                       ),
                     ),
@@ -849,10 +866,10 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
               // ===== TAB BAR =====
               Container(
                 decoration: BoxDecoration(
-                  color: cardBg,
+                  color: AppColors.surfaceRaised,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: Colors.grey.shade700,
+                    color: AppColors.line,
                     width: 1,
                   ),
                 ),
@@ -869,8 +886,8 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
                     fontSize: 15,
                     letterSpacing: 0.2,
                   ),
-                  labelColor: Colors.black,
-                  unselectedLabelColor: Colors.grey.shade400,
+                  labelColor: AppColors.onAccentDark,
+                  unselectedLabelColor: AppColors.mut,
                   labelPadding: EdgeInsets.zero,
                   splashFactory: NoSplash.splashFactory,
                   dividerColor: Colors.transparent,
@@ -990,14 +1007,14 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
                         width: 1.5,
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Save Address',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0.5,
-                        color: Colors.black,
+                        color: AppColors.onAccentDark,
                       ),
                     ),
                   ),
@@ -1041,8 +1058,8 @@ class _ManualEntryTabState extends State<_ManualEntryTab> {
           ),
           child: TextField(
             controller: widget.addressController,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: AppColors.txt,
               fontSize: 14,
               fontWeight: FontWeight.w500,
             ),
@@ -1050,7 +1067,7 @@ class _ManualEntryTabState extends State<_ManualEntryTab> {
             decoration: InputDecoration(
               hintText: 'Enter full address\n(e.g., 123 Main St, City, ZIP)',
               hintStyle: TextStyle(
-                color: Colors.grey.shade600,
+                color: AppColors.mut,
                 fontSize: 13,
               ),
               prefixIcon: Padding(
@@ -1058,7 +1075,7 @@ class _ManualEntryTabState extends State<_ManualEntryTab> {
                 child: Icon(Icons.location_on, color: goldAccent, size: 22),
               ),
               filled: true,
-              fillColor: cardBg,
+              fillColor: AppColors.surfaceRaised,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
@@ -1066,7 +1083,7 @@ class _ManualEntryTabState extends State<_ManualEntryTab> {
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: Colors.grey.shade700,
+                  color: AppColors.line,
                   width: 1,
                 ),
               ),
@@ -1118,13 +1135,13 @@ class _DetectLocationTab extends StatelessWidget {
                 Icon(
                   Icons.location_searching,
                   size: 64,
-                  color: Colors.grey.shade600,
+                  color: AppColors.mut,
                 ),
                 const SizedBox(height: 16),
                 Text(
                   'Tap to detect your location',
                   style: TextStyle(
-                    color: Colors.grey.shade400,
+                    color: AppColors.mut,
                     fontSize: 16,
                   ),
                 ),
@@ -1150,7 +1167,7 @@ class _DetectLocationTab extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
-                  color: cardBg,
+                  color: AppColors.surfaceRaised,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: goldAccent.withOpacity(0.4),
@@ -1219,7 +1236,7 @@ class _DetectLocationTab extends StatelessWidget {
                     child: Text(
                       addressText,
                       style: TextStyle(
-                        color: Colors.grey.shade300,
+                        color: AppColors.mut,
                         fontSize: 13,
                         height: 1.5,
                         fontWeight: FontWeight.w500,

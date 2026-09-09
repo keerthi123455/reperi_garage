@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'payment_screen.dart';
 import '../services/catalog_service.dart';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 
 class TyreCareScreen extends StatefulWidget {
   final Map<String, dynamic> vehicle;
@@ -16,20 +19,12 @@ class TyreCareScreen extends StatefulWidget {
 }
 
 class _TyreCareScreenState extends State<TyreCareScreen> {
-  // ── Theme constants ─────────────────────────────────────────────
-  static const Color _bg = Color(0xFF080808);
-  static const Color _card = Color(0xFF1C1C1C);
-  static const Color _gold = Color(0xFFD4A017);
-  static const Color _goldLight = Color(0xFFF5C842);
-  static const Color _white = Color(0xFFFFFFFF);
-  static const Color _grey = Color(0xFF888888);
-  static const Color _border = Color(0xFF222222);
-  static const Color _red = Color(0xFFE53935);
-
   // ── State ────────────────────────────────────────────────────────
   String? selectedTyreBrand;
   String? selectedAlloyBrand;
   int? selectedWheelSize;
+
+  final GlobalKey _packagesKey = GlobalKey();
 
   // ── Data ─────────────────────────────────────────────────────────
   final List<String> _serviceChips = [
@@ -204,11 +199,24 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
     },
   ];
 
-  // ── Bottom sheet popup ───────────────────────────────────────────
   @override
   void initState() {
     super.initState();
     _fetchPackageData();
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    themeController.removeListener(_onThemeChanged);
+    super.dispose();
   }
 
   Future<void> _fetchPackageData() async {
@@ -245,7 +253,6 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
     }
   }
 
-  // ── Bottom sheet popup ───────────────────────────────────────────
   void _showPackageSheet(Map<String, dynamic> package) {
     showModalBottomSheet(
       context: context,
@@ -258,36 +265,59 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
     );
   }
 
+  Future<void> _callExpert() async {
+    await launchUrl(Uri.parse('tel:9353094672'));
+  }
+
+  void _scrollToPackages() {
+    final ctx = _packagesKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeInOut,
+    );
+  }
+
   // ── Build ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     return Scaffold(
-      backgroundColor: _bg,
-      floatingActionButton: _buildFloatingButton(),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHero(),
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildServicesStrip(),
-            _buildPackagesSection(),
-            _buildTyreChangeSection(),
-            _buildWhyChooseUs(),
-            _buildLiveTracking(),
-                    const SizedBox(height: 100),
-                  ],
+      backgroundColor: AppColors.ink,
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHero(),
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildServicesStrip(),
+                        _buildPackagesSection(),
+                        _buildTyreChangeSection(),
+                        _buildWhyChooseUs(),
+                        _buildLiveTracking(),
+                        const SizedBox(height: 140),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildStickyBar(),
+          ),
+        ],
       ),
     );
   }
@@ -298,58 +328,44 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
       children: [
         SizedBox(
           width: double.infinity,
-          height: 420,
+          height: 380,
           child: Image.asset(
-            'assets/images/tile_tyre.jpg',
+            'assets/images/tyre_hero.png',
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => Container(
-              color: const Color(0xFF0F0F0F),
-              child: const Center(
-                child: Icon(Icons.tire_repair, color: _gold, size: 80),
+              color: AppColors.photoPlaceholder,
+              child: Center(
+                child: Icon(Icons.tire_repair, color: AppColors.accent, size: 80),
               ),
             ),
           ),
         ),
-        // Gradient: black bottom → transparent top
+        // Gradient: dark bottom → transparent top, for text legibility
+        // over the photo. Built from AppColors.ink rather than a literal
+        // black so it flips to a light scrim in light mode instead of
+        // staying a dark hue the flipped (dark) hero text can't sit on.
         Container(
           width: double.infinity,
-          height: 420,
-          decoration: const BoxDecoration(
+          height: 380,
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
               colors: [
-                Color(0xFF080808),
-                Color(0xCC000000),
-                Colors.transparent,
+                AppColors.ink,
+                AppColors.ink.withOpacity(0.8),
+                AppColors.ink.withOpacity(0.0),
               ],
-              stops: [0.0, 0.5, 1.0],
-            ),
-          ),
-        ),
-        // Red accent top-right line
-        Positioned(
-          top: 0,
-          right: 0,
-          child: Container(
-            width: 3,
-            height: 180,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [_red, Colors.transparent],
-              ),
+              stops: const [0.0, 0.55, 1.0],
             ),
           ),
         ),
         SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(28, 16, 28, 32),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 26),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Back button
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
                   child: Container(
@@ -357,66 +373,46 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.45),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: _border),
+                      border: Border.all(color: Colors.white24),
                     ),
-                    child: const Icon(Icons.arrow_back, color: _white, size: 20),
+                    child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
                   ),
                 ),
-                const SizedBox(height: 160),
-                // PERFORMANCE CENTER badge
+                const SizedBox(height: 130),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: _red,
-                    borderRadius: BorderRadius.circular(6),
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
-                    'PERFORMANCE CENTER',
+                  child: Text(
+                    'TYRE & WHEEL CARE',
                     style: TextStyle(
-                      color: _white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 2.5,
+                      color: AppColors.onAccentDark,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
                     ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                // TYRE CARE big text
-                const Text(
-                  'TYRE\nCARE',
-                  style: TextStyle(
-                    color: _white,
-                    fontSize: 60,
-                    fontWeight: FontWeight.w900,
-                    height: 0.95,
-                    letterSpacing: -1,
                   ),
                 ),
                 const SizedBox(height: 14),
-                const Text(
-                  'Precision alignment, balancing and premium wheel performance solutions.',
+                Text(
+                  'Tyre Care',
                   style: TextStyle(
-                    color: Colors.white60,
-                    fontSize: 14,
-                    height: 1.5,
+                    color: AppColors.txt,
+                    fontSize: 44,
+                    fontWeight: FontWeight.w900,
+                    height: 1.05,
+                    letterSpacing: -0.5,
                   ),
                 ),
-                const SizedBox(height: 20),
-                // Description box
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: _gold.withOpacity(0.3)),
-                  ),
-                  child: const Text(
-                    'Wheel alignment, balancing, tyre replacement, alloy upgrades and performance optimization using premium equipment.',
-                    style: TextStyle(
-                      color: _white,
-                      fontSize: 13,
-                      height: 1.6,
-                    ),
+                const SizedBox(height: 10),
+                Text(
+                  'Alignment, balancing and premium wheel care — done right.',
+                  style: TextStyle(
+                    color: AppColors.txt.withOpacity(0.7),
+                    fontSize: 15,
+                    height: 1.4,
                   ),
                 ),
               ],
@@ -430,43 +426,42 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
   // ── SERVICES STRIP ───────────────────────────────────────────────
   Widget _buildServicesStrip() {
     return Padding(
-      padding: const EdgeInsets.only(top: 28, bottom: 4),
+      padding: const EdgeInsets.only(top: 26, bottom: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Text(
-              'SERVICES INCLUDED',
+              'Services included',
               style: TextStyle(
-                color: _grey,
-                fontSize: 10,
-                letterSpacing: 2.5,
-                fontWeight: FontWeight.w700,
+                color: AppColors.txt,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           SizedBox(
-            height: 40,
+            height: 44,
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               scrollDirection: Axis.horizontal,
               itemCount: _serviceChips.length,
               separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (_, i) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _gold.withOpacity(0.6)),
+                  color: AppColors.chipBg,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: AppColors.accent.withOpacity(0.4)),
                 ),
                 child: Text(
                   _serviceChips[i],
-                  style: const TextStyle(
-                    color: _gold,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.3,
+                  style: TextStyle(
+                    color: AppColors.accent,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
@@ -480,39 +475,33 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
   // ── PERFORMANCE PACKAGES ─────────────────────────────────────────
   Widget _buildPackagesSection() {
     return Padding(
+      key: _packagesKey,
       padding: const EdgeInsets.fromLTRB(0, 36, 0, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Row(
-              children: [
-                Container(width: 3, height: 22, color: _gold),
-                const SizedBox(width: 10),
-                const Text(
-                  'PERFORMANCE PACKAGES',
-                  style: TextStyle(
-                    color: _white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'Choose a package',
+              style: TextStyle(
+                color: AppColors.txt,
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
           const SizedBox(height: 6),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Text(
-              'Tap a card to view details and book',
-              style: TextStyle(color: _grey, fontSize: 12),
+              'Tap a card to see what\'s included and book',
+              style: TextStyle(color: AppColors.mut, fontSize: 13.5),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           SizedBox(
-            height: 200,
+            height: 210,
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               scrollDirection: Axis.horizontal,
@@ -532,41 +521,32 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
   // ── TYRE CHANGE SECTION ──────────────────────────────────────────
   Widget _buildTyreChangeSection() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 44, 24, 0),
+      padding: const EdgeInsets.fromLTRB(20, 44, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Section header with red accent
-          Row(
-            children: [
-              Container(width: 3, height: 22, color: _red),
-              const SizedBox(width: 10),
-              const Text(
-                'TYRE CHANGE & UPGRADES',
-                style: TextStyle(
-                  color: _white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
+          Text(
+            'Tyre change & upgrades',
+            style: TextStyle(
+              color: AppColors.txt,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+            ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 26),
 
           // TYRE BRAND SELECTOR
-          const Text(
-            'SELECT TYRE BRAND',
+          Text(
+            'Select a tyre brand',
             style: TextStyle(
-              color: _grey,
-              fontSize: 10,
-              letterSpacing: 2.5,
+              color: AppColors.mut,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           SizedBox(
-            height: 90,
+            height: 92,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: _tyreBrands.length,
@@ -576,21 +556,21 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
                 return GestureDetector(
                   onTap: () => setState(() => selectedTyreBrand = _tyreBrands[i]),
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    width: 120,
-                    height: 90,
+                    duration: const Duration(milliseconds: 200),
+                    width: 118,
+                    height: 92,
                     decoration: BoxDecoration(
-                      color: _card,
+                      color: AppColors.chipBg,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: selected ? _gold : _border,
+                        color: selected ? AppColors.accent : AppColors.line,
                         width: selected ? 2 : 1,
                       ),
                       boxShadow: selected
                           ? [
                               BoxShadow(
-                                color: _gold.withOpacity(0.3),
-                                blurRadius: 16,
+                                color: AppColors.accent.withOpacity(0.25),
+                                blurRadius: 14,
                               )
                             ]
                           : [],
@@ -601,17 +581,16 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
                         children: [
                           Icon(
                             Icons.tire_repair,
-                            color: selected ? _gold : _grey,
+                            color: selected ? AppColors.accent : AppColors.mut,
                             size: 28,
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 8),
                           Text(
                             _tyreBrandLabels[i],
                             style: TextStyle(
-                              color: selected ? _gold : _grey,
-                              fontSize: 11,
+                              color: selected ? AppColors.accent : AppColors.mut,
+                              fontSize: 12.5,
                               fontWeight: FontWeight.w700,
-                              letterSpacing: 0.5,
                             ),
                           ),
                         ],
@@ -623,15 +602,13 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
             ),
           ),
 
-          const SizedBox(height: 28),
+          const SizedBox(height: 26),
 
-          // ALLOY BRAND DROPDOWN
-          const Text(
-            'ALLOY WHEEL BRAND',
+          Text(
+            'Alloy wheel brand',
             style: TextStyle(
-              color: _grey,
-              fontSize: 10,
-              letterSpacing: 2.5,
+              color: AppColors.mut,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -639,26 +616,26 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-              color: _card,
+              color: AppColors.chipBg,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _border),
+              border: Border.all(color: AppColors.line),
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 value: selectedAlloyBrand,
-                hint: const Text(
+                hint: Text(
                   'Select alloy brand',
-                  style: TextStyle(color: _grey, fontSize: 14),
+                  style: TextStyle(color: AppColors.mut, fontSize: 15),
                 ),
-                dropdownColor: const Color(0xFF262626),
-                icon: const Icon(Icons.keyboard_arrow_down, color: _gold),
+                dropdownColor: AppColors.surfaceRaised,
+                icon: Icon(Icons.keyboard_arrow_down, color: AppColors.accent),
                 isExpanded: true,
                 items: _alloyBrands
                     .map((b) => DropdownMenuItem(
                           value: b,
                           child: Text(
                             b,
-                            style: const TextStyle(color: _white, fontSize: 14),
+                            style: TextStyle(color: AppColors.txt, fontSize: 15),
                           ),
                         ))
                     .toList(),
@@ -667,19 +644,17 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
             ),
           ),
 
-          const SizedBox(height: 28),
+          const SizedBox(height: 26),
 
-          // WHEEL SIZE SELECTOR
-          const Text(
-            'WHEEL SIZE (INCHES)',
+          Text(
+            'Wheel size (inches)',
             style: TextStyle(
-              color: _grey,
-              fontSize: 10,
-              letterSpacing: 2.5,
+              color: AppColors.mut,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 10,
             children: _wheelSizes.map((size) {
@@ -689,21 +664,21 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   decoration: BoxDecoration(
-                    color: selected ? _gold : Colors.transparent,
+                    color: selected ? AppColors.accent : Colors.transparent,
                     borderRadius: BorderRadius.circular(24),
                     border: Border.all(
-                      color: selected ? _gold : _border,
+                      color: selected ? AppColors.accent : AppColors.line,
                       width: selected ? 2 : 1,
                     ),
                   ),
                   child: Text(
                     '$size"',
                     style: TextStyle(
-                      color: selected ? Colors.black : _white,
+                      color: selected ? AppColors.onAccentDark : AppColors.txt,
                       fontWeight: FontWeight.w800,
-                      fontSize: 14,
+                      fontSize: 15,
                     ),
                   ),
                 ),
@@ -711,19 +686,17 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
             }).toList(),
           ),
 
-          const SizedBox(height: 28),
+          const SizedBox(height: 26),
 
-          // POPULAR UPGRADES
-          const Text(
-            'POPULAR UPGRADES',
+          Text(
+            'Popular upgrades',
             style: TextStyle(
-              color: _grey,
-              fontSize: 10,
-              letterSpacing: 2.5,
+              color: AppColors.mut,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           SizedBox(
             height: 160,
             child: ListView.separated(
@@ -745,8 +718,8 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
                           errorBuilder: (_, __, ___) => Container(
                             width: 220,
                             height: 160,
-                            color: const Color(0xFF262626),
-                            child: const Icon(Icons.auto_awesome, color: _gold, size: 36),
+                            color: AppColors.photoPlaceholder,
+                            child: Icon(Icons.auto_awesome, color: AppColors.accent, size: 36),
                           ),
                         ),
                       ),
@@ -768,9 +741,9 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
                         child: Text(
                           item['title'] as String,
                           style: const TextStyle(
-                            color: _white,
+                            color: Colors.white,
                             fontWeight: FontWeight.w800,
-                            fontSize: 13,
+                            fontSize: 14,
                           ),
                         ),
                       ),
@@ -781,9 +754,8 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
             ),
           ),
 
-          const SizedBox(height: 30),
+          const SizedBox(height: 28),
 
-          // REQUEST TYRE CHANGE button
           GestureDetector(
             onTap: () {
               Navigator.push(
@@ -800,26 +772,25 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
             },
             child: Container(
               width: double.infinity,
-              height: 60,
+              height: 58,
               decoration: BoxDecoration(
-                color: _gold,
+                color: AppColors.accent,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: _gold.withOpacity(0.3),
-                    blurRadius: 20,
+                    color: AppColors.accent.withOpacity(0.3),
+                    blurRadius: 18,
                     offset: const Offset(0, 8),
                   ),
                 ],
               ),
-              child: const Center(
+              child: Center(
                 child: Text(
-                  'REQUEST TYRE CHANGE',
+                  'Request a Tyre Change',
                   style: TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 15,
-                    letterSpacing: 1.5,
+                    color: AppColors.onAccentDark,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
                   ),
                 ),
               ),
@@ -833,59 +804,53 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
   // ── WHY CHOOSE US ────────────────────────────────────────────────
   Widget _buildWhyChooseUs() {
     final items = [
-      {'icon': Icons.gps_fixed, 'title': 'Laser Alignment\nSystems'},
-      {'icon': Icons.auto_awesome, 'title': 'Premium Alloy\nOptions'},
-      {'icon': Icons.speed, 'title': 'High-Speed\nBalancing'},
-      {'icon': Icons.engineering, 'title': 'Expert Wheel\nTechnicians'},
+      {'icon': Icons.gps_fixed, 'title': 'Laser alignment systems'},
+      {'icon': Icons.auto_awesome, 'title': 'Premium alloy options'},
+      {'icon': Icons.speed, 'title': 'High-speed balancing'},
+      {'icon': Icons.engineering, 'title': 'Expert wheel technicians'},
     ];
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 44, 24, 0),
+      padding: const EdgeInsets.fromLTRB(20, 44, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(width: 3, height: 22, color: _gold),
-              const SizedBox(width: 10),
-              const Text(
-                'WHY CHOOSE US',
-                style: TextStyle(
-                  color: _white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
+          Text(
+            'Why choose us',
+            style: TextStyle(
+              color: AppColors.txt,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+            ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: 2,
             crossAxisSpacing: 14,
             mainAxisSpacing: 14,
-            childAspectRatio: 1.5,
+            childAspectRatio: 1.35,
             children: items.map((item) {
               return Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _card,
+                  color: AppColors.surfaceRaised,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: _border),
+                  border: Border.all(color: AppColors.line),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(item['icon'] as IconData, color: _gold, size: 26),
+                    Icon(item['icon'] as IconData, color: AppColors.accent, size: 26),
                     const SizedBox(height: 10),
                     Text(
                       item['title'] as String,
-                      style: const TextStyle(
-                        color: _white,
+                      style: TextStyle(
+                        color: AppColors.txt,
                         fontWeight: FontWeight.w700,
-                        fontSize: 13,
+                        fontSize: 14,
                         height: 1.3,
                       ),
                     ),
@@ -902,20 +867,20 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
   // ── LIVE TRACKING ────────────────────────────────────────────────
   Widget _buildLiveTracking() {
     final items = [
-      {'icon': Icons.compare, 'label': 'Before / After Inspection'},
-      {'icon': Icons.bar_chart, 'label': 'Alignment Reports'},
-      {'icon': Icons.sync, 'label': 'Real-time Updates'},
-      {'icon': Icons.history, 'label': 'Digital Wheel History'},
+      {'icon': Icons.compare, 'label': 'Before / after inspection'},
+      {'icon': Icons.bar_chart, 'label': 'Alignment reports'},
+      {'icon': Icons.sync, 'label': 'Real-time updates'},
+      {'icon': Icons.history, 'label': 'Digital wheel history'},
     ];
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 36, 24, 0),
+      padding: const EdgeInsets.fromLTRB(20, 36, 20, 0),
       child: Container(
-        padding: const EdgeInsets.all(22),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: _card,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: _gold.withOpacity(0.25)),
+          color: AppColors.surfaceRaised,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.accent.withOpacity(0.25)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -925,19 +890,18 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: _gold.withOpacity(0.12),
+                    color: AppColors.accent.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.track_changes, color: _gold, size: 20),
+                  child: Icon(Icons.track_changes, color: AppColors.accent, size: 20),
                 ),
                 const SizedBox(width: 12),
-                const Text(
-                  'LIVE TRACKING INCLUDED',
+                Text(
+                  'Live tracking included',
                   style: TextStyle(
-                    color: _gold,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.5,
+                    color: AppColors.txt,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
@@ -951,15 +915,15 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.04),
+                          color: AppColors.chipBg,
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(item['icon'] as IconData, color: _grey, size: 18),
+                        child: Icon(item['icon'] as IconData, color: AppColors.mut, size: 18),
                       ),
                       const SizedBox(width: 14),
                       Text(
                         item['label'] as String,
-                        style: const TextStyle(color: _white, fontSize: 14),
+                        style: TextStyle(color: AppColors.txt, fontSize: 15),
                       ),
                     ],
                   ),
@@ -970,21 +934,69 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
     );
   }
 
-  // ── FLOATING BUTTON ──────────────────────────────────────────────
-  Widget _buildFloatingButton() {
-    return FloatingActionButton.extended(
-      onPressed: () {
-        // TODO: WhatsApp / Phone call / Emergency support
-      },
-      backgroundColor: _red,
-      icon: const Icon(Icons.headset_mic, color: _white),
-      label: const Text(
-        'CALL OUR EXPERT',
-        style: TextStyle(
-          color: _white,
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
-          letterSpacing: 1,
+  // ── STICKY BOTTOM BAR ────────────────────────────────────────────
+  Widget _buildStickyBar() {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          border: Border(top: BorderSide(color: AppColors.line)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.25),
+              blurRadius: 20,
+              offset: const Offset(0, -6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: _callExpert,
+              child: Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: AppColors.chipBg,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.line),
+                ),
+                child: Icon(Icons.call_rounded, color: AppColors.accent, size: 22),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: GestureDetector(
+                onTap: _scrollToPackages,
+                child: Container(
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.accent.withOpacity(0.3),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      'View Packages',
+                      style: TextStyle(
+                        color: AppColors.onAccentDark,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -998,68 +1010,69 @@ class _PackageCard extends StatelessWidget {
 
   const _PackageCard({required this.package, required this.onTap});
 
-  static const Color _gold = Color(0xFFD4A017);
-  static const Color _card = Color(0xFF1C1C1C);
-  static const Color _white = Color(0xFFFFFFFF);
-  static const Color _grey = Color(0xFF888888);
-  static const Color _border = Color(0xFF222222);
-  static const Color _red = Color(0xFFE53935);
-
   @override
   Widget build(BuildContext context) {
     final name = package['name'] as String;
     final price = package['price'] as String;
     final features = package['features'] as List<String>;
 
-    // Give top packages a red accent
-    final isTopTier = (package['name'] as String).contains('TRACK') ||
-        (package['name'] as String).contains('ALLOY');
+    final isTopPick = name.contains('TRACK') || name.contains('ALLOY');
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 320,
-        height: 170,
+        width: 330,
+        height: 200,
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: _card,
+          color: AppColors.surfaceRaised,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isTopTier ? _red.withOpacity(0.5) : _border,
+            color: isTopPick ? AppColors.accent.withOpacity(0.6) : AppColors.line,
+            width: isTopPick ? 1.5 : 1,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: isTopTier
-                  ? _red.withOpacity(0.08)
-                  : Colors.black.withOpacity(0.3),
-              blurRadius: 12,
-            ),
-          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            if (isTopPick)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.accent,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'TOP PICK',
+                  style: TextStyle(
+                    color: AppColors.onAccentDark,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
                   child: Text(
                     name,
-                    style: const TextStyle(
-                      color: _white,
-                      fontSize: 15,
+                    style: TextStyle(
+                      color: AppColors.txt,
+                      fontSize: 16,
                       fontWeight: FontWeight.w900,
-                      letterSpacing: 0.3,
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   price,
-                  style: const TextStyle(
-                    color: _gold,
-                    fontSize: 20,
+                  style: TextStyle(
+                    color: AppColors.accent,
+                    fontSize: 21,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -1071,17 +1084,17 @@ class _PackageCard extends StatelessWidget {
               runSpacing: 6,
               children: features.take(3).map((f) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                   decoration: BoxDecoration(
-                    color: _gold.withOpacity(0.08),
+                    color: AppColors.accent.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: _gold.withOpacity(0.2)),
+                    border: Border.all(color: AppColors.accent.withOpacity(0.2)),
                   ),
                   child: Text(
                     f,
-                    style: const TextStyle(
-                      color: _grey,
-                      fontSize: 10,
+                    style: TextStyle(
+                      color: AppColors.mut,
+                      fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1094,21 +1107,20 @@ class _PackageCard extends StatelessWidget {
               children: [
                 Text(
                   '+${features.length - 3 > 0 ? features.length - 3 : 0} more',
-                  style: const TextStyle(color: _grey, fontSize: 11),
+                  style: TextStyle(color: AppColors.mut, fontSize: 12),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                   decoration: BoxDecoration(
-                    color: isTopTier ? _red : _gold,
+                    color: AppColors.accent,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
-                    'VIEW & BOOK',
+                  child: Text(
+                    'View & Book',
                     style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
+                      color: AppColors.onAccentDark,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
@@ -1128,13 +1140,6 @@ class _PackageSheet extends StatelessWidget {
 
   const _PackageSheet({required this.package, required this.vehicleId});
 
-  static const Color _bg = Color(0xFF0F0F0F);
-  static const Color _card = Color(0xFF262626);
-  static const Color _gold = Color(0xFFD4A017);
-  static const Color _white = Color(0xFFFFFFFF);
-  static const Color _grey = Color(0xFF888888);
-  static const Color _red = Color(0xFFE53935);
-
   @override
   Widget build(BuildContext context) {
     final name = package['name'] as String;
@@ -1142,23 +1147,22 @@ class _PackageSheet extends StatelessWidget {
     final duration = package['duration'] as String;
     final description = package['description'] as String;
     final features = package['features'] as List<String>;
-    final isTopTier = name.contains('TRACK') || name.contains('ALLOY');
+    final isTopPick = name.contains('TRACK') || name.contains('ALLOY');
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.80,
-      decoration: const BoxDecoration(
-        color: _bg,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
         children: [
-          // Handle
           Container(
             margin: const EdgeInsets.only(top: 12),
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: const Color(0xFF333333),
+              color: AppColors.line,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -1168,42 +1172,40 @@ class _PackageSheet extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Badge + name
-                  if (isTopTier)
+                  if (isTopPick)
                     Container(
-                      margin: const EdgeInsets.only(bottom: 8),
+                      margin: const EdgeInsets.only(bottom: 10),
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: _red,
+                        color: AppColors.accent,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Text(
-                        'PREMIUM',
+                      child: Text(
+                        'TOP PICK',
                         style: TextStyle(
-                          color: _white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 2,
+                          color: AppColors.onAccentDark,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
                         ),
                       ),
                     ),
                   Text(
                     name,
-                    style: const TextStyle(
-                      color: _white,
+                    style: TextStyle(
+                      color: AppColors.txt,
                       fontSize: 28,
                       fontWeight: FontWeight.w900,
                       height: 1.1,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  // Price + duration row
+                  const SizedBox(height: 14),
                   Row(
                     children: [
                       Text(
                         price,
-                        style: const TextStyle(
-                          color: _gold,
+                        style: TextStyle(
+                          color: AppColors.accent,
                           fontSize: 34,
                           fontWeight: FontWeight.w900,
                         ),
@@ -1212,58 +1214,54 @@ class _PackageSheet extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF262626),
+                          color: AppColors.chipBg,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.timer_outlined, color: _grey, size: 14),
+                            Icon(Icons.timer_outlined, color: AppColors.mut, size: 15),
                             const SizedBox(width: 6),
                             Text(
                               duration,
-                              style: const TextStyle(color: _grey, fontSize: 13),
+                              style: TextStyle(color: AppColors.mut, fontSize: 14),
                             ),
                           ],
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  // WHAT WE DO
-                  const Text(
-                    'WHAT WE DO',
+                  const SizedBox(height: 22),
+                  Text(
+                    'What we do',
                     style: TextStyle(
-                      color: _grey,
-                      fontSize: 10,
-                      letterSpacing: 2.5,
-                      fontWeight: FontWeight.w700,
+                      color: AppColors.txt,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 10),
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: _card,
+                      color: AppColors.chipBg,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Text(
                       description,
-                      style: const TextStyle(
-                        color: _white,
-                        fontSize: 14,
+                      style: TextStyle(
+                        color: AppColors.txt,
+                        fontSize: 15,
                         height: 1.6,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  // FEATURES
-                  const Text(
-                    'FEATURES',
+                  const SizedBox(height: 26),
+                  Text(
+                    'Features',
                     style: TextStyle(
-                      color: _grey,
-                      fontSize: 10,
-                      letterSpacing: 2.5,
-                      fontWeight: FontWeight.w700,
+                      color: AppColors.txt,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -1273,18 +1271,20 @@ class _PackageSheet extends StatelessWidget {
                       child: Row(
                         children: [
                           Container(
-                            width: 22,
-                            height: 22,
+                            width: 24,
+                            height: 24,
                             decoration: BoxDecoration(
-                              color: _gold.withOpacity(0.12),
+                              color: AppColors.accent.withOpacity(0.12),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.check, color: _gold, size: 13),
+                            child: Icon(Icons.check, color: AppColors.accent, size: 14),
                           ),
                           const SizedBox(width: 12),
-                          Text(
-                            f,
-                            style: const TextStyle(color: _white, fontSize: 14),
+                          Expanded(
+                            child: Text(
+                              f,
+                              style: TextStyle(color: AppColors.txt, fontSize: 15),
+                            ),
                           ),
                         ],
                       ),
@@ -1295,7 +1295,6 @@ class _PackageSheet extends StatelessWidget {
               ),
             ),
           ),
-          // BOOK NOW button
           Padding(
             padding: EdgeInsets.fromLTRB(
               24,
@@ -1320,28 +1319,25 @@ class _PackageSheet extends StatelessWidget {
               },
               child: Container(
                 width: double.infinity,
-                height: 62,
+                height: 60,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFD4A017), Color(0xFFF5C842)],
-                  ),
+                  color: AppColors.accent,
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: _gold.withOpacity(0.35),
+                      color: AppColors.accent.withOpacity(0.35),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
                   ],
                 ),
-                child: const Center(
+                child: Center(
                   child: Text(
-                    'BOOK NOW',
+                    'Book Now',
                     style: TextStyle(
-                      color: Colors.black,
+                      color: AppColors.onAccentDark,
                       fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.5,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),

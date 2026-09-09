@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'payment_screen.dart';
 import '../services/catalog_service.dart';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 
 class BookServiceScreen extends StatefulWidget {
 
@@ -106,6 +108,20 @@ class _BookServiceScreenState
   void initState() {
     super.initState();
     _fetchServiceData();
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    themeController.removeListener(_onThemeChanged);
+    super.dispose();
   }
 
   Future<void> _fetchServiceData() async {
@@ -151,7 +167,7 @@ class _BookServiceScreenState
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF1C1C1C),
+        backgroundColor: AppColors.surfaceRaised,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         child: Padding(
           padding: const EdgeInsets.all(28),
@@ -163,12 +179,12 @@ class _BookServiceScreenState
                 width: 90,
                 height: 90,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD4A017).withOpacity(0.12),
+                  color: AppColors.accent.withOpacity(0.12),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.local_shipping_rounded,
-                  color: Color(0xFFD4A017),
+                  color: AppColors.accent,
                   size: 48,
                 ),
               ),
@@ -176,11 +192,11 @@ class _BookServiceScreenState
               const SizedBox(height: 24),
 
               // ── Title ──
-              const Text(
+              Text(
                 'Doorstep Pickup?',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppColors.txt,
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
                 ),
@@ -189,11 +205,11 @@ class _BookServiceScreenState
               const SizedBox(height: 12),
 
               // ── Subtitle ──
-              const Text(
+              Text(
                 'We can pick up your vehicle from your home and drop it back after service',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white70,
+                  color: AppColors.txt.withOpacity(0.7),
                   fontSize: 14,
                   height: 1.6,
                 ),
@@ -207,7 +223,7 @@ class _BookServiceScreenState
                 height: 56,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD4A017),
+                    backgroundColor: AppColors.accent,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -216,10 +232,10 @@ class _BookServiceScreenState
                     Navigator.pop(context);
                     _proceedToPayment(basePrice + 100);
                   },
-                  child: const Text(
+                  child: Text(
                     'Yes, Add ₹100',
                     style: TextStyle(
-                      color: Colors.black87,
+                      color: AppColors.onAccentDark,
                       fontWeight: FontWeight.w900,
                       fontSize: 16,
                       letterSpacing: 0.5,
@@ -238,7 +254,7 @@ class _BookServiceScreenState
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     side: const BorderSide(
-                      color: Color(0xFFD4A017),
+                      color: AppColors.accent,
                       width: 2,
                     ),
                     shape: RoundedRectangleBorder(
@@ -252,7 +268,7 @@ class _BookServiceScreenState
                   child: const Text(
                     'No, I\'ll Drop It Myself',
                     style: TextStyle(
-                      color: Color(0xFFD4A017),
+                      color: AppColors.accent,
                       fontWeight: FontWeight.w900,
                       fontSize: 16,
                       letterSpacing: 0.5,
@@ -288,7 +304,7 @@ class _BookServiceScreenState
   Widget build(BuildContext context) {
 
     return Scaffold(
-      backgroundColor: const Color(0xFF050505),
+      backgroundColor: AppColors.ink,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -310,23 +326,30 @@ class _BookServiceScreenState
                             height: 400,
                             width: double.infinity,
                             child: Image.asset(
-                              'assets/images/tile_book_service.jpg',
+                              'assets/images/service_hero.png',
                               fit: BoxFit.cover,
                             ),
                           ),
 
-                          // ── Strong Dark Gradient Overlay ──
+                          // Gradient: solid page-bg color at the bottom
+                          // fading to transparent at the top, for text
+                          // legibility over the photo. Built from
+                          // AppColors.ink rather than a literal black so it
+                          // flips to a light scrim in light mode instead of
+                          // staying a dark hue the white hero text can't
+                          // sit on.
                           Container(
                             height: 400,
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
                                 colors: [
-                                  Colors.black.withOpacity(0.3),
-                                  Colors.black.withOpacity(0.75),
+                                  AppColors.ink,
+                                  AppColors.ink.withOpacity(0.8),
+                                  AppColors.ink.withOpacity(0.0),
                                 ],
-                                stops: const [0.3, 1.0],
+                                stops: const [0.0, 0.55, 1.0],
                               ),
                             ),
                           ),
@@ -363,48 +386,47 @@ class _BookServiceScreenState
                                     // ── Premium Badge ──
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 8,
+                                        horizontal: 12,
+                                        vertical: 6,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFD4A017).withOpacity(0.15),
-                                        borderRadius: BorderRadius.circular(20),
+                                        color: AppColors.accent,
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
-                                      child: const Text(
+                                      child: Text(
                                         'PREMIUM CARE',
                                         style: TextStyle(
-                                          color: Color(0xFFD4A017),
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 12,
-                                          letterSpacing: 1.2,
+                                          color: AppColors.onAccentDark,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 11,
+                                          letterSpacing: 2,
                                         ),
                                       ),
                                     ),
 
-                                    const SizedBox(height: 16),
+                                    const SizedBox(height: 14),
 
                                     // ── Title ──
-                                    const Text(
-                                      'BOOK\nSERVICE',
+                                    Text(
+                                      'Book Service',
                                       style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 52,
+                                        color: AppColors.txt,
+                                        fontSize: 44,
                                         fontWeight: FontWeight.w900,
-                                        height: 0.95,
-                                        letterSpacing: -1,
+                                        height: 1.05,
+                                        letterSpacing: -0.5,
                                       ),
                                     ),
 
-                                    const SizedBox(height: 12),
+                                    const SizedBox(height: 10),
 
                                     // ── Description ──
-                                    const Text(
+                                    Text(
                                       'Professional servicing for your vehicle with genuine parts and expert technicians.',
                                       style: TextStyle(
-                                        color: Colors.white,
+                                        color: AppColors.txt.withOpacity(0.7),
                                         fontSize: 15,
-                                        height: 1.6,
-                                        fontWeight: FontWeight.w400,
+                                        height: 1.4,
                                       ),
                                       maxLines: 3,
                                     ),
@@ -435,18 +457,18 @@ class _BookServiceScreenState
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 300),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF1C1C1C),
+                                    color: AppColors.surfaceRaised,
                                     border: Border.all(
                                       color: isSelected
-                                          ? const Color(0xFFD4A017)
-                                          : Colors.white10,
+                                          ? AppColors.accent
+                                          : AppColors.line,
                                       width: isSelected ? 2 : 1,
                                     ),
                                     borderRadius: BorderRadius.circular(24),
                                     boxShadow: isSelected
                                         ? [
                                             BoxShadow(
-                                              color: const Color(0xFFD4A017).withOpacity(0.2),
+                                              color: AppColors.accent.withOpacity(0.2),
                                               blurRadius: 20,
                                               spreadRadius: 2,
                                             ),
@@ -465,12 +487,12 @@ class _BookServiceScreenState
                                             Container(
                                               padding: const EdgeInsets.all(12),
                                               decoration: BoxDecoration(
-                                                color: const Color(0xFFD4A017).withOpacity(0.12),
+                                                color: AppColors.accent.withOpacity(0.12),
                                                 borderRadius: BorderRadius.circular(14),
                                               ),
                                               child: Icon(
                                                 service['icon'] as IconData,
-                                                color: const Color(0xFFD4A017),
+                                                color: AppColors.accent,
                                                 size: 28,
                                               ),
                                             ),
@@ -481,8 +503,8 @@ class _BookServiceScreenState
                                                 children: [
                                                   Text(
                                                     service['title'] as String,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
+                                                    style: TextStyle(
+                                                      color: AppColors.txt,
                                                       fontSize: 20,
                                                       fontWeight: FontWeight.w900,
                                                     ),
@@ -493,7 +515,7 @@ class _BookServiceScreenState
                                                       Text(
                                                         service['price'] as String,
                                                         style: const TextStyle(
-                                                          color: Color(0xFFD4A017),
+                                                          color: AppColors.accent,
                                                           fontSize: 18,
                                                           fontWeight: FontWeight.w900,
                                                         ),
@@ -505,14 +527,14 @@ class _BookServiceScreenState
                                                           vertical: 4,
                                                         ),
                                                         decoration: BoxDecoration(
-                                                          color: Colors.white10,
+                                                          color: AppColors.chipBg,
                                                           borderRadius: BorderRadius.circular(8),
                                                         ),
                                                         child: Text(
                                                           service['time'] as String,
-                                                          style: const TextStyle(
-                                                            color: Colors.white60,
-                                                            fontSize: 12,
+                                                          style: TextStyle(
+                                                            color: AppColors.mut,
+                                                            fontSize: 13,
                                                             fontWeight: FontWeight.w600,
                                                           ),
                                                         ),
@@ -530,19 +552,18 @@ class _BookServiceScreenState
                                         // ── Divider ──
                                         Container(
                                           height: 1,
-                                          color: Colors.white10,
+                                          color: AppColors.line,
                                         ),
 
                                         const SizedBox(height: 20),
 
-                                        // ── What's Included ──
-                                        const Text(
-                                          'WHAT\'S INCLUDED',
+                                        // ── What's included ──
+                                        Text(
+                                          'What\'s included',
                                           style: TextStyle(
-                                            color: Color(0xFFD4A017),
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: 1.5,
+                                            color: AppColors.txt,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w800,
                                           ),
                                         ),
 
@@ -571,7 +592,7 @@ class _BookServiceScreenState
                                                     width: 5,
                                                     height: 5,
                                                     decoration: const BoxDecoration(
-                                                      color: Color(0xFFD4A017),
+                                                      color: AppColors.accent,
                                                       shape: BoxShape.circle,
                                                     ),
                                                   ),
@@ -579,9 +600,9 @@ class _BookServiceScreenState
                                                   Expanded(
                                                     child: Text(
                                                       entry.value,
-                                                      style: const TextStyle(
-                                                        color: Colors.white70,
-                                                        fontSize: 13,
+                                                      style: TextStyle(
+                                                        color: AppColors.txt.withOpacity(0.7),
+                                                        fontSize: 14,
                                                         height: 1.5,
                                                       ),
                                                     ),
@@ -597,19 +618,18 @@ class _BookServiceScreenState
                                         // ── Divider ──
                                         Container(
                                           height: 1,
-                                          color: Colors.white10,
+                                          color: AppColors.line,
                                         ),
 
                                         const SizedBox(height: 20),
 
                                         // ── Details ──
-                                        const Text(
-                                          'DETAILS',
+                                        Text(
+                                          'Details',
                                           style: TextStyle(
-                                            color: Color(0xFFD4A017),
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: 1.5,
+                                            color: AppColors.txt,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w800,
                                           ),
                                         ),
 
@@ -617,10 +637,10 @@ class _BookServiceScreenState
 
                                         Text(
                                           service['details'] as String,
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 13,
-                                            height: 1.7,
+                                          style: TextStyle(
+                                            color: AppColors.txt.withOpacity(0.7),
+                                            fontSize: 14,
+                                            height: 1.6,
                                           ),
                                         ),
                                       ],
@@ -637,46 +657,42 @@ class _BookServiceScreenState
                   ),
                 ),
 
-                // ── FLOATING BOOK NOW BUTTON (BOTTOM) ──
+                // ── Sticky book bar ──
                 Positioned(
                   bottom: 0,
                   left: 0,
                   right: 0,
                   child: Container(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          const Color(0xFF050505).withOpacity(0),
-                          const Color(0xFF050505).withOpacity(0.95),
-                          const Color(0xFF050505),
-                        ],
-                      ),
+                      color: AppColors.surfaceRaised,
+                      border: Border(top: BorderSide(color: AppColors.line)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.25),
+                          blurRadius: 20,
+                          offset: const Offset(0, -6),
+                        ),
+                      ],
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 62,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFD4A017),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            elevation: 12,
-                            shadowColor: const Color(0xFFD4A017).withOpacity(0.4),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 58,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.accent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          onPressed: _showDoorstepPickupDialog,
-                          child: const Text(
-                            'BOOK NOW',
-                            style: TextStyle(
-                              color: Colors.black87,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 18,
-                              letterSpacing: 1.2,
-                            ),
+                          elevation: 0,
+                        ),
+                        onPressed: _showDoorstepPickupDialog,
+                        child: Text(
+                          'Book Now',
+                          style: TextStyle(
+                            color: AppColors.onAccentDark,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
                           ),
                         ),
                       ),

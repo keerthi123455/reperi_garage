@@ -4,6 +4,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'payment_screen.dart';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 
 class RoadsideAssistanceScreen extends StatefulWidget {
   const RoadsideAssistanceScreen({super.key});
@@ -22,6 +24,20 @@ class _RoadsideAssistanceScreenState
   void initState() {
     super.initState();
     _getLocation();
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    themeController.removeListener(_onThemeChanged);
+    super.dispose();
   }
 
   bool get _isLocationDetected =>
@@ -102,16 +118,16 @@ class _RoadsideAssistanceScreenState
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFF1C1C1C),
+          backgroundColor: AppColors.surfaceRaised,
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20)),
-          title: const Text(
+          title: Text(
             'Sorry! Cannot detect your location',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+            style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w800),
           ),
-          content: const Text(
+          content: Text(
             'Please enable location access and try again.',
-            style: TextStyle(color: Colors.white70),
+            style: TextStyle(color: AppColors.txt.withOpacity(0.7)),
           ),
           actions: [
             TextButton(
@@ -128,21 +144,21 @@ class _RoadsideAssistanceScreenState
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1C),
+        backgroundColor: AppColors.surfaceRaised,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20)),
-        title: const Text(
+        title: Text(
           'Base Fare',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+          style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w900),
         ),
-        content: const Text(
+        content: Text(
           'Base pay is ₹399. Additional charges will apply based on distance and service required.',
-          style: TextStyle(color: Colors.white70, height: 1.5),
+          style: TextStyle(color: AppColors.txt.withOpacity(0.7), height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
+            child: Text('CANCEL', style: TextStyle(color: AppColors.mut)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -162,8 +178,8 @@ class _RoadsideAssistanceScreenState
                 ),
               );
             },
-            child: const Text('CONTINUE',
-                style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800)),
+            child: Text('CONTINUE',
+                style: TextStyle(color: AppColors.onAccentDark, fontWeight: FontWeight.w800)),
           ),
         ],
       ),
@@ -173,14 +189,14 @@ class _RoadsideAssistanceScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF262626),
+      backgroundColor: AppColors.ink,
 
       appBar: AppBar(
-        backgroundColor: const Color(0xFF262626),
+        backgroundColor: AppColors.ink,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Roadside Assistance',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: AppColors.txt),
         ),
       ),
 
@@ -200,18 +216,18 @@ class _RoadsideAssistanceScreenState
                 vertical: 12,
               ),
               decoration: BoxDecoration(
-                color: const Color(0xFF151515),
+                color: AppColors.surfaceRaised,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
                 children: [
 
-                  Icon(
+                  const Icon(
                     Icons.location_on,
                     color: Color(0xFFD4A017),
                   ),
 
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
 
                   Expanded(
   child: Column(
@@ -219,18 +235,18 @@ class _RoadsideAssistanceScreenState
         CrossAxisAlignment.start,
     children: [
 
-      const Text(
+      Text(
         "Current Location",
         style: TextStyle(
-          color: Colors.white54,
+          color: AppColors.mut,
           fontSize: 11,
         ),
       ),
 
       Text(
         address,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: AppColors.txt,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -243,10 +259,10 @@ class _RoadsideAssistanceScreenState
 
             const SizedBox(height: 20),
 
-            const Text(
+            Text(
               "What do you need help with?",
               style: TextStyle(
-                color: Colors.white,
+                color: AppColors.txt,
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
@@ -298,28 +314,28 @@ class _RoadsideAssistanceScreenState
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: const Color(0xFF151515),
+                color: AppColors.surfaceRaised,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Column(
+              child: Column(
                 children: [
 
                   Text(
                     "Can't find what you need?",
                     style: TextStyle(
-                      color: Colors.white,
+                      color: AppColors.txt,
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
 
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
 
                   Text(
                     "If none of the above fits your issue, call our experts directly.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: AppColors.txt.withOpacity(0.7),
                     ),
                   ),
                 ],
@@ -338,7 +354,7 @@ class _RoadsideAssistanceScreenState
                 onPressed: () => _handleBookNow('General Assistance'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFD4A017),
-                  foregroundColor: Colors.black,
+                  foregroundColor: AppColors.onAccentDark,
                 ),
                 child: const Text(
                   "BOOK NOW",
@@ -365,7 +381,7 @@ class _RoadsideAssistanceScreenState
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFD4A017),
-                  foregroundColor: Colors.black,
+                  foregroundColor: AppColors.onAccentDark,
                 ),
               ),
             ),
@@ -392,9 +408,9 @@ class _RoadsideAssistanceScreenState
       // and lets it scroll on small screens instead of overflowing.
       isScrollControlled: true,
       builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1C1C1C),
-          borderRadius: BorderRadius.vertical(
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          borderRadius: const BorderRadius.vertical(
             top: Radius.circular(30),
           ),
         ),
@@ -414,7 +430,7 @@ class _RoadsideAssistanceScreenState
                       width: 60,
                       height: 5,
                       decoration: BoxDecoration(
-                        color: Colors.white24,
+                        color: AppColors.line,
                         borderRadius:
                             BorderRadius.circular(20),
                       ),
@@ -425,8 +441,8 @@ class _RoadsideAssistanceScreenState
 
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: AppColors.txt,
                       fontSize: 28,
                       fontWeight: FontWeight.w900,
                     ),
@@ -445,13 +461,13 @@ class _RoadsideAssistanceScreenState
 
                   const SizedBox(height: 15),
 
-                  const Text(
+                  Text(
                     "• Fast technician dispatch\n"
                     "• Live location tracking\n"
                     "• Professional assistance\n"
                     "• Emergency support",
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: AppColors.txt.withOpacity(0.7),
                       height: 1.8,
                     ),
                   ),
@@ -468,12 +484,12 @@ class _RoadsideAssistanceScreenState
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor:
-                            Color(0xFFD4A017),
+                            const Color(0xFFD4A017),
                       ),
-                      child: const Text(
+                      child: Text(
                         "BOOK NOW",
                         style: TextStyle(
-                          color: Colors.black,
+                          color: AppColors.onAccentDark,
                           fontWeight:
                               FontWeight.bold,
                         ),
@@ -504,7 +520,7 @@ class _RoadsideAssistanceScreenState
   },
   child: Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF151515),
+        color: AppColors.surfaceRaised,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -521,8 +537,8 @@ class _RoadsideAssistanceScreenState
 
           Text(
             title,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: AppColors.txt,
               fontWeight: FontWeight.bold,
             ),
           ),

@@ -1,13 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class FleetManagementScreen extends StatelessWidget {
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
+
+class FleetManagementScreen extends StatefulWidget {
   const FleetManagementScreen({super.key});
+
+  @override
+  State<FleetManagementScreen> createState() => _FleetManagementScreenState();
+}
+
+class _FleetManagementScreenState extends State<FleetManagementScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    themeController.removeListener(_onThemeChanged);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF262626),
+      backgroundColor: AppColors.ink,
       body: CustomScrollView(
         slivers: [
 
@@ -15,8 +42,8 @@ class FleetManagementScreen extends StatelessWidget {
           SliverAppBar(
             expandedHeight: 220,
             pinned: true,
-            backgroundColor: const Color(0xFF262626),
-            foregroundColor: Colors.white,
+            backgroundColor: AppColors.ink,
+            foregroundColor: AppColors.txt,
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
                 fit: StackFit.expand,
@@ -41,7 +68,7 @@ class FleetManagementScreen extends StatelessWidget {
                     child: Icon(
                       Icons.local_shipping_rounded,
                       size: 110,
-                      color: Colors.white.withOpacity(.05),
+                      color: AppColors.txt.withOpacity(.05),
                     ),
                   ),
                   // Text content
@@ -72,10 +99,10 @@ class FleetManagementScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        const Text(
+                        Text(
                           'Fleet\nManagement',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: AppColors.txt,
                             fontSize: 32,
                             fontWeight: FontWeight.w900,
                             height: 1.1,
@@ -121,26 +148,26 @@ class FleetManagementScreen extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1C1C1C),
+                          color: AppColors.surfaceRaised,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFF222222)),
+                          border: Border.all(color: AppColors.line),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Standardized care across every vehicle',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: AppColors.txt,
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
                             const SizedBox(height: 10),
-                            const Text(
+                            Text(
                               'Every vehicle undergoes the same 21-step inspection regardless of location, garage, or mechanic. Digital findings shared within 1 hour of pickup.',
                               style: TextStyle(
-                                color: Color(0xFF777777),
+                                color: AppColors.mut,
                                 height: 1.6,
                                 fontSize: 13,
                               ),
@@ -226,9 +253,9 @@ class FleetManagementScreen extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 20, vertical: 8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1C1C1C),
+                          color: AppColors.surfaceRaised,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFF222222)),
+                          border: Border.all(color: AppColors.line),
                         ),
                         child: Column(
                           children: [
@@ -258,11 +285,11 @@ class FleetManagementScreen extends StatelessWidget {
                             final uri = Uri(scheme: 'tel', path: '9353094672');
                             await launchUrl(uri);
                           },
-                          icon: const Icon(Icons.call_rounded, color: Colors.black),
-                          label: const Text(
+                          icon: Icon(Icons.call_rounded, color: AppColors.onAccentDark),
+                          label: Text(
                             'CALL US NOW',
                             style: TextStyle(
-                              color: Colors.black,
+                              color: AppColors.onAccentDark,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 1,
                             ),
@@ -306,9 +333,9 @@ class FleetManagementScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          color: const Color(0xFF151515),
+          color: AppColors.surfaceSunken,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF222222)),
+          border: Border.all(color: AppColors.line),
         ),
         child: Column(
           children: [
@@ -323,8 +350,8 @@ class FleetManagementScreen extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               label,
-              style: const TextStyle(
-                color: Color(0xFF666666),
+              style: TextStyle(
+                color: AppColors.mut,
                 fontSize: 9,
                 letterSpacing: 1,
               ),
@@ -343,11 +370,11 @@ class FleetManagementScreen extends StatelessWidget {
     required bool gold,
     required List<String> items,
   }) {
-    final bg = gold ? const Color(0xFFD4A017) : const Color(0xFF262626);
-    final titleColor = gold ? Colors.black : Colors.white;
+    final bg = gold ? const Color(0xFFD4A017) : AppColors.surfaceRaised;
+    final titleColor = gold ? AppColors.onAccentDark : AppColors.txt;
     final subtitleColor =
-        gold ? const Color(0xFF3A2800) : const Color(0xFF666666);
-    final iconColor = gold ? Colors.black : const Color(0xFFD4A017);
+        gold ? const Color(0xFF3A2800) : AppColors.mut;
+    final iconColor = gold ? AppColors.onAccentDark : const Color(0xFFD4A017);
 
     return GestureDetector(
       onTap: () => _showInspectionSheet(context, title, items),
@@ -355,7 +382,7 @@ class FleetManagementScreen extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(20),
-          border: gold ? null : Border.all(color: const Color(0xFF3A3A3A)),
+          border: gold ? null : Border.all(color: AppColors.line),
           boxShadow: gold
               ? [
                   BoxShadow(
@@ -400,8 +427,7 @@ class FleetManagementScreen extends StatelessWidget {
       decoration: BoxDecoration(
         border: last
             ? null
-            : const Border(
-                bottom: BorderSide(color: Color(0xFF262626))),
+            : Border(bottom: BorderSide(color: AppColors.line)),
       ),
       child: Row(
         children: [
@@ -431,8 +457,8 @@ class FleetManagementScreen extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: AppColors.txt,
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                 ),
@@ -440,8 +466,8 @@ class FleetManagementScreen extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 sub,
-                style: const TextStyle(
-                  color: Color(0xFF555555),
+                style: TextStyle(
+                  color: AppColors.mut,
                   fontSize: 11,
                 ),
               ),
@@ -459,9 +485,9 @@ class FleetManagementScreen extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
         padding: const EdgeInsets.all(28),
-        decoration: const BoxDecoration(
-          color: Color(0xFF1C1C1C),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -474,7 +500,7 @@ class FleetManagementScreen extends StatelessWidget {
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF333333),
+                  color: AppColors.line,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -492,8 +518,8 @@ class FleetManagementScreen extends StatelessWidget {
                 const SizedBox(width: 10),
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppColors.txt,
                     fontSize: 24,
                     fontWeight: FontWeight.w900,
                   ),
@@ -522,8 +548,8 @@ class FleetManagementScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     Text(
                       e,
-                      style: const TextStyle(
-                        color: Colors.white70,
+                      style: TextStyle(
+                        color: AppColors.mut,
                         fontSize: 14,
                       ),
                     ),

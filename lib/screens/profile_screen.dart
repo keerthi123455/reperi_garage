@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../constants/app_colors.dart';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 import 'login_screen.dart';
 import '../services/error_handler.dart';
+import '../widgets/ask_ai_button.dart';
+import '../widgets/bottom_nav_actions.dart';
+import '../widgets/bottom_nav_bar.dart';
 import '../widgets/error_display.dart';
+
+// Brand highlight yellow — a fixed accent, not a themed surface, used for
+// the badges/CTAs on this screen (this used to come from the app's legacy
+// ../constants/app_colors.dart palette, now superseded by ../theme/app_colors.dart
+// for everything else on this screen).
+const Color _highlightYellow = Color(0xFFFFD600);
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -21,14 +31,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete your account?'),
-        content: const Text(
+        backgroundColor: AppColors.surfaceRaised,
+        title: Text('Delete your account?', style: TextStyle(color: AppColors.txt)),
+        content: Text(
           'This will permanently delete your profile, vehicles, and booking history. This action cannot be undone.',
+          style: TextStyle(color: AppColors.mut),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text('Cancel', style: TextStyle(color: AppColors.mut)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -99,6 +111,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     fetchVehicles();
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    themeController.removeListener(_onThemeChanged);
+    super.dispose();
   }
 
   Future<void> fetchVehicles() async {
@@ -180,10 +206,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         context: context,
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppColors.surfaceRaised,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: Row(
-            children: const [
+          title: const Row(
+            children: [
               Icon(Icons.error_rounded, color: Colors.red, size: 28),
               SizedBox(width: 12),
               Expanded(
@@ -207,23 +233,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 50),
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'Vehicle Cannot Be Deleted',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: Colors.black87,
+                  color: AppColors.txt,
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'This vehicle has a service in progress. Please wait until the service is delivered before attempting to delete.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: Colors.grey,
+                  color: AppColors.mut,
                   height: 1.6,
                 ),
               ),
@@ -251,11 +277,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surfaceRaised,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text(
+        title: Text(
           'Delete Vehicle?',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.txt),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -267,27 +293,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: Colors.orange.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.delete_outline_rounded, 
+              child: const Icon(Icons.delete_outline_rounded,
                 color: Colors.orange, size: 40),
             ),
             const SizedBox(height: 20),
             Text(
               '${vehicle['car_brand']} ${vehicle['car_model']}',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: Colors.black87,
+                color: AppColors.txt,
               ),
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'Are you sure you want to delete this vehicle? All the service history and progress will be lost.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: Colors.grey,
+                color: AppColors.mut,
                 height: 1.5,
               ),
             ),
@@ -296,12 +322,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
+            child: Text(
               'No',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: Colors.grey,
+                color: AppColors.mut,
               ),
             ),
           ),
@@ -385,9 +411,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               left: 24, right: 24, top: 28,
               bottom: MediaQuery.of(ctx).viewInsets.bottom + 28,
             ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(36)),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceRaised,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
             ),
             child: SingleChildScrollView(
               child: Column(
@@ -397,15 +423,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Container(
                       width: 44, height: 5,
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
+                        color: AppColors.line,
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  const Text(
+                  Text(
                     'Add Vehicle',
-                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.txt),
                   ),
                   const SizedBox(height: 24),
                    _sheetField(nameController, 'Your Name', Icons.person_outline),
@@ -414,14 +440,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 18),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
+                      color: AppColors.surfaceSunken,
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: selectedVehicleType,
                         isExpanded: true,
-                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                        icon: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.txt),
+                        dropdownColor: AppColors.surfaceRaised,
+                        style: TextStyle(color: AppColors.txt),
                         items: vehicleTypeLabels.entries.map((e) => DropdownMenuItem(
                           value: e.key, child: Text(e.value),
                         )).toList(),
@@ -437,14 +465,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 18),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
+                      color: AppColors.surfaceSunken,
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: selectedBrand,
                         isExpanded: true,
-                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                        icon: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.txt),
+                        dropdownColor: AppColors.surfaceRaised,
+                        style: TextStyle(color: AppColors.txt),
                         items: brandsByType[selectedVehicleType]!.map((b) => DropdownMenuItem(
                           value: b, child: Text(b),
                         )).toList(),
@@ -544,14 +574,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       width: double.infinity,
                       height: 60,
                       decoration: BoxDecoration(
-                        color: saving ? AppColors.yellow.withOpacity(0.6) : AppColors.yellow,
+                        color: saving ? _highlightYellow.withOpacity(0.6) : _highlightYellow,
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Center(
                         child: saving
-                            ? const CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5)
-                            : const Text('SAVE VEHICLE',
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            ? CircularProgressIndicator(color: AppColors.onAccentDark, strokeWidth: 2.5)
+                            : Text('SAVE VEHICLE',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.onAccentDark)),
                       ),
                     ),
                   ),
@@ -568,14 +598,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: AppColors.surfaceSunken,
         borderRadius: BorderRadius.circular(18),
       ),
       child: TextField(
         controller: ctrl,
+        style: TextStyle(color: AppColors.txt),
         decoration: InputDecoration(
-          icon: Icon(icon, size: 22),
+          icon: Icon(icon, size: 22, color: AppColors.mut),
           hintText: hint,
+          hintStyle: TextStyle(color: AppColors.mut),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(vertical: 16),
         ),
@@ -610,7 +642,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.ink,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -627,7 +659,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: AppColors.surfaceRaised,
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
@@ -636,12 +668,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                             ],
                           ),
-                          child: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                          child: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: AppColors.txt),
                         ),
                       ),
                       const SizedBox(width: 16),
-                      const Text('My Garage',
-                        style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
+                      Text('My Garage',
+                        style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: AppColors.txt)),
                     ],
                   ),
                 ),
@@ -658,16 +690,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(Icons.directions_car_outlined,
-                                      size: 80, color: Colors.grey.shade300),
+                                      size: 80, color: AppColors.mut),
                                   const SizedBox(height: 16),
                                   Text('No vehicles yet',
                                     style: TextStyle(
                                       fontSize: 20, fontWeight: FontWeight.w700,
-                                      color: Colors.grey.shade400,
+                                      color: AppColors.mut,
                                     )),
                                   const SizedBox(height: 8),
                                   Text('Tap the button below to add your first car',
-                                    style: TextStyle(color: Colors.grey.shade400)),
+                                    style: TextStyle(color: AppColors.mut)),
                                 ],
                               ),
                             )
@@ -682,7 +714,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     margin: const EdgeInsets.only(bottom: 16),
                                     padding: const EdgeInsets.all(20),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
+                                      color: AppColors.surfaceRaised,
                                       borderRadius: BorderRadius.circular(26),
                                       boxShadow: [
                                         BoxShadow(
@@ -697,14 +729,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         Container(
                                           width: 44, height: 44,
                                           decoration: BoxDecoration(
-                                            color: AppColors.yellow,
+                                            color: _highlightYellow,
                                             borderRadius: BorderRadius.circular(14),
                                           ),
                                           child: Center(
                                             child: Text('${i + 1}',
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 fontSize: 18,
                                                 fontWeight: FontWeight.w900,
+                                                color: AppColors.onAccentDark,
                                               )),
                                           ),
                                         ),
@@ -713,7 +746,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         Container(
                                           width: 56, height: 56,
                                           decoration: BoxDecoration(
-                                            color: AppColors.yellow.withOpacity(0.15),
+                                            color: _highlightYellow.withOpacity(0.15),
                                             borderRadius: BorderRadius.circular(18),
                                           ),
                                           clipBehavior: Clip.antiAlias,
@@ -729,6 +762,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                         ? Icons.two_wheeler_rounded
                                                         : Icons.directions_car_rounded,
                                                     size: 30,
+                                                    color: AppColors.mut,
                                                   ),
                                                 )
                                               : Icon(
@@ -736,6 +770,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                       ? Icons.two_wheeler_rounded
                                                       : Icons.directions_car_rounded,
                                                   size: 30,
+                                                  color: AppColors.mut,
                                                 ),
                                         ),
                                         const SizedBox(width: 16),
@@ -745,16 +780,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
                                               Text((v['car_model'] ?? '').toString().toUpperCase(),
-                                                style: const TextStyle(
-                                                  fontSize: 18, fontWeight: FontWeight.w800)),
+                                                style: TextStyle(
+                                                  fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.txt)),
                                               const SizedBox(height: 4),
                                               Text((v['car_brand'] ?? '').toString().toUpperCase(),
                                                 style: TextStyle(
-                                                  color: Colors.grey.shade500, fontSize: 14)),
+                                                  color: AppColors.mut, fontSize: 14)),
                                               const SizedBox(height: 2),
                                               Text((v['car_number'] ?? '').toString().toUpperCase(),
                                                 style: TextStyle(
-                                                  color: Colors.grey.shade400, fontSize: 13)),
+                                                  color: AppColors.mut, fontSize: 13)),
                                             ],
                                           ),
                                         ),
@@ -791,7 +826,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       width: double.infinity,
                       height: 64,
                       decoration: BoxDecoration(
-                        color: AppColors.yellow,
+                        color: _highlightYellow,
                         borderRadius: BorderRadius.circular(22),
                         boxShadow: [
                           BoxShadow(
@@ -802,11 +837,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(Icons.add_rounded, size: 28),
-                          SizedBox(width: 10),
+                        children: [
+                          Icon(Icons.add_rounded, size: 28, color: AppColors.onAccentDark),
+                          const SizedBox(width: 10),
                           Text('ADD VEHICLE',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.onAccentDark)),
                         ],
                       ),
                     ),
@@ -836,6 +871,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
+        ),
+      ),
+      bottomNavigationBar: BottomNavBar(
+        currentIndex: 4,
+        onSelect: (i) => handleBottomNavSelect(
+          context,
+          i,
+          currentIndex: 4,
+          activeVehicle: vehicles.isNotEmpty ? vehicles.first : null,
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: AskAiButton(
+        onTap: () => openAiAdvisor(
+          context,
+          vehicles.isNotEmpty ? vehicles.first : null,
         ),
       ),
     );

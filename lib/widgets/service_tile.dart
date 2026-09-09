@@ -26,7 +26,7 @@ class ServiceTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(15),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(6),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(15),
             border: Border.all(color: AppColors.line),
@@ -34,13 +34,13 @@ class ServiceTile extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 25, color: AppColors.accent),
-              const SizedBox(height: 8),
+              Icon(icon, size: 29, color: AppColors.accent),
+              const SizedBox(height: 10),
               Text(
                 label,
                 textAlign: TextAlign.center,
                 style: GoogleFonts.manrope(
-                  fontSize: 10.5,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w600,
                   color: AppColors.txt,
                   height: 1.25,

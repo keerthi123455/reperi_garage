@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 
 class DetailingPackagesScreen extends StatefulWidget {
   const DetailingPackagesScreen({super.key});
@@ -18,59 +21,136 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    themeController.removeListener(_onThemeChanged);
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _callExpert() async {
+    await launchUrl(Uri.parse('tel:9353094672'));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF262626),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // ── HERO SECTION ──
-            _buildHeroSection(),
+      backgroundColor: AppColors.ink,
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            child: Column(
+              children: [
+                // ── HERO SECTION ──
+                _buildHeroSection(),
 
-            // ── QUICK STATS ──
-            _buildQuickStats(),
+                // ── QUICK STATS ──
+                _buildQuickStats(),
 
-            const SizedBox(height: 32),
+                const SizedBox(height: 32),
 
-            // ── SERVICE CATEGORIES ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Select Your Service',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                    ),
+                // ── SERVICE CATEGORIES ──
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Select your service',
+                        style: TextStyle(
+                          color: AppColors.txt,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildCategoryTabs(),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  _buildCategoryTabs(),
-                ],
-              ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // ── PACKAGES CONTENT ──
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _buildServiceContent(),
+                ),
+
+                const SizedBox(height: 140),
+              ],
             ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildStickyBar(),
+          ),
+        ],
+      ),
+    );
+  }
 
-            const SizedBox(height: 24),
-
-            // ── PACKAGES CONTENT ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _buildServiceContent(),
+  // ── STICKY BOTTOM BAR ──
+  Widget _buildStickyBar() {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          border: Border(top: BorderSide(color: AppColors.line)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.25),
+              blurRadius: 20,
+              offset: const Offset(0, -6),
             ),
-
-            const SizedBox(height: 32),
           ],
+        ),
+        child: GestureDetector(
+          onTap: _callExpert,
+          child: Container(
+            width: double.infinity,
+            height: 54,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD4A017),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFD4A017).withOpacity(0.3),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.call_rounded, color: AppColors.onAccentDark, size: 20),
+                const SizedBox(width: 10),
+                Text(
+                  'Call Expert',
+                  style: TextStyle(
+                    color: AppColors.onAccentDark,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -85,8 +165,8 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFF1C1C1C),
-            const Color(0xFF262626),
+            AppColors.surfaceSunken,
+            AppColors.ink,
           ],
         ),
       ),
@@ -102,12 +182,12 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF151515),
+                    color: AppColors.surfaceRaised,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.arrow_back_rounded,
-                    color: Colors.white,
+                    color: AppColors.txt,
                   ),
                 ),
               ),
@@ -127,23 +207,24 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
 
               const SizedBox(height: 8),
 
-              const Text(
+              Text(
                 'Detailing Services',
                 style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 36,
+                  color: AppColors.txt,
+                  fontSize: 42,
                   fontWeight: FontWeight.w900,
-                  height: 1.2,
+                  height: 1.1,
+                  letterSpacing: -0.5,
                 ),
               ),
 
               const SizedBox(height: 12),
 
-              const Text(
+              Text(
                 'Premium protection for your vehicle',
                 style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
+                  color: AppColors.txt.withOpacity(0.7),
+                  fontSize: 16,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -181,12 +262,11 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                         const SizedBox(width: 12),
                         const Expanded(
                           child: Text(
-                            'PAY AFTER DELIVERY',
+                            'Pay after delivery',
                             style: TextStyle(
                               color: Color(0xFFD4A017),
-                              fontSize: 14,
+                              fontSize: 15,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 0.5,
                             ),
                           ),
                         ),
@@ -220,24 +300,24 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 'Get 24hr Updates',
                                 style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
+                                  color: AppColors.txt,
+                                  fontSize: 14,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              SizedBox(height: 2),
+                              const SizedBox(height: 2),
                               Text(
                                 'Real-time updates with images',
                                 style: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 11,
+                                  color: AppColors.mut,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -266,24 +346,24 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 '24/7 Assistance',
                                 style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
+                                  color: AppColors.txt,
+                                  fontSize: 14,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              SizedBox(height: 2),
+                              const SizedBox(height: 2),
                               Text(
                                 'Expert support anytime on call',
                                 style: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 11,
+                                  color: AppColors.mut,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -353,10 +433,10 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF151515),
+          color: AppColors.surfaceRaised,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: const Color(0xFF2A2A2A),
+            color: AppColors.line,
             width: 1,
           ),
           boxShadow: [
@@ -373,18 +453,18 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
             const SizedBox(height: 8),
             Text(
               value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
+              style: TextStyle(
+                color: AppColors.txt,
+                fontSize: 18,
                 fontWeight: FontWeight.w900,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               label,
-              style: const TextStyle(
-                color: Colors.white54,
-                fontSize: 12,
+              style: TextStyle(
+                color: AppColors.mut,
+                fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -420,11 +500,11 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                         ],
                       )
                     : null,
-                color: isSelected ? null : const Color(0xFF151515),
+                color: isSelected ? null : AppColors.chipBg,
                 borderRadius: BorderRadius.circular(12),
                 border: !isSelected
                     ? Border.all(
-                        color: const Color(0xFF2A2A2A),
+                        color: AppColors.line,
                         width: 1,
                       )
                     : null,
@@ -441,7 +521,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
               child: Text(
                 categories[index],
                 style: TextStyle(
-                  color: isSelected ? Colors.black87 : Colors.white,
+                  color: isSelected ? AppColors.onAccentDark : AppColors.txt,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
@@ -495,20 +575,20 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Paint Protection Film',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
+            color: AppColors.txt,
+            fontSize: 20,
             fontWeight: FontWeight.w900,
           ),
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Ultimate protection against scratches, chips & UV',
           style: TextStyle(
-            color: Colors.white54,
-            fontSize: 12,
+            color: AppColors.mut,
+            fontSize: 14,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -516,7 +596,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
         ...packages.map((pkg) => _buildPackageCard(pkg)).toList(),
         const SizedBox(height: 20),
         _buildInfoBox(
-          title: 'Service Timeline',
+          title: 'Service timeline',
           items: [
             '• New Car PPF: 3 Days',
             '• Used Car PPF: 5 Days (includes polish)',
@@ -545,20 +625,20 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Ceramic Coating',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
+            color: AppColors.txt,
+            fontSize: 20,
             fontWeight: FontWeight.w900,
           ),
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Hydrophobic protection with stunning gloss',
           style: TextStyle(
-            color: Colors.white54,
-            fontSize: 12,
+            color: AppColors.mut,
+            fontSize: 14,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -566,7 +646,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
         ...packages.map((pkg) => _buildPackageCard(pkg)).toList(),
         const SizedBox(height: 20),
         _buildInfoBox(
-          title: 'What You Get',
+          title: 'What you get',
           items: [
             '✓ Water beading effect',
             '✓ Enhanced glossiness',
@@ -595,20 +675,20 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Graphene Coating',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
+            color: AppColors.txt,
+            fontSize: 20,
             fontWeight: FontWeight.w900,
           ),
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Next-gen protection with nano-technology',
           style: TextStyle(
-            color: Colors.white54,
-            fontSize: 12,
+            color: AppColors.mut,
+            fontSize: 14,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -616,7 +696,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
         ...packages.map((pkg) => _buildPackageCard(pkg)).toList(),
         const SizedBox(height: 20),
         _buildInfoBox(
-          title: 'Advanced Features',
+          title: 'Advanced features',
           items: [
             '✓ Graphene nano-particles',
             '✓ Superior durability',
@@ -654,20 +734,20 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Sun Film Protection',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
+            color: AppColors.txt,
+            fontSize: 20,
             fontWeight: FontWeight.w900,
           ),
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Beat the heat with premium UV blocking',
           style: TextStyle(
-            color: Colors.white54,
-            fontSize: 12,
+            color: AppColors.mut,
+            fontSize: 14,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -686,12 +766,12 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF151515),
+          color: AppColors.surfaceRaised,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: package['isPremium'] == true
                 ? const Color(0xFFD4A017)
-                : const Color(0xFF2A2A2A),
+                : AppColors.line,
             width: package['isPremium'] == true ? 2 : 1,
           ),
         ),
@@ -708,9 +788,9 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                   children: [
                     Text(
                       package['brand'],
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
+                      style: TextStyle(
+                        color: AppColors.txt,
+                        fontSize: 17,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -719,7 +799,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                       package['feature'] ?? package['coverage'],
                       style: const TextStyle(
                         color: Color(0xFFD4A017),
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -736,13 +816,12 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                     color: const Color(0xFFD4A017),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Text(
-                    'RECOMMENDED',
+                  child: Text(
+                    'Recommended',
                     style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
+                      color: AppColors.onAccentDark,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
@@ -754,7 +833,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
           // Divider
           Container(
             height: 1,
-            color: const Color(0xFF2A2A2A),
+            color: AppColors.line,
           ),
 
           const SizedBox(height: 12),
@@ -766,11 +845,11 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Price',
                       style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
+                        color: AppColors.mut,
+                        fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -779,7 +858,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                       package['price'],
                       style: const TextStyle(
                         color: Color(0xFFD4A017),
-                        fontSize: 14,
+                        fontSize: 15,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -790,20 +869,20 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Warranty',
                       style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
+                        color: AppColors.mut,
+                        fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       package['warranty'],
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
+                      style: TextStyle(
+                        color: AppColors.txt,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -814,20 +893,20 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Timeline',
                       style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
+                        color: AppColors.mut,
+                        fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       package['turnaround'],
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
+                      style: TextStyle(
+                        color: AppColors.txt,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -861,10 +940,10 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF151515),
+        color: AppColors.surfaceRaised,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFF2A2A2A),
+          color: AppColors.line,
           width: 1,
         ),
       ),
@@ -875,9 +954,8 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
             title,
             style: const TextStyle(
               color: Color(0xFFD4A017),
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.5,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 12),
@@ -885,9 +963,9 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
                   item,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
+                  style: TextStyle(
+                    color: AppColors.txt.withOpacity(0.7),
+                    fontSize: 14,
                     fontWeight: FontWeight.w500,
                     height: 1.6,
                   ),
@@ -910,10 +988,10 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF151515),
+        color: AppColors.surfaceRaised,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFF2A2A2A),
+          color: AppColors.line,
           width: 1,
         ),
       ),
@@ -921,12 +999,11 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Coverage Options',
+            'Coverage options',
             style: TextStyle(
               color: Color(0xFFD4A017),
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.5,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 12),
@@ -940,10 +1017,10 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
             children: coverageOptions.map((option) {
               return Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1C1C1C),
+                  color: AppColors.surfaceSunken,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: const Color(0xFF2A2A2A),
+                    color: AppColors.line,
                     width: 1,
                   ),
                 ),
@@ -953,9 +1030,9 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                     children: [
                       Text(
                         option['area']!,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
+                        style: TextStyle(
+                          color: AppColors.txt,
+                          fontSize: 14,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -964,7 +1041,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                         option['price']!,
                         style: const TextStyle(
                           color: Color(0xFFD4A017),
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
@@ -985,7 +1062,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF151515),
+        backgroundColor: AppColors.surfaceRaised,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
@@ -1031,19 +1108,19 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1C1C1C),
+                  color: AppColors.surfaceSunken,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: const Color(0xFF2A2A2A),
+                    color: AppColors.line,
                     width: 1,
                   ),
                 ),
-                child: const Text(
+                child: Text(
                   'On confirming, our expert will have a discussion with you and go ahead with the further processes',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
+                    color: AppColors.txt.withOpacity(0.7),
+                    fontSize: 14,
                     fontWeight: FontWeight.w500,
                     height: 1.6,
                   ),
@@ -1067,13 +1144,12 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text(
-                    'DISCUSS',
+                  child: Text(
+                    'Discuss',
                     style: TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                      letterSpacing: 0.5,
+                      color: AppColors.onAccentDark,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
                     ),
                   ),
                 ),
@@ -1088,21 +1164,20 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                 child: OutlinedButton(
                   onPressed: () => Navigator.pop(context),
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(
-                      color: Color(0xFF2A2A2A),
+                    side: BorderSide(
+                      color: AppColors.line,
                       width: 1,
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text(
-                    'MAYBE LATER',
+                  child: Text(
+                    'Maybe later',
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: AppColors.txt.withOpacity(0.7),
                       fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                      letterSpacing: 0.5,
+                      fontSize: 15,
                     ),
                   ),
                 ),
@@ -1127,7 +1202,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
             Container(
               padding: const EdgeInsets.all(40),
               decoration: BoxDecoration(
-                color: const Color(0xFF151515),
+                color: AppColors.surfaceRaised,
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Column(
@@ -1186,26 +1261,25 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
 
                             const SizedBox(height: 16),
 
-                            const Text(
-                              'WE WILL CONNECT WITH YOU SHORTLY',
+                            Text(
+                              'We\'ll connect with you shortly',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.5,
+                                color: AppColors.txt,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
                                 height: 1.4,
                               ),
                             ),
 
                             const SizedBox(height: 12),
 
-                            const Text(
+                            Text(
                               'Our expert will reach out to discuss your requirements and schedule the service',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
+                                color: AppColors.txt.withOpacity(0.7),
+                                fontSize: 13,
                                 fontWeight: FontWeight.w500,
                                 height: 1.6,
                               ),
@@ -1393,14 +1467,13 @@ class _AnimatedBookButtonState extends State<_AnimatedBookButton> {
           scale: _pressed ? 0.95 : 1.0,
           duration: const Duration(milliseconds: 100),
           curve: Curves.easeOut,
-          child: const Center(
+          child: Center(
             child: Text(
-              'DISCUSS',
+              'Discuss',
               style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.w900,
-                fontSize: 12,
-                letterSpacing: 0.5,
+                color: AppColors.onAccentDark,
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
               ),
             ),
           ),

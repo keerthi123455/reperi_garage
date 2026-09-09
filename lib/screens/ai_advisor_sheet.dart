@@ -4,6 +4,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'payment_screen.dart';
 import '../services/catalog_service.dart';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 import 'book_service_screen.dart';
 import 'car_spa_screen.dart';
 import 'paint_care_screen.dart';
@@ -58,14 +60,19 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
   Uint8List? _attachedImage;
 
   // ── Theme ──────────────────────────────────────────────────────────────────
-  static const Color _bg         = Color(0xFF262626);
-  static const Color _surface    = Color(0xFF1C1C1C);
-  static const Color _surfaceAlt = Color(0xFF2A2A2A);
+  // Routed through AppColors so the sheet follows the app's light/dark
+  // toggle instead of staying permanently dark — these are getters (not
+  // `static const`) because AppColors' fields are mutated in place by
+  // themeController and are therefore not compile-time constants.
+  static Color get _bg => AppColors.ink;
+  static Color get _surface => AppColors.surfaceRaised;
+  static Color get _surfaceAlt => AppColors.surfaceRaised;
+  static Color get _surfaceSunken => AppColors.surfaceSunken;
   static const Color _gold       = Color(0xFFD4A017);
   static const Color _goldLight  = Color(0xFFF5C842);
-  static const Color _white      = Color(0xFFFFFFFF);
-  static const Color _grey       = Color(0xFFAAAAAA);
-  static const Color _border     = Color(0xFF3A3A3A);
+  static Color get _white => AppColors.txt;
+  static Color get _grey => AppColors.mut;
+  static Color get _border => AppColors.line;
   static const Color _green      = Color(0xFF4CAF50);
 
   // ── Messages ───────────────────────────────────────────────────────────────
@@ -126,10 +133,19 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
   void initState() {
     super.initState();
     _fetchCatalogData();
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this sheet dirty on its own
+    // when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    themeController.removeListener(_onThemeChanged);
     _controller.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
@@ -157,9 +173,9 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open dialer. Please call +91 93530 94672'),
-            backgroundColor: Color(0xFF1A1A1A),
+          SnackBar(
+            content: const Text('Could not open dialer. Please call +91 93530 94672'),
+            backgroundColor: _surfaceSunken,
           ),
         );
       }
@@ -174,7 +190,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       showDialog(
         context: context,
         builder: (_) => Dialog(
-          backgroundColor: const Color(0xFF1C1C1C),
+          backgroundColor: _surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           child: Padding(
             padding: const EdgeInsets.all(28),
@@ -192,16 +208,16 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
                       color: _gold, size: 34),
                 ),
                 const SizedBox(height: 20),
-                const Text(
+                Text(
                   'No vehicle linked',
                   style: TextStyle(
                       color: _white, fontSize: 20, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   'Please add your vehicle from the Profile screen before booking.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Color(0xFF888888), height: 1.5),
+                  style: TextStyle(color: _grey, height: 1.5),
                 ),
                 const SizedBox(height: 24),
                 GestureDetector(
@@ -213,10 +229,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
                       color: _gold,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Center(
+                    child: Center(
                       child: Text('OK',
                           style: TextStyle(
-                              color: Colors.black,
+                              color: AppColors.onAccentDark,
                               fontWeight: FontWeight.w900)),
                     ),
                   ),
@@ -279,7 +295,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
           SnackBar(
             content: Text(
                 'Could not access ${source == ImageSource.camera ? "camera" : "gallery"}'),
-            backgroundColor: const Color(0xFF1A1A1A),
+            backgroundColor: _surfaceSunken,
           ),
         );
       }
@@ -289,7 +305,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
   void _showImageSourceSheet() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1C1C1C),
+      backgroundColor: _surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => SafeArea(
@@ -302,7 +318,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
                 width: 40, height: 4,
                 margin: const EdgeInsets.only(bottom: 24),
                 decoration: BoxDecoration(
-                    color: Colors.white24,
+                    color: _border,
                     borderRadius: BorderRadius.circular(2)),
               ),
               const Text(
@@ -350,7 +366,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: _surfaceSunken,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: _border)),
         child: Row(
@@ -367,15 +383,15 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: _white, fontWeight: FontWeight.w700, fontSize: 15)),
                 const SizedBox(height: 3),
                 Text(subtitle,
-                    style: const TextStyle(color: _grey, fontSize: 12)),
+                    style: TextStyle(color: _grey, fontSize: 12)),
               ],
             ),
             const Spacer(),
-            const Icon(Icons.arrow_forward_ios, color: _grey, size: 14),
+            Icon(Icons.arrow_forward_ios, color: _grey, size: 14),
           ],
         ),
       ),
@@ -655,9 +671,9 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
         constraints: const BoxConstraints(maxWidth: 600),
         child: Container(
           height: MediaQuery.of(context).size.height * 0.92,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: _bg,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           ),
           child: Column(
             children: [
@@ -680,7 +696,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
         child: Container(
           width: 44, height: 4,
           decoration: BoxDecoration(
-              color: Colors.white12, borderRadius: BorderRadius.circular(2)),
+              color: _border, borderRadius: BorderRadius.circular(2)),
         ),
       );
 
@@ -700,19 +716,19 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
               shape: BoxShape.circle,
               boxShadow: [BoxShadow(color: _gold.withOpacity(0.35), blurRadius: 14)],
             ),
-            child: const Icon(Icons.auto_awesome_rounded, color: Colors.black, size: 22),
+            child: Icon(Icons.auto_awesome_rounded, color: AppColors.onAccentDark, size: 22),
           ),
           const SizedBox(width: 14),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('GarageCo AI',
+              Text('GarageCo AI',
                   style: TextStyle(color: _white, fontSize: 17, fontWeight: FontWeight.w800)),
               Row(
                 children: [
                   const CircleAvatar(radius: 4, backgroundColor: _green),
                   const SizedBox(width: 6),
-                  const Text('Vehicle Service Advisor',
+                  Text('Vehicle Service Advisor',
                       style: TextStyle(color: _grey, fontSize: 12)),
                 ],
               ),
@@ -725,14 +741,14 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
+                color: _surfaceSunken,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: _border),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.call_rounded, color: _green, size: 15),
-                  SizedBox(width: 6),
+                  const Icon(Icons.call_rounded, color: _green, size: 15),
+                  const SizedBox(width: 6),
                   Text('Expert',
                       style: TextStyle(color: _white, fontSize: 12, fontWeight: FontWeight.w600)),
                 ],
@@ -748,7 +764,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
               decoration: BoxDecoration(
                   color: _surface, shape: BoxShape.circle,
                   border: Border.all(color: _border)),
-              child: const Icon(Icons.close, color: _grey, size: 16),
+              child: Icon(Icons.close, color: _grey, size: 16),
             ),
           ),
         ],
@@ -762,8 +778,8 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 20, bottom: 10),
+          Padding(
+            padding: const EdgeInsets.only(left: 20, bottom: 10),
             child: Text('COMMON ISSUES',
                 style: TextStyle(
                     color: _grey, fontSize: 10,
@@ -786,7 +802,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
                     border: Border.all(color: _gold.withOpacity(0.3)),
                   ),
                   child: Text(_quickPrompts[i],
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: _white, fontSize: 12, fontWeight: FontWeight.w500)),
                 ),
               ),
@@ -830,7 +846,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF141414),
+                  color: _surfaceSunken,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(4), topRight: Radius.circular(20),
                     bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20),
@@ -839,7 +855,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
                 ),
                 child: Text(
                   msg['text'] as String,
-                  style: const TextStyle(color: _white, fontSize: 14, height: 1.5),
+                  style: TextStyle(color: _white, fontSize: 14, height: 1.5),
                 ),
               ),
               const SizedBox(height: 10),
@@ -886,7 +902,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: isUser ? _gold : const Color(0xFF141414),
+                  color: isUser ? _gold : _surfaceSunken,
                   borderRadius: BorderRadius.circular(20).copyWith(
                     bottomRight: isUser
                         ? const Radius.circular(4)
@@ -900,7 +916,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
                 child: Text(
                   msg['text'] as String,
                   style: TextStyle(
-                      color: isUser ? Colors.black : _white,
+                      color: isUser ? AppColors.onAccentDark : _white,
                       fontSize: 14, height: 1.5),
                 ),
               ),
@@ -936,7 +952,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
         margin: const EdgeInsets.only(bottom: 14),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFF141414),
+          color: _surfaceSunken,
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(20), topRight: Radius.circular(20),
             bottomRight: Radius.circular(20), bottomLeft: Radius.circular(4),
@@ -962,7 +978,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
     final packages = rec['packages'] as List;
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF141414),
+        color: _surfaceSunken,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(4), topRight: Radius.circular(20),
           bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20),
@@ -1013,7 +1029,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       decoration: BoxDecoration(
         color: _surfaceAlt,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
+        border: Border.all(color: _border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1026,7 +1042,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
               children: [
                 Expanded(
                   child: Text(pkg['name'] as String,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: _white, fontSize: 15, fontWeight: FontWeight.w800)),
                 ),
                 Container(
@@ -1047,10 +1063,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
             padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
             child: Row(
               children: [
-                const Icon(Icons.timer_outlined, color: _grey, size: 13),
+                Icon(Icons.timer_outlined, color: _grey, size: 13),
                 const SizedBox(width: 4),
                 Text(pkg['duration'] as String,
-                    style: const TextStyle(color: _grey, fontSize: 12)),
+                    style: TextStyle(color: _grey, fontSize: 12)),
               ],
             ),
           ),
@@ -1066,11 +1082,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
                   .map((f) => Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.04),
+                            color: AppColors.chipBg,
                             borderRadius: BorderRadius.circular(6)),
                         child: Text('✓  $f',
-                            style: const TextStyle(
-                                color: Color(0xFFAAAAAA), fontSize: 11)),
+                            style: TextStyle(color: _grey, fontSize: 11)),
                       ))
                   .toList(),
             ),
@@ -1099,10 +1114,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
                               blurRadius: 10, offset: const Offset(0, 4))
                         ],
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Text('BOOK NOW',
                             style: TextStyle(
-                                color: Colors.black,
+                                color: AppColors.onAccentDark,
                                 fontWeight: FontWeight.w900,
                                 fontSize: 12,
                                 letterSpacing: 1)),
@@ -1168,11 +1183,11 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text('Photo attached',
                     style: TextStyle(
                         color: _white, fontWeight: FontWeight.w600, fontSize: 13)),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text('Add a description or send as-is',
                     style: TextStyle(color: _grey, fontSize: 11)),
               ],
@@ -1183,8 +1198,8 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
             child: Container(
               width: 28, height: 28,
               decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.06), shape: BoxShape.circle),
-              child: const Icon(Icons.close, color: _grey, size: 14),
+                  color: AppColors.chipBg, shape: BoxShape.circle),
+              child: Icon(Icons.close, color: _grey, size: 14),
             ),
           ),
         ],
@@ -1233,14 +1248,14 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
                 child: TextField(
                   controller: _controller,
                   focusNode: _focusNode,
-                  style: const TextStyle(color: _white, fontSize: 14),
+                  style: TextStyle(color: _white, fontSize: 14),
                   maxLines: null,
                   textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
                     hintText: 'Describe your issue...',
-                    hintStyle: TextStyle(color: Color(0xFF444444), fontSize: 14),
+                    hintStyle: TextStyle(color: _grey, fontSize: 14),
                   ),
                   onSubmitted: (_) => sendMessage(),
                 ),
@@ -1263,7 +1278,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
                       blurRadius: 10, offset: const Offset(0, 4))
                 ],
               ),
-              child: const Icon(Icons.send_rounded, color: Colors.black, size: 18),
+              child: Icon(Icons.send_rounded, color: AppColors.onAccentDark, size: 18),
             ),
           ),
         ],
@@ -1297,10 +1312,16 @@ class _TypingDotState extends State<_TypingDot>
     });
     _anim = Tween<double>(begin: 0, end: 1)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    themeController.removeListener(_onThemeChanged);
     _ctrl.dispose();
     super.dispose();
   }
@@ -1313,7 +1334,7 @@ class _TypingDotState extends State<_TypingDot>
         width: 7, height: 7,
         decoration: BoxDecoration(
           color: Color.lerp(
-              const Color(0xFF444444), const Color(0xFFD4A017), _anim.value),
+              AppColors.mut, const Color(0xFFD4A017), _anim.value),
           shape: BoxShape.circle,
         ),
       ),

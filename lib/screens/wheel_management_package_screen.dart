@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
 
 /// Static, hardcoded package data for the "Wheel Management" (WheelzCare)
@@ -101,6 +103,25 @@ class _WheelManagementPackageScreenState
     extends State<WheelManagementPackageScreen> {
   int _selectedTier = 1; // default to Complete Wheel Care (recommended)
 
+  @override
+  void initState() {
+    super.initState();
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    themeController.removeListener(_onThemeChanged);
+    super.dispose();
+  }
+
   Future<void> _openWhatsApp() async {
     final uri = Uri.parse(
       'https://wa.me/919353094672?text=${Uri.encodeComponent("Hi, I have a question about the wheel management packages.")}',
@@ -125,9 +146,16 @@ class _WheelManagementPackageScreenState
   @override
   Widget build(BuildContext context) {
     final selected = _tiers[_selectedTier];
+    // A warm, gold-tinted card for the "recommended" tier — blended over
+    // the current mode's surface so it stays subtle in both themes instead
+    // of a fixed near-black tint that would look wrong in light mode.
+    final recommendedCardColor = Color.alphaBlend(
+      AppColors.accent.withOpacity(0.12),
+      AppColors.surfaceRaised,
+    );
 
     return Scaffold(
-      backgroundColor: const Color(0xFF262626),
+      backgroundColor: AppColors.ink,
       body: Stack(
         children: [
           CustomScrollView(
@@ -146,13 +174,12 @@ class _WheelManagementPackageScreenState
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF262626),
+                              color: AppColors.surfaceRaised,
                               shape: BoxShape.circle,
-                              border:
-                                  Border.all(color: const Color(0xFF3A3A3A)),
+                              border: Border.all(color: AppColors.line),
                             ),
-                            child: const Icon(Icons.arrow_back,
-                                color: Colors.white, size: 20),
+                            child: Icon(Icons.arrow_back,
+                                color: AppColors.txt, size: 20),
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -187,10 +214,10 @@ class _WheelManagementPackageScreenState
                           ],
                         ),
                         const SizedBox(height: 10),
-                        const Text(
+                        Text(
                           'Smoother Rides,\nLonger Tyre Life',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: AppColors.txt,
                             fontSize: 32,
                             fontWeight: FontWeight.w900,
                             height: 1.15,
@@ -200,7 +227,7 @@ class _WheelManagementPackageScreenState
                         Text(
                           'Computerized alignment and balancing to keep your car running straight and your tyres lasting longer.',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.55),
+                            color: AppColors.mut,
                             fontSize: 14,
                             height: 1.5,
                           ),
@@ -218,10 +245,10 @@ class _WheelManagementPackageScreenState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Choose Your Package',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: AppColors.txt,
                           fontSize: 24,
                           fontWeight: FontWeight.w900,
                         ),
@@ -229,9 +256,7 @@ class _WheelManagementPackageScreenState
                       const SizedBox(height: 6),
                       Text(
                         'Two levels of care, from a quick alignment to complete wheel health.',
-                        style: TextStyle(
-                            color: Colors.white.withOpacity(0.55),
-                            fontSize: 13),
+                        style: TextStyle(color: AppColors.mut, fontSize: 13),
                       ),
                     ],
                   ),
@@ -259,8 +284,8 @@ class _WheelManagementPackageScreenState
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
                             color: tier.recommended
-                                ? const Color(0xFF1C1806)
-                                : const Color(0xFF141414),
+                                ? recommendedCardColor
+                                : AppColors.surfaceRaised,
                             borderRadius: BorderRadius.circular(24),
                             border: Border.all(
                               color: isSelected
@@ -289,16 +314,16 @@ class _WheelManagementPackageScreenState
                                     color: tier.accent,
                                     borderRadius: BorderRadius.circular(20),
                                   ),
-                                  child: const Row(
+                                  child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(Icons.workspace_premium_rounded,
-                                          color: Colors.black, size: 12),
-                                      SizedBox(width: 4),
+                                          color: AppColors.onAccentDark, size: 12),
+                                      const SizedBox(width: 4),
                                       Text(
                                         'RECOMMENDED',
                                         style: TextStyle(
-                                          color: Colors.black,
+                                          color: AppColors.onAccentDark,
                                           fontSize: 10,
                                           fontWeight: FontWeight.w800,
                                           letterSpacing: 0.6,
@@ -320,8 +345,8 @@ class _WheelManagementPackageScreenState
                               const SizedBox(height: 10),
                               Text(
                                 tier.price,
-                                style: const TextStyle(
-                                  color: Colors.white,
+                                style: TextStyle(
+                                  color: AppColors.txt,
                                   fontSize: 30,
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -330,8 +355,7 @@ class _WheelManagementPackageScreenState
                               Text(
                                 tier.tagline,
                                 style: TextStyle(
-                                    color: Colors.white.withOpacity(0.5),
-                                    fontSize: 12),
+                                    color: AppColors.mut, fontSize: 12),
                               ),
                               const SizedBox(height: 14),
                               Expanded(
@@ -353,8 +377,9 @@ class _WheelManagementPackageScreenState
                                                 Expanded(
                                                   child: Text(
                                                     h,
-                                                    style: const TextStyle(
-                                                        color: Colors.white70,
+                                                    style: TextStyle(
+                                                        color: AppColors.txt
+                                                            .withOpacity(0.7),
                                                         fontSize: 12.5),
                                                   ),
                                                 ),
@@ -368,7 +393,7 @@ class _WheelManagementPackageScreenState
                               Text(
                                 'Best for: ${tier.bestFor}',
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.45),
+                                  color: AppColors.mut,
                                   fontSize: 10.5,
                                   fontStyle: FontStyle.italic,
                                   height: 1.3,
@@ -381,10 +406,10 @@ class _WheelManagementPackageScreenState
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: isSelected
                                         ? tier.accent
-                                        : const Color(0xFF262626),
+                                        : AppColors.chipBg,
                                     foregroundColor: isSelected
-                                        ? Colors.black
-                                        : Colors.white70,
+                                        ? AppColors.onAccentDark
+                                        : AppColors.txt.withOpacity(0.7),
                                     padding: const EdgeInsets.symmetric(
                                         vertical: 12),
                                     shape: RoundedRectangleBorder(
@@ -413,10 +438,10 @@ class _WheelManagementPackageScreenState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Compare Packages',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: AppColors.txt,
                           fontSize: 20,
                           fontWeight: FontWeight.w900,
                         ),
@@ -434,22 +459,21 @@ class _WheelManagementPackageScreenState
                           },
                           children: [
                             TableRow(
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 border: Border(
-                                  bottom:
-                                      BorderSide(color: Color(0xFF3A3A3A)),
+                                  bottom: BorderSide(color: AppColors.line),
                                 ),
                               ),
-                              children: const [
+                              children: [
                                 Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 10),
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
                                   child: Text('Feature',
                                       style: TextStyle(
-                                          color: Colors.white54,
+                                          color: AppColors.mut,
                                           fontSize: 11,
                                           fontWeight: FontWeight.w700)),
                                 ),
-                                Padding(
+                                const Padding(
                                   padding: EdgeInsets.symmetric(vertical: 10),
                                   child: Text('₹999',
                                       textAlign: TextAlign.center,
@@ -458,7 +482,7 @@ class _WheelManagementPackageScreenState
                                           fontSize: 12,
                                           fontWeight: FontWeight.w800)),
                                 ),
-                                Padding(
+                                const Padding(
                                   padding: EdgeInsets.symmetric(vertical: 10),
                                   child: Text('₹1,999',
                                       textAlign: TextAlign.center,
@@ -471,10 +495,10 @@ class _WheelManagementPackageScreenState
                             ),
                             for (final row in _comparisonRows)
                               TableRow(
-                                decoration: const BoxDecoration(
+                                decoration: BoxDecoration(
                                   border: Border(
                                     bottom: BorderSide(
-                                        color: Color(0xFF1E1E1E)),
+                                        color: AppColors.line.withOpacity(0.6)),
                                   ),
                                 ),
                                 children: [
@@ -482,8 +506,8 @@ class _WheelManagementPackageScreenState
                                     padding:
                                         const EdgeInsets.symmetric(vertical: 12),
                                     child: Text(row.$1,
-                                        style: const TextStyle(
-                                            color: Colors.white70,
+                                        style: TextStyle(
+                                            color: AppColors.txt.withOpacity(0.7),
                                             fontSize: 12.5)),
                                   ),
                                   Padding(
@@ -491,8 +515,8 @@ class _WheelManagementPackageScreenState
                                         const EdgeInsets.symmetric(vertical: 12),
                                     child: Text(row.$2,
                                         textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                            color: Colors.white70,
+                                        style: TextStyle(
+                                            color: AppColors.txt.withOpacity(0.7),
                                             fontSize: 12.5)),
                                   ),
                                   Padding(
@@ -500,8 +524,8 @@ class _WheelManagementPackageScreenState
                                         const EdgeInsets.symmetric(vertical: 12),
                                     child: Text(row.$3,
                                         textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                            color: Colors.white70,
+                                        style: TextStyle(
+                                            color: AppColors.txt.withOpacity(0.7),
                                             fontSize: 12.5)),
                                   ),
                                 ],
@@ -521,10 +545,10 @@ class _WheelManagementPackageScreenState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Why Choose Reperi',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: AppColors.txt,
                           fontSize: 20,
                           fontWeight: FontWeight.w900,
                         ),
@@ -541,10 +565,9 @@ class _WheelManagementPackageScreenState
                             .map((f) => Container(
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF141414),
+                                    color: AppColors.surfaceRaised,
                                     borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(
-                                        color: const Color(0xFF3A3A3A)),
+                                    border: Border.all(color: AppColors.line),
                                   ),
                                   child: Column(
                                     crossAxisAlignment:
@@ -558,8 +581,8 @@ class _WheelManagementPackageScreenState
                                       const SizedBox(height: 10),
                                       Text(
                                         f.$2,
-                                        style: const TextStyle(
-                                            color: Colors.white,
+                                        style: TextStyle(
+                                            color: AppColors.txt,
                                             fontSize: 12.5,
                                             fontWeight: FontWeight.w700),
                                       ),
@@ -580,13 +603,11 @@ class _WheelManagementPackageScreenState
                   child: Column(
                     children: [
                       Text('Not sure which package to pick?',
-                          style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
-                              fontSize: 13)),
+                          style: TextStyle(color: AppColors.mut, fontSize: 13)),
                       const SizedBox(height: 4),
-                      const Text('Talk to our Service Advisor',
+                      Text('Talk to our Service Advisor',
                           style: TextStyle(
-                              color: Colors.white,
+                              color: AppColors.txt,
                               fontSize: 15,
                               fontWeight: FontWeight.w700)),
                       const SizedBox(height: 14),
@@ -641,13 +662,13 @@ class _WheelManagementPackageScreenState
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.calendar_month,
-                            color: Colors.black, size: 22),
+                        Icon(Icons.calendar_month,
+                            color: AppColors.onAccentDark, size: 22),
                         const SizedBox(width: 10),
                         Text(
                           'BOOK ${selected.name} • ${selected.price}',
-                          style: const TextStyle(
-                            color: Colors.black,
+                          style: TextStyle(
+                            color: AppColors.onAccentDark,
                             fontSize: 15,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 0.5,

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
 
 /// Static, hardcoded package data for the "Servicing" (21-Step Inspection)
-/// category — deliberately NOT fetched from Supabase, per request. This
-/// mirrors a premium tiered-pricing page (Essential / Premium / Signature)
-/// instead of the old single-package hero+bullet-list layout.
+/// category — deliberately NOT fetched from Supabase, per request.
+/// Presented as three tabs (Browse / Compare / Details) instead of one
+/// long scroll, with a sticky bottom "BOOK NOW" bar.
 class _Tier {
   final String name;
   final String price;
@@ -144,9 +146,32 @@ class ServicingPackageScreen extends StatefulWidget {
       _ServicingPackageScreenState();
 }
 
-class _ServicingPackageScreenState extends State<ServicingPackageScreen> {
+class _ServicingPackageScreenState extends State<ServicingPackageScreen>
+    with SingleTickerProviderStateMixin {
   int _selectedTier = 1; // default to Premium Care, matching "Most Popular"
   bool _checklistExpanded = false;
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    themeController.removeListener(_onThemeChanged);
+    super.dispose();
+  }
 
   Future<void> _openWhatsApp() async {
     final uri = Uri.parse(
@@ -174,636 +199,757 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen> {
     final selected = _tiers[_selectedTier];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF262626),
-      body: Stack(
+      backgroundColor: AppColors.ink,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _buildHeader(),
+            const SizedBox(height: 12),
+            _buildTabBar(),
+            const SizedBox(height: 12),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildBrowseView(),
+                  _buildCompareView(),
+                  _buildDetailsView(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          child: _buildStickyBar(selected),
+        ),
+      ),
+    );
+  }
+
+  // ── HEADER ──
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Row(
         children: [
-          CustomScrollView(
-            slivers: [
-              // ── HEADER (no hero photo — clean typographic header) ──
-              SliverToBoxAdapter(
-                child: SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF262626),
-                              shape: BoxShape.circle,
-                              border:
-                                  Border.all(color: const Color(0xFF3A3A3A)),
-                            ),
-                            child: const Icon(Icons.arrow_back,
-                                color: Colors.white, size: 20),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        Row(
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceRaised,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.line),
+              ),
+              child:
+                  Icon(Icons.arrow_back, color: AppColors.txt, size: 20),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 4,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD4A017),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'SERVICING',
+                      style: TextStyle(
+                        color: Color(0xFFD4A017),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2.5,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Keep Your Car Running Like New',
+                  style: TextStyle(
+                    color: AppColors.txt,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── TAB BAR (segmented-control styled) ──
+  Widget _buildTabBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'BROWSE'),
+            Tab(text: 'COMPARE'),
+            Tab(text: 'DETAILS'),
+          ],
+          labelColor: AppColors.onAccentDark,
+          unselectedLabelColor: AppColors.mut,
+          labelStyle: const TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+          unselectedLabelStyle: const TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5),
+          indicator: BoxDecoration(
+            color: const Color(0xFFD4A017),
+            borderRadius: BorderRadius.circular(11),
+          ),
+          indicatorSize: TabBarIndicatorSize.tab,
+          dividerColor: Colors.transparent,
+        ),
+      ),
+    );
+  }
+
+  // ── TAB 1: BROWSE (vertical stack, easy to compare) ──
+  Widget _buildBrowseView() {
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+      itemCount: _tiers.length,
+      itemBuilder: (_, i) {
+        final tier = _tiers[i];
+        final isSelected = i == _selectedTier;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: GestureDetector(
+            onTap: () => setState(() => _selectedTier = i),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: tier.popular
+                    ? Color.alphaBlend(
+                        tier.accent.withOpacity(0.12), AppColors.surfaceRaised)
+                    : AppColors.surfaceRaised,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isSelected ? tier.accent : AppColors.line,
+                  width: isSelected ? 2 : 1,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              width: 4,
-                              height: 26,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFD4A017),
-                                borderRadius: BorderRadius.circular(4),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(0xFFD4A017)
-                                        .withOpacity(0.6),
-                                    blurRadius: 8,
-                                    spreadRadius: 1,
+                            if (tier.popular) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: tier.accent.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  'MOST POPULAR',
+                                  style: TextStyle(
+                                    color: tier.accent,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.4,
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'SERVICING',
+                              const SizedBox(height: 8),
+                            ],
+                            Text(
+                              tier.name,
                               style: TextStyle(
-                                color: Color(0xFFD4A017),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 3,
+                                color: AppColors.txt,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Keep Your Car\nRunning Like New',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 32,
-                            fontWeight: FontWeight.w900,
-                            height: 1.15,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Professional servicing by certified mechanics with transparent pricing and a digital health report.',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.55),
-                            fontSize: 14,
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              // ── SECTION TITLE ──
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 32, 24, 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Choose Your Service Package',
+                      ),
+                      Text(
+                        tier.price,
                         style: TextStyle(
-                          color: Colors.white,
+                          color: tier.accent,
                           fontSize: 24,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        "Three packages designed for every stage of your car's life.",
-                        style: TextStyle(
-                            color: Colors.white.withOpacity(0.55),
-                            fontSize: 13),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    tier.tagline,
+                    style: TextStyle(color: AppColors.mut, fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: tier.highlights
+                        .take(5)
+                        .map((h) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: tier.accent.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.check_circle,
+                                      color: tier.accent, size: 13),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    h,
+                                    style: TextStyle(
+                                      color: AppColors.txt,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ))
+                        .toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            setState(() => _selectedTier = i);
+                            _tabController.animateTo(1);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: AppColors.line),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: Text(
+                            'COMPARE',
+                            style: TextStyle(
+                              color: AppColors.txt.withOpacity(0.8),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            setState(() => _selectedTier = i);
+                            _bookNow(tier);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                isSelected ? tier.accent : AppColors.chipBg,
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: Text(
+                            isSelected ? 'SELECTED ✓' : 'BOOK',
+                            style: TextStyle(
+                              color: isSelected
+                                  ? AppColors.onAccentDark
+                                  : AppColors.txt.withOpacity(0.8),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                ),
+                ],
               ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-              // ── PACKAGE CARDS ──
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 480,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 24),
-                    itemCount: _tiers.length,
-                    itemBuilder: (_, i) {
-                      final tier = _tiers[i];
-                      final isSelected = i == _selectedTier;
-                      return GestureDetector(
-                        onTap: () => setState(() => _selectedTier = i),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          width: tier.popular ? 250 : 220,
-                          margin: const EdgeInsets.symmetric(horizontal: 8),
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: tier.popular
-                                ? const Color(0xFF1C1806)
-                                : const Color(0xFF141414),
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(
-                              color: isSelected
-                                  ? tier.accent
-                                  : tier.accent.withOpacity(0.25),
-                              width: isSelected ? 2 : 1,
-                            ),
-                            boxShadow: tier.popular
-                                ? [
-                                    BoxShadow(
-                                      color: tier.accent.withOpacity(0.25),
-                                      blurRadius: 26,
-                                      offset: const Offset(0, 12),
-                                    ),
-                                  ]
-                                : null,
-                          ),
+  // ── TAB 2: COMPARE (side-by-side table) ──
+  Widget _buildCompareView() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Compare Packages',
+            style: TextStyle(
+              color: AppColors.txt,
+              fontSize: 19,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Table(
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              columnWidths: const {
+                0: FixedColumnWidth(150),
+                1: FixedColumnWidth(90),
+                2: FixedColumnWidth(90),
+                3: FixedColumnWidth(110),
+              },
+              children: [
+                TableRow(
+                  decoration: BoxDecoration(
+                    border: Border(
+                        bottom: BorderSide(color: AppColors.line, width: 2)),
+                  ),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'Feature',
+                        style: TextStyle(
+                          color: AppColors.mut,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    ..._tiers.map((t) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (tier.popular)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: tier.accent,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: const Text(
-                                    'MOST POPULAR',
-                                    style: TextStyle(
-                                      color: Colors.black,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.6,
-                                    ),
-                                  ),
-                                ),
-                              if (tier.popular) const SizedBox(height: 12),
                               Text(
-                                tier.name,
+                                t.name.split(' ').first,
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: tier.accent,
-                                  fontSize: 15,
+                                  color: t.accent,
+                                  fontSize: 11,
                                   fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.6,
                                 ),
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 3),
                               Text(
-                                tier.price,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 30,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                tier.tagline,
+                                t.price,
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
-                                    color: Colors.white.withOpacity(0.5),
-                                    fontSize: 12),
-                              ),
-                              const SizedBox(height: 16),
-                              Expanded(
-                                child: ListView(
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  children: tier.highlights
-                                      .take(9)
-                                      .map((h) => Padding(
-                                            padding: const EdgeInsets.only(
-                                                bottom: 8),
-                                            child: Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Icon(Icons.check_circle,
-                                                    color: tier.accent,
-                                                    size: 15),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                  child: Text(
-                                                    h,
-                                                    style: const TextStyle(
-                                                        color: Colors.white70,
-                                                        fontSize: 12.5),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ))
-                                      .toList(),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: isSelected
-                                        ? tier.accent
-                                        : const Color(0xFF262626),
-                                    foregroundColor: isSelected
-                                        ? Colors.black
-                                        : Colors.white70,
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(14)),
-                                  ),
-                                  onPressed: () => _bookNow(tier),
-                                  child: const Text('Book Now',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w800)),
+                                  color: AppColors.txt,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w900,
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      );
-                    },
-                  ),
+                        )),
+                  ],
                 ),
-              ),
-
-              // ── EXPANDABLE FULL CHECKLIST ──
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                  child: Container(
+                for (final row in _comparisonRows)
+                  TableRow(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF141414),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF3A3A3A)),
+                      border: Border(
+                          bottom: BorderSide(
+                              color: AppColors.line.withOpacity(0.4))),
                     ),
-                    child: Column(
-                      children: [
-                        InkWell(
-                          borderRadius: BorderRadius.circular(20),
-                          onTap: () => setState(
-                              () => _checklistExpanded = !_checklistExpanded),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 18, vertical: 16),
-                            child: Row(
-                              children: [
-                                const Expanded(
-                                  child: Text(
-                                    'View Complete Checklist',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14),
-                                  ),
-                                ),
-                                Icon(
-                                  _checklistExpanded
-                                      ? Icons.keyboard_arrow_up_rounded
-                                      : Icons.keyboard_arrow_down_rounded,
-                                  color: const Color(0xFFD4A017),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        AnimatedCrossFade(
-                          duration: const Duration(milliseconds: 250),
-                          crossFadeState: _checklistExpanded
-                              ? CrossFadeState.showFirst
-                              : CrossFadeState.showSecond,
-                          firstChild: Padding(
-                            padding:
-                                const EdgeInsets.fromLTRB(18, 0, 18, 18),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: _fullChecklist.entries
-                                  .map((entry) => Padding(
-                                        padding: const EdgeInsets.only(
-                                            bottom: 16),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              entry.key,
-                                              style: const TextStyle(
-                                                color: Color(0xFFD4A017),
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 13,
-                                                letterSpacing: 0.5,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            ...entry.value.map((item) =>
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                          bottom: 4),
-                                                  child: Text(
-                                                    '✓ $item',
-                                                    style: const TextStyle(
-                                                      color: Colors.white70,
-                                                      fontSize: 13,
-                                                    ),
-                                                  ),
-                                                )),
-                                          ],
-                                        ),
-                                      ))
-                                  .toList(),
-                            ),
-                          ),
-                          secondChild: const SizedBox(width: double.infinity),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              // ── COMPARISON TABLE ──
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 32, 20, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Compare Packages',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Table(
-                          defaultVerticalAlignment:
-                              TableCellVerticalAlignment.middle,
-                          columnWidths: const {
-                            0: FixedColumnWidth(150),
-                            1: FixedColumnWidth(90),
-                            2: FixedColumnWidth(90),
-                            3: FixedColumnWidth(110),
-                          },
-                          children: [
-                            TableRow(
-                              decoration: const BoxDecoration(
-                                border: Border(
-                                  bottom:
-                                      BorderSide(color: Color(0xFF3A3A3A)),
-                                ),
-                              ),
-                              children: const [
-                                Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 10),
-                                  child: Text('Feature',
-                                      style: TextStyle(
-                                          color: Colors.white54,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700)),
-                                ),
-                                Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 10),
-                                  child: Text('₹999',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                          color: Color(0xFF4FA3E3),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800)),
-                                ),
-                                Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 10),
-                                  child: Text('₹3,999',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                          color: Color(0xFFD4A017),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800)),
-                                ),
-                                Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 10),
-                                  child: Text('₹5,999',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                          color: Color(0xFFF5C842),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800)),
-                                ),
-                              ],
-                            ),
-                            for (final row in _comparisonRows)
-                              TableRow(
-                                decoration: const BoxDecoration(
-                                  border: Border(
-                                    bottom: BorderSide(
-                                        color: Color(0xFF1E1E1E)),
-                                  ),
-                                ),
-                                children: [
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 12),
-                                    child: Text(row.$1,
-                                        style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 12.5)),
-                                  ),
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 12),
-                                    child: Text(row.$2,
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 12.5)),
-                                  ),
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 12),
-                                    child: Text(row.$3,
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 12.5)),
-                                  ),
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 12),
-                                    child: Text(row.$4,
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 12.5)),
-                                  ),
-                                ],
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ── WHY CHOOSE REPERI ──
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 36, 20, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Why Choose Reperi',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      GridView.count(
-                        crossAxisCount: 2,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 1.5,
-                        children: _whyChooseUs
-                            .map((f) => Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF141414),
-                                    borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(
-                                        color: const Color(0xFF3A3A3A)),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    children: [
-                                      Icon(f.$1,
-                                          color: const Color(0xFFD4A017),
-                                          size: 26),
-                                      const SizedBox(height: 10),
-                                      Text(
-                                        f.$2,
-                                        style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 12.5,
-                                            fontWeight: FontWeight.w700),
-                                      ),
-                                    ],
-                                  ),
-                                ))
-                            .toList(),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ── TALK TO ADVISOR ──
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 36, 20, 140),
-                  child: Column(
-                    children: [
-                      Text('Still not sure?',
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          row.$1,
                           style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
-                              fontSize: 13)),
-                      const SizedBox(height: 4),
-                      const Text('Talk to our Service Advisor',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 14),
-                      OutlinedButton.icon(
-                        onPressed: _openWhatsApp,
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFF25D366)),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 24, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30)),
+                              color: AppColors.txt.withOpacity(0.8),
+                              fontSize: 12),
                         ),
-                        icon: const Icon(Icons.chat_bubble_rounded,
-                            color: Color(0xFF25D366), size: 18),
-                        label: const Text('WhatsApp',
-                            style: TextStyle(
-                                color: Color(0xFF25D366),
-                                fontWeight: FontWeight.w700)),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Center(child: _buildComparisonCell(row.$2)),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Center(child: _buildComparisonCell(row.$3)),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Center(child: _buildComparisonCell(row.$4)),
                       ),
                     ],
                   ),
-                ),
-              ),
-            ],
-          ),
-
-          // ── STICKY BOOK NOW BAR ──
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                child: GestureDetector(
-                  onTap: () => _bookNow(selected),
-                  child: Container(
-                    height: 64,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFD4A017), Color(0xFFF5C842)],
-                      ),
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFFD4A017).withOpacity(0.4),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.calendar_month,
-                            color: Colors.black, size: 22),
-                        const SizedBox(width: 10),
-                        Text(
-                          'BOOK ${selected.name} • ${selected.price}',
-                          style: const TextStyle(
-                            color: Colors.black,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildComparisonCell(String value) {
+    if (value == '✅') {
+      return const Icon(Icons.check_circle, color: Colors.green, size: 18);
+    }
+    if (value == '❌') {
+      return Icon(Icons.close, color: Colors.red.shade600, size: 18);
+    }
+    return Text(
+      value,
+      textAlign: TextAlign.center,
+      style: TextStyle(color: AppColors.txt.withOpacity(0.7), fontSize: 11),
+    );
+  }
+
+  // ── TAB 3: DETAILS (full specs + checklist for the selected tier) ──
+  Widget _buildDetailsView() {
+    final tier = _tiers[_selectedTier];
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Color.alphaBlend(
+                  tier.accent.withOpacity(0.12), AppColors.surfaceRaised),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: tier.accent, width: 2),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (tier.popular)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: tier.accent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'MOST POPULAR',
+                      style: TextStyle(
+                        color: AppColors.onAccentDark,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+                if (tier.popular) const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        tier.name,
+                        style: TextStyle(
+                          color: AppColors.txt,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      tier.price,
+                      style: TextStyle(
+                        color: tier.accent,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  tier.tagline,
+                  style: TextStyle(color: AppColors.mut, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 28),
+          Text(
+            "What's Included",
+            style: TextStyle(
+              color: AppColors.txt,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...tier.highlights.map((h) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.check_circle, color: tier.accent, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        h,
+                        style: TextStyle(
+                          color: AppColors.txt.withOpacity(0.8),
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+          const SizedBox(height: 28),
+          // ── EXPANDABLE FULL CHECKLIST ──
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surfaceRaised,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Column(
+              children: [
+                InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => setState(
+                      () => _checklistExpanded = !_checklistExpanded),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'View Complete Checklist',
+                            style: TextStyle(
+                                color: AppColors.txt,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14),
+                          ),
+                        ),
+                        Icon(
+                          _checklistExpanded
+                              ? Icons.keyboard_arrow_up_rounded
+                              : Icons.keyboard_arrow_down_rounded,
+                          color: const Color(0xFFD4A017),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                AnimatedCrossFade(
+                  duration: const Duration(milliseconds: 250),
+                  crossFadeState: _checklistExpanded
+                      ? CrossFadeState.showFirst
+                      : CrossFadeState.showSecond,
+                  firstChild: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: _fullChecklist.entries
+                          .map((entry) => Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      entry.key,
+                                      style: const TextStyle(
+                                        color: Color(0xFFD4A017),
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    ...entry.value.map((item) => Padding(
+                                          padding: const EdgeInsets.only(
+                                              bottom: 4),
+                                          child: Text(
+                                            '✓ $item',
+                                            style: TextStyle(
+                                              color: AppColors.txt
+                                                  .withOpacity(0.7),
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        )),
+                                  ],
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                  secondChild: const SizedBox(width: double.infinity),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
+          Text(
+            'Why Choose Reperi',
+            style: TextStyle(
+              color: AppColors.txt,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1.5,
+            children: _whyChooseUs
+                .map((f) => Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceRaised,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.line),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(f.$1, color: const Color(0xFFD4A017), size: 24),
+                          const SizedBox(height: 10),
+                          Text(
+                            f.$2,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: AppColors.txt,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ))
+                .toList(),
+          ),
+          const SizedBox(height: 32),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceRaised,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Column(
+              children: [
+                const Icon(Icons.chat_bubble_rounded,
+                    color: Color(0xFF25D366), size: 32),
+                const SizedBox(height: 12),
+                Text(
+                  'Still Not Sure?',
+                  style: TextStyle(
+                    color: AppColors.txt,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Our Service Advisors are here to help',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.mut, fontSize: 13),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _openWhatsApp,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    icon: const Icon(Icons.chat_rounded, size: 18),
+                    label: const Text('Chat on WhatsApp',
+                        style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── STICKY BOOK NOW BAR ──
+  Widget _buildStickyBar(_Tier tier) {
+    return GestureDetector(
+      onTap: () => _bookNow(tier),
+      child: Container(
+        height: 60,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFD4A017), Color(0xFFF5C842)],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFD4A017).withOpacity(0.4),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.calendar_month, color: AppColors.onAccentDark, size: 20),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                'BOOK ${tier.name} • ${tier.price}',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.onAccentDark,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

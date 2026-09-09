@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'payment_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 
 class SubscriptionsScreen extends StatefulWidget {
   final String vehicleId;
@@ -17,23 +19,40 @@ class SubscriptionsScreen extends StatefulWidget {
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   String? selectedPlan;
 
+  @override
+  void initState() {
+    super.initState();
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
 
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    themeController.removeListener(_onThemeChanged);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0C0C0C),
+      backgroundColor: AppColors.ink,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0C0C0C),
+        backgroundColor: AppColors.ink,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFFD4A017)),
+          icon: Icon(Icons.arrow_back, color: AppColors.accent),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Car Wash Subscriptions',
           style: TextStyle(
-            color: Colors.white,
+            color: AppColors.txt,
             fontSize: 22,
             fontWeight: FontWeight.w800,
           ),
@@ -45,9 +64,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header
-
-
                   // What You Get Section (TOP)
                   const Text(
                     'Services You Get',
@@ -124,11 +140,11 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                           ),
                         ],
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Text(
                           'SUBSCRIBE',
                           style: TextStyle(
-                            color: Colors.black,
+                            color: AppColors.onAccentDark,
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 2,
@@ -185,7 +201,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return Dialog(
-              backgroundColor: const Color(0xFF0C0C0C),
+              backgroundColor: AppColors.ink,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -213,7 +229,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.close, color: Colors.white),
+                            icon: Icon(Icons.close, color: AppColors.txt),
                             onPressed: () => Navigator.pop(context),
                           ),
                         ],
@@ -221,10 +237,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                     ),
                     Padding(
                       padding: const EdgeInsets.only(left: 20, right: 20),
-                      child: const Text(
+                      child: Text(
                         'All prices are per month',
                         style: TextStyle(
-                          color: Color(0xFF888888),
+                          color: AppColors.mut,
                           fontSize: 16,
                         ),
                       ),
@@ -342,8 +358,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                                   : 'SELECT A PLAN',
                               style: TextStyle(
                                 color: selectedPlan != null
-                                    ? Colors.black
-                                    : Colors.black54,
+                                    ? AppColors.onAccentDark
+                                    : AppColors.onAccentDark.withOpacity(0.6),
                                 fontSize: 18,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 2,
@@ -408,7 +424,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         decoration: BoxDecoration(
           color: isSelected
               ? const Color(0xFFD4A017).withOpacity(0.15)
-              : const Color(0xFF1C1C1C),
+              : AppColors.surfaceRaised,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
@@ -426,8 +442,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: AppColors.txt,
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
                     ),
@@ -435,8 +451,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   const SizedBox(height: 8),
                   Text(
                     vehicles,
-                    style: const TextStyle(
-                      color: Color(0xFF888888),
+                    style: TextStyle(
+                      color: AppColors.mut,
                       fontSize: 14,
                       height: 1.5,
                     ),
@@ -456,10 +472,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const Text(
+                Text(
                   '/month',
                   style: TextStyle(
-                    color: Color(0xFF888888),
+                    color: AppColors.mut,
                     fontSize: 13,
                   ),
                 ),
@@ -499,8 +515,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: AppColors.txt,
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                 ),
@@ -508,8 +524,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               const SizedBox(height: 6),
               Text(
                 description,
-                style: const TextStyle(
-                  color: Color(0xFF888888),
+                style: TextStyle(
+                  color: AppColors.mut,
                   fontSize: 14,
                   height: 1.5,
                 ),

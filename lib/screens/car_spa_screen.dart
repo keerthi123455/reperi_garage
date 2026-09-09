@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'payment_screen.dart';
 import '../services/catalog_service.dart';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 
 class CarSpaScreen extends StatefulWidget {
   final Map<String, dynamic> vehicle;
@@ -26,11 +28,7 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
     'assets/images/before_after_3.jpg',
   ];
 
-  static const Color _bg = Color(0xFF050505);
-  static const Color _card = Color(0xFF1C1C1C);
   static const Color _gold = Color(0xFFD4A017);
-  static const Color _white = Color(0xFFFFFFFF);
-  static const Color _grey = Color(0xFF9E9E9E);
 
   List<Map<String, dynamic>> packages = [
     {
@@ -118,6 +116,14 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
   void initState() {
     super.initState();
     _fetchPackageData();
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _fetchPackageData() async {
@@ -149,6 +155,7 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
   @override
   void dispose() {
     _autoScrollTimer?.cancel();
+    themeController.removeListener(_onThemeChanged);
     super.dispose();
   }
 
@@ -165,7 +172,7 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF1C1C1C),
+        backgroundColor: AppColors.surfaceRaised,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         child: Padding(
           padding: const EdgeInsets.all(28),
@@ -186,21 +193,21 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'Doorstep Pickup?',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: _white,
+                  color: AppColors.txt,
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'We can pick up your vehicle from your home and drop it back after service',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white70,
+                  color: AppColors.txt.withOpacity(0.7),
                   fontSize: 14,
                   height: 1.6,
                 ),
@@ -220,10 +227,10 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                     Navigator.pop(context);
                     _proceedToPayment(basePrice + 100);
                   },
-                  child: const Text(
+                  child: Text(
                     'Yes, Add ₹100',
                     style: TextStyle(
-                      color: Colors.black87,
+                      color: AppColors.onAccentDark,
                       fontWeight: FontWeight.w900,
                       fontSize: 16,
                       letterSpacing: 0.5,
@@ -285,7 +292,7 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: AppColors.ink,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -306,10 +313,10 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                             height: 400,
                             width: double.infinity,
                             child: Image.asset(
-                              'assets/images/car_spa_hero.jpg',
+                              'assets/images/carspa_hero.jpeg',
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) => Container(
-                                color: const Color(0xFF262626),
+                                color: AppColors.surfaceRaised,
                                 child: const Center(
                                   child: Icon(
                                     Icons.directions_car,
@@ -321,7 +328,11 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                             ),
                           ),
 
-                          // ── Strong Dark Gradient Overlay ──
+                          // ── Gradient Overlay ──
+                          // Built from AppColors.ink rather than a literal
+                          // black so it flips to a light scrim in light
+                          // mode instead of staying a dark hue the white
+                          // hero text can't sit on.
                           Container(
                             height: 400,
                             decoration: BoxDecoration(
@@ -329,8 +340,8 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
                                 colors: [
-                                  Colors.black.withOpacity(0.3),
-                                  Colors.black.withOpacity(0.75),
+                                  AppColors.ink.withOpacity(0.3),
+                                  AppColors.ink.withOpacity(0.75),
                                 ],
                                 stops: const [0.3, 1.0],
                               ),
@@ -356,7 +367,7 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                                     ),
                                     child: const Icon(
                                       Icons.arrow_back,
-                                      color: _white,
+                                      color: Colors.white,
                                       size: 20,
                                     ),
                                   ),
@@ -368,42 +379,41 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                                   children: [
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 8,
+                                        horizontal: 12,
+                                        vertical: 6,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: _gold.withOpacity(0.15),
-                                        borderRadius: BorderRadius.circular(20),
+                                        color: _gold,
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
-                                      child: const Text(
+                                      child: Text(
                                         'PREMIUM DETAILING',
                                         style: TextStyle(
-                                          color: _gold,
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 12,
-                                          letterSpacing: 1.2,
+                                          color: AppColors.onAccentDark,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 11,
+                                          letterSpacing: 2,
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(height: 16),
-                                    const Text(
-                                      'CAR SPA\nSERVICES',
+                                    const SizedBox(height: 14),
+                                    Text(
+                                      'Car Spa',
                                       style: TextStyle(
-                                        color: _white,
-                                        fontSize: 52,
+                                        color: AppColors.txt,
+                                        fontSize: 44,
                                         fontWeight: FontWeight.w900,
-                                        height: 0.95,
-                                        letterSpacing: -1,
+                                        height: 1.05,
+                                        letterSpacing: -0.5,
                                       ),
                                     ),
-                                    const SizedBox(height: 12),
-                                    const Text(
+                                    const SizedBox(height: 10),
+                                    Text(
                                       'Premium detailing and restoration to keep your car looking showroom-new.',
                                       style: TextStyle(
-                                        color: _white,
+                                        color: AppColors.txt.withOpacity(0.7),
                                         fontSize: 15,
-                                        height: 1.6,
-                                        fontWeight: FontWeight.w400,
+                                        height: 1.4,
                                       ),
                                       maxLines: 3,
                                     ),
@@ -434,9 +444,9 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 300),
                                   decoration: BoxDecoration(
-                                    color: _card,
+                                    color: AppColors.surfaceRaised,
                                     border: Border.all(
-                                      color: isSelected ? _gold : Colors.white10,
+                                      color: isSelected ? _gold : AppColors.line,
                                       width: isSelected ? 2 : 1,
                                     ),
                                     borderRadius: BorderRadius.circular(24),
@@ -478,8 +488,8 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                                                 children: [
                                                   Text(
                                                     pkg['title'] as String,
-                                                    style: const TextStyle(
-                                                      color: _white,
+                                                    style: TextStyle(
+                                                      color: AppColors.txt,
                                                       fontSize: 20,
                                                       fontWeight: FontWeight.w900,
                                                     ),
@@ -487,9 +497,9 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                                                   const SizedBox(height: 4),
                                                   Text(
                                                     pkg['subtitle'] as String,
-                                                    style: const TextStyle(
-                                                      color: _grey,
-                                                      fontSize: 13,
+                                                    style: TextStyle(
+                                                      color: AppColors.mut,
+                                                      fontSize: 14,
                                                     ),
                                                   ),
                                                   const SizedBox(height: 8),
@@ -510,13 +520,13 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                                                           vertical: 4,
                                                         ),
                                                         decoration: BoxDecoration(
-                                                          color: Colors.white10,
+                                                          color: AppColors.chipBg,
                                                           borderRadius: BorderRadius.circular(8),
                                                         ),
                                                         child: Text(
                                                           pkg['duration'] as String,
-                                                          style: const TextStyle(
-                                                            color: Colors.white60,
+                                                          style: TextStyle(
+                                                            color: AppColors.mut,
                                                             fontSize: 12,
                                                             fontWeight: FontWeight.w600,
                                                           ),
@@ -535,19 +545,18 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                                         // ── Divider ──
                                         Container(
                                           height: 1,
-                                          color: Colors.white10,
+                                          color: AppColors.line,
                                         ),
 
                                         const SizedBox(height: 20),
 
                                         // ── What's Included ──
-                                        const Text(
-                                          'WHAT\'S INCLUDED',
+                                        Text(
+                                          'What\'s included',
                                           style: TextStyle(
-                                            color: _gold,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: 1.5,
+                                            color: AppColors.txt,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w800,
                                           ),
                                         ),
 
@@ -581,9 +590,9 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                                                   Expanded(
                                                     child: Text(
                                                       entry.value,
-                                                      style: const TextStyle(
-                                                        color: Colors.white70,
-                                                        fontSize: 13,
+                                                      style: TextStyle(
+                                                        color: AppColors.txt.withOpacity(0.7),
+                                                        fontSize: 14,
                                                         height: 1.5,
                                                       ),
                                                     ),
@@ -599,19 +608,18 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                                         // ── Divider ──
                                         Container(
                                           height: 1,
-                                          color: Colors.white10,
+                                          color: AppColors.line,
                                         ),
 
                                         const SizedBox(height: 20),
 
                                         // ── Details ──
-                                        const Text(
-                                          'DETAILS',
+                                        Text(
+                                          'Details',
                                           style: TextStyle(
-                                            color: _gold,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: 1.5,
+                                            color: AppColors.txt,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w800,
                                           ),
                                         ),
 
@@ -619,9 +627,9 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
 
                                         Text(
                                           pkg['details'] as String,
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 13,
+                                          style: TextStyle(
+                                            color: AppColors.txt.withOpacity(0.7),
+                                            fontSize: 14,
                                             height: 1.7,
                                           ),
                                         ),
@@ -639,51 +647,49 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                   ),
                 ),
 
-                // ── FLOATING BOOK NOW BUTTON (BOTTOM) ──
+                // ── STICKY BOOK NOW BAR (BOTTOM) ──
                 Positioned(
                   bottom: 0,
                   left: 0,
                   right: 0,
                   child: Container(
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          _bg.withOpacity(0),
-                          _bg.withOpacity(0.95),
-                          _bg,
-                        ],
-                      ),
+                      color: AppColors.surfaceRaised,
+                      border: Border(top: BorderSide(color: AppColors.line)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.25),
+                          blurRadius: 20,
+                          offset: const Offset(0, -6),
+                        ),
+                      ],
                     ),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
                       child: SizedBox(
                         width: double.infinity,
-                        height: 62,
+                        height: 58,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: selectedPackage == -1
-                                ? Colors.grey.shade700
+                                ? AppColors.chipBg
                                 : _gold,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                            elevation: 12,
-                            shadowColor: _gold.withOpacity(0.4),
+                            elevation: 0,
                           ),
                           onPressed: selectedPackage == -1
                               ? null
                               : _showDoorstepPickupDialog,
                           child: Text(
-                            selectedPackage == -1 ? 'SELECT A PACKAGE' : 'BOOK NOW',
+                            selectedPackage == -1 ? 'Select a package' : 'Book Now',
                             style: TextStyle(
                               color: selectedPackage == -1
-                                  ? Colors.grey.shade400
-                                  : Colors.black87,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 18,
-                              letterSpacing: 1.2,
+                                  ? AppColors.mut
+                                  : AppColors.onAccentDark,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 17,
                             ),
                           ),
                         ),

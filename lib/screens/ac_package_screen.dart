@@ -4,12 +4,12 @@ import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
 
-/// Static, hardcoded package data for the "Washing" (QuickCare) category —
+/// Static, hardcoded package data for the "AC Service" category —
 /// deliberately NOT fetched from Supabase, matching the pattern used for
-/// the Servicing screen. Presented as three tabs (Browse / Compare /
-/// Details) instead of one long scroll, with a sticky bottom "BOOK NOW"
-/// bar — booking still prompts for an optional doorstep pickup (+₹100)
-/// before going to payment.
+/// the Washing/Servicing screens. Presented as three tabs (Browse /
+/// Compare / Details) instead of one long scroll, with a sticky bottom
+/// "BOOK NOW" bar — booking still prompts for an optional doorstep
+/// pickup (+₹100) before going to payment.
 class _Tier {
   final String name;
   final String price;
@@ -32,110 +32,79 @@ class _Tier {
 
 const _tiers = [
   _Tier(
-    name: 'EXPRESS WASH',
-    price: '₹299',
-    tagline: 'A quick refresh for your car',
-    bestFor: 'Weekly cleaning or after a long drive.',
+    name: 'AC SERVICE',
+    price: '₹1,500',
+    tagline: 'Complete AC inspection and cooling refresh',
+    bestFor: 'Regular maintenance and early signs of reduced cooling.',
     accent: Color(0xFF4FA3E3),
     highlights: [
-      'High-Pressure Exterior Wash',
-      'Premium Foam Wash',
-      'Microfiber Hand Drying',
-      'Tyre Cleaning',
-      'Alloy Wheel Cleaning',
-      'Exterior Glass Cleaning',
-      'Tyre Shine Dressing',
-      'Final Quality Inspection',
+      'AC System Inspection',
+      'AC Gas Pressure Check',
+      'AC Filter Cleaning',
+      'AC Evaporator Cleaning',
+      'AC Condenser Cleaning',
+      'AC Vent Cleaning',
+      'AC Sanitization',
+      'Cooling Performance Check',
+      'Leak Inspection',
     ],
   ),
   _Tier(
-    name: 'PREMIUM WASH',
-    price: '₹599',
-    tagline: 'Inside & out, clean and refreshed',
-    bestFor: 'Monthly maintenance and everyday use.',
+    name: 'PREMIUM AC SERVICE',
+    price: '₹2,500',
+    tagline: 'Deep clean, recharge, and odour-free cooling',
+    bestFor: 'Poor cooling, bad odour, or complete AC care.',
     accent: Color(0xFFD4A017),
     popular: true,
     highlights: [
-      'Everything in Express Wash',
-      'Interior Vacuum Cleaning',
-      'Dashboard & Console Cleaning',
-      'Door Panel Wipe Down',
-      'Interior Glass Cleaning',
-      'Floor Mat Cleaning',
-      'Boot (Trunk) Vacuum',
-      'Air Freshener Application',
-      'Plastic Trim Dressing',
-      'Final Quality Inspection',
-    ],
-  ),
-  _Tier(
-    name: 'SIGNATURE DETAILING',
-    price: '₹2,999',
-    tagline: "Restore your car's showroom shine",
-    bestFor:
-        'Festive seasons, before resale, special occasions, or when you want your car looking its absolute best.',
-    accent: Color(0xFFF5C842),
-    highlights: [
-      'Everything in Premium Wash',
-      'Snow Foam Pre-Wash',
-      'Two-Bucket Safe Hand Wash',
-      'Bug & Tar Removal',
-      'Clay Bar Surface Decontamination',
-      'Machine Wax / Paint Sealant Application',
-      'Exterior Plastic Trim Restoration',
-      'Tyre & Alloy Deep Cleaning',
-      'Engine Bay Surface Cleaning',
-      'Interior Deep Vacuum',
-      'Leather/Fabric Seat Cleaning',
-      'Dashboard UV Protection',
-      'Door Jamb Cleaning',
-      'Interior Steam Sanitization (where applicable)',
-      'Premium Glass Treatment',
-      'Long-Lasting Air Freshener',
-      'Final Multi-Point Quality Inspection',
+      'Everything in ₹1,500 Package',
+      'AC Deep Cleaning',
+      'AC Gas Top-up',
+      'AC Evaporator Deep Cleaning',
+      'AC Condenser Deep Cleaning',
+      'AC Blower Cleaning',
+      'AC Sanitization',
+      'AC Odour & Bacteria Treatment',
+      'Cooling Performance Optimization',
+      'Complete AC System Inspection',
     ],
   ),
 ];
 
-// (feature, express, premium, signature)
+// (feature, ₹1,500, ₹2,500)
 const _comparisonRows = [
-  ('Exterior Foam Wash', '✅', '✅', '✅'),
-  ('Hand Drying', '✅', '✅', '✅'),
-  ('Tyre & Wheel Cleaning', '✅', '✅', 'Deep Clean'),
-  ('Tyre Shine', '✅', '✅', 'Premium'),
-  ('Interior Vacuum', '❌', '✅', 'Deep'),
-  ('Dashboard Cleaning', '❌', '✅', 'UV Protection'),
-  ('Interior Glass', '❌', '✅', '✅'),
-  ('Floor Mat Cleaning', '❌', '✅', '✅'),
-  ('Paint Protection Wax', '❌', '❌', '✅'),
-  ('Clay Bar Treatment', '❌', '❌', '✅'),
-  ('Engine Bay Cleaning', '❌', '❌', '✅'),
-  ('Steam Sanitization', '❌', '❌', '✅'),
-  ('Leather/Fabric Care', '❌', '❌', '✅'),
-  ('Air Freshener', '❌', '✅', 'Premium'),
+  ('AC System Inspection', '✅', 'Complete Inspection'),
+  ('Filter / AC Cleaning', 'Filter Cleaning', 'Deep AC Cleaning'),
+  ('Evaporator Cleaning', '✅', 'Deep Clean'),
+  ('Condenser Cleaning', '✅', 'Deep Clean'),
+  ('Vent / Blower Cleaning', 'Vent Cleaning', 'Blower Cleaning'),
+  ('Gas Service', 'Pressure Check', 'Gas Top-up'),
+  ('AC Sanitization', '✅', '✅'),
+  ('Cooling Check', '✅', 'Odour & Bacteria Treatment'),
+  ('Inspection / Optimization', 'Leak Inspection', 'Cooling Optimization'),
 ];
 
 const _whyChooseUs = [
-  (Icons.wash_rounded, 'Trained Wash Specialists'),
+  (Icons.ac_unit_rounded, 'Certified AC Technicians'),
   (Icons.receipt_long_rounded, 'Transparent Pricing'),
-  (Icons.water_drop_rounded, 'Premium-Grade Products'),
-  (Icons.verified_user_rounded, 'Final Quality Inspection'),
+  (Icons.verified_user_rounded, 'Genuine Refrigerant & Parts'),
+  (Icons.thermostat_rounded, 'Ice-Cold Cooling Guaranteed'),
 ];
 
 const int _doorstepPickupFee = 100;
 
-class WashingPackageScreen extends StatefulWidget {
+class AcPackageScreen extends StatefulWidget {
   final String vehicleId;
 
-  const WashingPackageScreen({super.key, required this.vehicleId});
+  const AcPackageScreen({super.key, required this.vehicleId});
 
   @override
-  State<WashingPackageScreen> createState() => _WashingPackageScreenState();
+  State<AcPackageScreen> createState() => _AcPackageScreenState();
 }
 
-class _WashingPackageScreenState extends State<WashingPackageScreen>
+class _AcPackageScreenState extends State<AcPackageScreen>
     with SingleTickerProviderStateMixin {
-  int _selectedTier = 1; // default to Premium Wash, matching "Most Popular"
+  int _selectedTier = 1; // default to Premium AC Service, "Most Popular"
   late final TabController _tabController;
 
   @override
@@ -161,13 +130,13 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
 
   Future<void> _openWhatsApp() async {
     final uri = Uri.parse(
-      'https://wa.me/919353094672?text=${Uri.encodeComponent("Hi, I have a question about the washing packages.")}',
+      'https://wa.me/919353094672?text=${Uri.encodeComponent("Hi, I have a question about the car AC service packages.")}',
     );
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   // Adds a flat rupee fee to a "₹x,xxx" style price string and reformats
-  // it with thousands separators, e.g. "₹2,999" + 100 -> "₹3,099".
+  // it with thousands separators, e.g. "₹2,500" + 100 -> "₹2,600".
   String _addFee(String price, int fee) {
     final digits = price.replaceAll(RegExp(r'[^0-9]'), '');
     final value = int.parse(digits) + fee;
@@ -245,7 +214,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
               ),
               const SizedBox(height: 12),
               Text(
-                "We'll pick up your car from your doorstep and drop it back once the $_doorstepPickupWashLabel is done — this adds ₹$_doorstepPickupFee to your bill.",
+                "We'll pick up your car from your doorstep and drop it back once the $_doorstepPickupServiceLabel is done — this adds ₹$_doorstepPickupFee to your bill.",
                 style: TextStyle(
                   color: AppColors.mut,
                   fontSize: 13,
@@ -303,7 +272,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
     );
   }
 
-  String get _doorstepPickupWashLabel => 'wash';
+  String get _doorstepPickupServiceLabel => 'service';
 
   @override
   Widget build(BuildContext context) {
@@ -378,7 +347,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
                     ),
                     const SizedBox(width: 8),
                     const Text(
-                      'WASHING',
+                      'AC SERVICE',
                       style: TextStyle(
                         color: Color(0xFFD4A017),
                         fontSize: 11,
@@ -390,7 +359,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'A Clean That Feels Like New',
+                  'Cooler Drives, Better Comfort',
                   style: TextStyle(
                     color: AppColors.txt,
                     fontSize: 19,
@@ -625,7 +594,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Compare All Washes',
+            'Compare AC Services',
             style: TextStyle(
               color: AppColors.txt,
               fontSize: 19,
@@ -638,10 +607,9 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
             child: Table(
               defaultVerticalAlignment: TableCellVerticalAlignment.middle,
               columnWidths: const {
-                0: FixedColumnWidth(170),
-                1: FixedColumnWidth(90),
-                2: FixedColumnWidth(90),
-                3: FixedColumnWidth(110),
+                0: FixedColumnWidth(190),
+                1: FixedColumnWidth(120),
+                2: FixedColumnWidth(140),
               },
               children: [
                 TableRow(
@@ -666,7 +634,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
                           child: Column(
                             children: [
                               Text(
-                                t.name.split(' ').first,
+                                t.name,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: t.accent,
@@ -713,10 +681,6 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Center(child: _buildComparisonCell(row.$3)),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Center(child: _buildComparisonCell(row.$4)),
                       ),
                     ],
                   ),

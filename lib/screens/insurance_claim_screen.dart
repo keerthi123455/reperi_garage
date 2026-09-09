@@ -3,6 +3,8 @@ import 'package:file_selector/file_selector.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 
 class InsuranceClaimScreen extends StatefulWidget {
   final String vehicleId;
@@ -43,7 +45,21 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
   static const String INSURANCE_ADMIN_USERNAME = 'newexpert_care';
 
   @override
+  void initState() {
+    super.initState();
+    // AppColors' fields are mutated in place by themeController, not routed
+    // through an InheritedWidget — nothing marks this screen dirty on its
+    // own when the toggle flips, so it must listen and rebuild itself.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    themeController.removeListener(_onThemeChanged);
     _damageDescriptionController.dispose();
     super.dispose();
   }
@@ -244,12 +260,12 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: AppColors.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: selectedFile != null
               ? const Color(0xFFD4A017)
-              : Colors.grey.withOpacity(0.3),
+              : AppColors.line,
           width: 1.5,
         ),
       ),
@@ -263,10 +279,10 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                  style: TextStyle(
+                    color: AppColors.txt,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -279,8 +295,8 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                   style: TextStyle(
                     color: selectedFile != null
                         ? const Color(0xFFD4A017)
-                        : Colors.grey,
-                    fontSize: 11,
+                        : AppColors.mut,
+                    fontSize: 13,
                   ),
                 ),
               ],
@@ -297,7 +313,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
               selectedFile != null ? Icons.check_circle : Icons.cloud_upload,
               color: selectedFile != null
                   ? const Color(0xFFD4A017)
-                  : Colors.grey,
+                  : AppColors.mut,
               size: 20,
             ),
           ),
@@ -309,75 +325,56 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0C0C0C),
+      backgroundColor: AppColors.ink,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: AppColors.surfaceRaised,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'File Insurance Claim',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
+            color: AppColors.txt,
+            fontSize: 20,
             fontWeight: FontWeight.w900,
-            letterSpacing: 0.5,
           ),
         ),
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: AppColors.txt),
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: isUploading ? null : _submitClaim,
-        backgroundColor: isUploading 
-            ? const Color(0xFFD4A017).withOpacity(0.5)
-            : const Color(0xFFD4A017),
-        label: Text(
-          isUploading ? 'UPLOADING...' : 'SUBMIT CLAIM',
-          style: const TextStyle(
-            color: Colors.black,
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.8,
-          ),
-        ),
-        icon: Icon(
-          isUploading ? Icons.cloud_upload : Icons.check_circle,
-          color: Colors.black,
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      body: isUploading
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(
-                    color: Color(0xFFD4A017),
+      body: Stack(
+        children: [
+          isUploading
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(
+                        color: Color(0xFFD4A017),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        uploadStatus,
+                        style: TextStyle(
+                          color: AppColors.txt,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    uploadStatus,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
-              child: Column(
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
+                  child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Vehicle Info Card
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
+                      color: AppColors.surfaceRaised,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: const Color(0xFFD4A017).withOpacity(0.3),
@@ -387,20 +384,19 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Vehicle Details',
+                          'Vehicle details',
                           style: TextStyle(
                             color: Color(0xFFD4A017),
-                            fontSize: 12,
+                            fontSize: 14,
                             fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           '${widget.carBrand} ${widget.carModel}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
+                          style: TextStyle(
+                            color: AppColors.txt,
+                            fontSize: 18,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -418,7 +414,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                             widget.carNumber.toUpperCase(),
                             style: const TextStyle(
                               color: Colors.black,
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 1,
                             ),
@@ -431,13 +427,12 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                   const SizedBox(height: 24),
 
                   // Documents Section
-                  const Text(
-                    'Required Documents',
+                  Text(
+                    'Required documents',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
+                      color: AppColors.txt,
+                      fontSize: 20,
                       fontWeight: FontWeight.w900,
-                      letterSpacing: 0.3,
                     ),
                   ),
 
@@ -501,13 +496,12 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                   const SizedBox(height: 20),
 
                   // Damage Photo
-                  const Text(
-                    'Damage Photo',
+                  Text(
+                    'Damage photo',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
+                      color: AppColors.txt,
+                      fontSize: 20,
                       fontWeight: FontWeight.w900,
-                      letterSpacing: 0.3,
                     ),
                   ),
 
@@ -519,12 +513,12 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                       margin: const EdgeInsets.only(bottom: 20),
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
+                        color: AppColors.surfaceRaised,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: damagePhotoFile != null
                               ? const Color(0xFFD4A017)
-                              : Colors.grey.withOpacity(0.3),
+                              : AppColors.line,
                           width: 1.5,
                         ),
                       ),
@@ -544,7 +538,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     color: Color(0xFFD4A017),
-                                    fontSize: 12,
+                                    fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -554,15 +548,15 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                               children: [
                                 Icon(
                                   Icons.image_not_supported,
-                                  color: Colors.grey,
+                                  color: AppColors.mut,
                                   size: 48,
                                 ),
                                 const SizedBox(height: 12),
-                                const Text(
+                                Text(
                                   'Tap to upload damage photo',
                                   style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 13,
+                                    color: AppColors.mut,
+                                    fontSize: 15,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -572,13 +566,12 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                   ),
 
                   // Damage Description
-                  const Text(
-                    'Describe the Damage',
+                  Text(
+                    'Describe the damage',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
+                      color: AppColors.txt,
+                      fontSize: 20,
                       fontWeight: FontWeight.w900,
-                      letterSpacing: 0.3,
                     ),
                   ),
 
@@ -588,29 +581,29 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                     controller: _damageDescriptionController,
                     maxLines: 5,
                     maxLength: 500,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
+                    style: TextStyle(
+                      color: AppColors.txt,
+                      fontSize: 15,
                     ),
                     decoration: InputDecoration(
                       hintText:
                           'Describe the damage, accident details, location, etc.',
                       hintStyle: TextStyle(
-                        color: Colors.grey.withOpacity(0.6),
-                        fontSize: 12,
+                        color: AppColors.mut,
+                        fontSize: 14,
                       ),
                       filled: true,
-                      fillColor: const Color(0xFF1A1A1A),
+                      fillColor: AppColors.surfaceRaised,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(
-                          color: Colors.grey.withOpacity(0.3),
+                          color: AppColors.line,
                         ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(
-                          color: Colors.grey.withOpacity(0.3),
+                          color: AppColors.line,
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -626,6 +619,82 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                 ],
               ),
             ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildStickyBar(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── STICKY BOTTOM BAR ────────────────────────────────────────────
+  Widget _buildStickyBar() {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          border: Border(top: BorderSide(color: AppColors.line)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.25),
+              blurRadius: 20,
+              offset: const Offset(0, -6),
+            ),
+          ],
+        ),
+        child: GestureDetector(
+          onTap: isUploading ? null : _submitClaim,
+          child: Container(
+            width: double.infinity,
+            height: 56,
+            decoration: BoxDecoration(
+              color: isUploading
+                  ? const Color(0xFFD4A017).withOpacity(0.5)
+                  : const Color(0xFFD4A017),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: isUploading
+                  ? []
+                  : [
+                      BoxShadow(
+                        color: const Color(0xFFD4A017).withOpacity(0.3),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (isUploading)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: AppColors.onAccentDark,
+                    ),
+                  )
+                else
+                  Icon(Icons.check_circle, color: AppColors.onAccentDark, size: 20),
+                const SizedBox(width: 10),
+                Text(
+                  isUploading ? 'Uploading...' : 'Submit Claim',
+                  style: TextStyle(
+                    color: AppColors.onAccentDark,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -8,14 +8,19 @@ class PromoBanner extends StatelessWidget {
     super.key,
     required this.assetPath,
     this.aspectRatio = 16 / 9,
+    this.onTap,
   });
 
   final String assetPath;
   final double aspectRatio;
 
+  /// When set, the whole banner becomes tappable — used to open the
+  /// screen it's advertising.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
+    final banner = ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: AspectRatio(
         aspectRatio: aspectRatio,
@@ -29,5 +34,8 @@ class PromoBanner extends StatelessWidget {
         ),
       ),
     );
+
+    if (onTap == null) return banner;
+    return GestureDetector(onTap: onTap, child: banner);
   }
 }
