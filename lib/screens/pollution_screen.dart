@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/address_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import 'payment_screen.dart';
 
 /// Pollution-certificate pickup/drop-off offer screen.
 ///
 /// [vehicleId] identifies which vehicle this booking is for (mirrors the
 /// pattern used by ServicingPackageScreen/WashingPackageScreen etc.).
-/// [onAvail] is called when the user taps the primary CTA — left as a
-/// callback rather than hardcoding a navigation target here, since the
-/// actual booking/slot flow isn't defined yet. Defaults to popping this
-/// screen with `true` so a caller can react (e.g. refresh booking status)
-/// the same way other package screens are awaited with `.then(...)`.
+/// [onAvail] overrides the default "Book Now" behaviour (push
+/// PaymentScreen, then record the booking in `pollution_booking`) —
+/// left as a callback rather than hardcoding it as the only option, the
+/// same way other package screens are awaited with `.then(...)`.
 class PollutionScreen extends StatefulWidget {
   const PollutionScreen({
     super.key,
@@ -25,7 +27,7 @@ class PollutionScreen extends StatefulWidget {
   final String vehicleId;
   final VoidCallback? onAvail;
 
-  static const _heroAsset = 'assets/images/pollution_hero.jpg';
+  static const _heroAsset = 'assets/images/pollution.jpeg';
   static const _price = '₹299';
 
   @override
@@ -56,6 +58,50 @@ class _PollutionScreenState extends State<PollutionScreen> {
     await launchUrl(Uri(scheme: 'tel', path: '9353094672'));
   }
 
+  /// Records the completed booking in its own table rather than the
+  /// generic `bookings` one — a pollution certificate check isn't a
+  /// pickup/drop package booking, so it gets its own home.
+  Future<void> _savePollutionBooking(String orderId, String paymentId) async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    final defaultAddr = await AddressService().getDefaultAddress();
+
+    await Supabase.instance.client.from('pollution_booking').insert({
+      'user_id': user.id,
+      'vehicle_id': widget.vehicleId,
+      'price': PollutionScreen._price,
+      'razorpay_order_id': orderId,
+      'razorpay_payment_id': paymentId,
+      'pickup_address': defaultAddr?['address'],
+      'pickup_latitude': defaultAddr?['latitude'],
+      'pickup_longitude': defaultAddr?['longitude'],
+      'dropoff_address': defaultAddr?['address'],
+      'dropoff_latitude': defaultAddr?['latitude'],
+      'dropoff_longitude': defaultAddr?['longitude'],
+      // No delivery-partner assignment logic exists yet — left null until
+      // there's a table/service to assign one from.
+      'delivery_partner_id': null,
+      'status': 'booked',
+    });
+  }
+
+  void _bookNow() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PaymentScreen(
+          title: 'Pollution Certificate Check',
+          price: PollutionScreen._price,
+          duration: 'Same day',
+          vehicleId: widget.vehicleId,
+          showPickupDropOption: false,
+          onSuccess: _savePollutionBooking,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -81,15 +127,15 @@ class _PollutionScreenState extends State<PollutionScreen> {
                   const _StepTimeline(steps: [
                     _Step(
                       icon: Symbols.directions_car,
-                      text: 'Our team comes to your doorstep and picks up your car.',
+                      text: 'Our person comes to your doorstep and picks up your car.',
                     ),
                     _Step(
                       icon: Symbols.photo_camera,
-                      text: 'We send you a photo of your car during the inspection.',
+                      text: 'We send you a photo of it getting inspected.',
                     ),
                     _Step(
                       icon: Symbols.verified,
-                      text: 'We deliver your car back to you with its pollution certificate.',
+                      text: 'We deliver your car back with the pollution certificate.',
                     ),
                   ]),
                   const SizedBox(height: 6),
@@ -105,7 +151,7 @@ class _PollutionScreenState extends State<PollutionScreen> {
                   const SizedBox(height: 26),
                   _PriceCard(
                     price: PollutionScreen._price,
-                    onAvail: widget.onAvail ?? () => Navigator.pop(context, true),
+                    onAvail: widget.onAvail ?? _bookNow,
                     onCall: _callSupport,
                   ),
                   const SizedBox(height: 18),

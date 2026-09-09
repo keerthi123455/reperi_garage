@@ -313,6 +313,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                                       duration: '1 Month',
                                       vehicleId: widget.vehicleId,
                                       onSuccess: _saveSubscriptionToDatabase,
+                                      showPickupDropOption: false,
                                     ),
                                   ),
                                 );

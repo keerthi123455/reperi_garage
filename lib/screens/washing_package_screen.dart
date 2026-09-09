@@ -8,8 +8,8 @@ import 'payment_screen.dart';
 /// deliberately NOT fetched from Supabase, matching the pattern used for
 /// the Servicing screen. Presented as three tabs (Browse / Compare /
 /// Details) instead of one long scroll, with a sticky bottom "BOOK NOW"
-/// bar — booking still prompts for an optional doorstep pickup (+₹100)
-/// before going to payment.
+/// bar that goes straight to PaymentScreen — the optional doorstep
+/// pickup/drop add-on is asked there now, not here.
 class _Tier {
   final String name;
   final String price;
@@ -122,8 +122,6 @@ const _whyChooseUs = [
   (Icons.verified_user_rounded, 'Final Quality Inspection'),
 ];
 
-const int _doorstepPickupFee = 100;
-
 class WashingPackageScreen extends StatefulWidget {
   final String vehicleId;
 
@@ -166,144 +164,21 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  // Adds a flat rupee fee to a "₹x,xxx" style price string and reformats
-  // it with thousands separators, e.g. "₹2,999" + 100 -> "₹3,099".
-  String _addFee(String price, int fee) {
-    final digits = price.replaceAll(RegExp(r'[^0-9]'), '');
-    final value = int.parse(digits) + fee;
-    final formatted = value.toString().replaceAllMapped(
-          RegExp(r'\B(?=(\d{3})+(?!\d))'),
-          (m) => ',',
-        );
-    return '₹$formatted';
-  }
-
-  void _goToPayment(_Tier tier, {required bool withPickup}) {
-    final finalPrice =
-        withPickup ? _addFee(tier.price, _doorstepPickupFee) : tier.price;
-    final finalTitle =
-        withPickup ? '${tier.name} + Doorstep Pickup' : tier.name;
-
+  // The doorstep pickup/drop add-on is now asked on PaymentScreen itself,
+  // not here — "Book Now" just goes straight there with the tier's price.
+  void _goToPayment(_Tier tier) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
-          title: finalTitle,
-          price: finalPrice,
+          title: tier.name,
+          price: tier.price,
           duration: '1-2 hrs',
           vehicleId: widget.vehicleId,
         ),
       ),
     );
   }
-
-  void _bookNow(_Tier tier) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surfaceRaised,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  color: AppColors.line,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD4A017).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.home_work_rounded,
-                        color: Color(0xFFD4A017), size: 22),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      'Add Doorstep Pickup?',
-                      style: TextStyle(
-                        color: AppColors.txt,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                "We'll pick up your car from your doorstep and drop it back once the $_doorstepPickupWashLabel is done — this adds ₹$_doorstepPickupFee to your bill.",
-                style: TextStyle(
-                  color: AppColors.mut,
-                  fontSize: 13,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD4A017),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(sheetContext);
-                    _goToPayment(tier, withPickup: true);
-                  },
-                  child: Text(
-                    'Yes, Add Pickup (+₹$_doorstepPickupFee)',
-                    style: TextStyle(
-                        color: AppColors.onAccentDark,
-                        fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: AppColors.line),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(sheetContext);
-                    _goToPayment(tier, withPickup: false);
-                  },
-                  child: Text(
-                    "No, I'll Drop Off Myself",
-                    style: TextStyle(
-                        color: AppColors.txt.withOpacity(0.7),
-                        fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String get _doorstepPickupWashLabel => 'wash';
 
   @override
   Widget build(BuildContext context) {
@@ -585,7 +460,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
                         child: ElevatedButton(
                           onPressed: () {
                             setState(() => _selectedTier = i);
-                            _bookNow(tier);
+                            _goToPayment(tier);
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor:
@@ -1013,7 +888,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
   // ── STICKY BOOK NOW BAR ──
   Widget _buildStickyBar(_Tier tier) {
     return GestureDetector(
-      onTap: () => _bookNow(tier),
+      onTap: () => _goToPayment(tier),
       child: Container(
         height: 60,
         decoration: BoxDecoration(

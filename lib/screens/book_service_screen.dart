@@ -154,145 +154,17 @@ class _BookServiceScreenState
     }
   }
 
-  // ── Extract price value from string like "₹1999"
-  int _extractPrice(String priceStr) {
-    return int.tryParse(priceStr.replaceAll('₹', '').replaceAll(',', '')) ?? 0;
-  }
-
-  // ── Show doorstep pickup dialog
-  void _showDoorstepPickupDialog() {
+  // ── Proceed to payment — the doorstep pickup/drop add-on is now asked
+  // on PaymentScreen itself, not here.
+  void _proceedToPayment() {
     final selectedService = services[selectedIndex];
-    final basePrice = _extractPrice(selectedService['price'] as String);
 
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: AppColors.surfaceRaised,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // ── Icon ──
-              Container(
-                width: 90,
-                height: 90,
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.local_shipping_rounded,
-                  color: AppColors.accent,
-                  size: 48,
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ── Title ──
-              Text(
-                'Doorstep Pickup?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.txt,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // ── Subtitle ──
-              Text(
-                'We can pick up your vehicle from your home and drop it back after service',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.txt.withOpacity(0.7),
-                  fontSize: 14,
-                  height: 1.6,
-                ),
-              ),
-
-              const SizedBox(height: 28),
-
-              // ── Yes Button ──
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _proceedToPayment(basePrice + 100);
-                  },
-                  child: Text(
-                    'Yes, Add ₹100',
-                    style: TextStyle(
-                      color: AppColors.onAccentDark,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // ── No Button ──
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    side: const BorderSide(
-                      color: AppColors.accent,
-                      width: 2,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _proceedToPayment(basePrice);
-                  },
-                  child: const Text(
-                    'No, I\'ll Drop It Myself',
-                    style: TextStyle(
-                      color: AppColors.accent,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Proceed to payment
-  void _proceedToPayment(int finalPrice) {
-    final selectedService = services[selectedIndex];
-    
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: selectedService['title'] as String,
-          price: '₹$finalPrice',
+          price: selectedService['price'] as String,
           duration: selectedService['time'] as String,
           vehicleId: widget.vehicle['id'].toString(),
         ),
@@ -686,7 +558,7 @@ class _BookServiceScreenState
                           ),
                           elevation: 0,
                         ),
-                        onPressed: _showDoorstepPickupDialog,
+                        onPressed: _proceedToPayment,
                         child: Text(
                           'Book Now',
                           style: TextStyle(

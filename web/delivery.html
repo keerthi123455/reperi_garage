@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reperi Delivery Partner Login</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .login-box {
+            background: #1a1a1a;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            border: 1px solid #333;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .logo h1 {
+            color: #D4A017;
+            font-size: 32px;
+            font-weight: 900;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
+        }
+
+        .logo p {
+            color: #999;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .tabs {
+            display: flex;
+            background: #262626;
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 28px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            color: #999;
+            font-weight: 800;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn.active {
+            background: #D4A017;
+            color: #000;
+        }
+
+        .form-group {
+            margin-bottom: 22px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #D4A017;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            background: #262626;
+            border: 1px solid #3a3a3a;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #D4A017;
+            background: #2a2a2a;
+            box-shadow: 0 0 0 3px rgba(212, 160, 23, 0.1);
+        }
+
+        .form-group input::placeholder {
+            color: #666;
+        }
+
+        .form-group .hint {
+            color: #666;
+            font-size: 11px;
+            margin-top: 6px;
+        }
+
+        .submit-button {
+            width: 100%;
+            padding: 14px;
+            background: #D4A017;
+            border: none;
+            border-radius: 10px;
+            color: #000;
+            font-weight: 900;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+        }
+
+        .submit-button:hover:not(:disabled) {
+            background: #e6b820;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(212, 160, 23, 0.3);
+        }
+
+        .submit-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            color: #ff6b6b;
+            font-size: 12px;
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(255, 107, 107, 0.1);
+            border-radius: 8px;
+            border-left: 3px solid #ff6b6b;
+            display: none;
+            line-height: 1.4;
+        }
+
+        .success-message {
+            color: #51cf66;
+            font-size: 12px;
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(81, 207, 102, 0.1);
+            border-radius: 8px;
+            border-left: 3px solid #51cf66;
+            display: none;
+        }
+
+        .loading-state {
+            display: none;
+            text-align: center;
+            color: #999;
+            font-size: 13px;
+            margin-top: 15px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #333;
+            border-top: 2px solid #D4A017;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .footer-text {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            margin-top: 30px;
+        }
+
+        .form-panel {
+            display: none;
+        }
+
+        .form-panel.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="login-box">
+            <div class="logo">
+                <h1>🚚 REPERI</h1>
+                <p>Delivery Partner Portal</p>
+            </div>
+
+            <div class="tabs">
+                <button type="button" class="tab-btn active" id="loginTabBtn" onclick="switchTab('login')">Login</button>
+                <button type="button" class="tab-btn" id="registerTabBtn" onclick="switchTab('register')">Register</button>
+            </div>
+
+            <!-- ── LOGIN ── -->
+            <div class="form-panel active" id="loginPanel">
+                <form id="loginForm" onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label for="loginEmail">📧 Email Address</label>
+                        <input
+                            type="email"
+                            id="loginEmail"
+                            placeholder="delivery1@reperi.com"
+                            required
+                            autocomplete="email"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="loginPassword">🔐 Password</label>
+                        <input
+                            type="password"
+                            id="loginPassword"
+                            placeholder="Enter your password"
+                            required
+                            autocomplete="current-password"
+                        >
+                    </div>
+
+                    <button type="submit" class="submit-button" id="loginBtn">
+                        LOGIN
+                    </button>
+
+                    <div class="error-message" id="loginErrorMsg"></div>
+                    <div class="success-message" id="loginSuccessMsg"></div>
+
+                    <div class="loading-state" id="loginLoadingState">
+                        <div class="spinner"></div>
+                        <span>Logging in...</span>
+                    </div>
+                </form>
+            </div>
+
+            <!-- ── REGISTER ── -->
+            <div class="form-panel" id="registerPanel">
+                <form id="registerForm" onsubmit="handleRegister(event)">
+                    <div class="form-group">
+                        <label for="registerEmail">📧 Email Address</label>
+                        <input
+                            type="email"
+                            id="registerEmail"
+                            placeholder="delivery1@reperi.com"
+                            required
+                            autocomplete="email"
+                        >
+                        <div class="hint">Must start with "delivery" (e.g. delivery1@reperi.com, delivery2@reperi.com)</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="registerPassword">🔐 Password</label>
+                        <input
+                            type="password"
+                            id="registerPassword"
+                            placeholder="Choose a password (min. 6 characters)"
+                            required
+                            minlength="6"
+                            autocomplete="new-password"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="registerPasswordConfirm">🔐 Confirm Password</label>
+                        <input
+                            type="password"
+                            id="registerPasswordConfirm"
+                            placeholder="Re-enter your password"
+                            required
+                            minlength="6"
+                            autocomplete="new-password"
+                        >
+                    </div>
+
+                    <button type="submit" class="submit-button" id="registerBtn">
+                        CREATE ACCOUNT
+                    </button>
+
+                    <div class="error-message" id="registerErrorMsg"></div>
+                    <div class="success-message" id="registerSuccessMsg"></div>
+
+                    <div class="loading-state" id="registerLoadingState">
+                        <div class="spinner"></div>
+                        <span>Creating account...</span>
+                    </div>
+                </form>
+            </div>
+
+            <div class="footer-text">
+                © 2026 Reperi Garage. All rights reserved.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://rmvxqjyoqfinbrpubsvp.supabase.co/';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E';
+
+        const { createClient } = window.supabase;
+        const sbClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // delivery_partners.password_hash is NOT NULL, but Supabase Auth
+        // already stores the real credential securely server-side — this
+        // column is redundant. Rather than duplicate the password client-
+        // side (which would defeat the point of using Supabase Auth and
+        // create a needless security liability), a fixed placeholder is
+        // written here just to satisfy the NOT NULL constraint. Ask your
+        // DB owner to make this column nullable and drop this workaround.
+        const PASSWORD_HASH_PLACEHOLDER = 'managed_by_supabase_auth';
+
+        function switchTab(tab) {
+            const isLogin = tab === 'login';
+            document.getElementById('loginTabBtn').classList.toggle('active', isLogin);
+            document.getElementById('registerTabBtn').classList.toggle('active', !isLogin);
+            document.getElementById('loginPanel').classList.toggle('active', isLogin);
+            document.getElementById('registerPanel').classList.toggle('active', !isLogin);
+        }
+
+        // Check if already logged in
+        window.addEventListener('load', async () => {
+            const { data: { session } } = await sbClient.auth.getSession();
+            if (session) {
+                window.location.href = 'deliverydashboard.html';
+            }
+        });
+
+        function usernameFromEmail(email) {
+            return email.split('@')[0].toLowerCase();
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            const errorMsg = document.getElementById('loginErrorMsg');
+            const successMsg = document.getElementById('loginSuccessMsg');
+            const loginBtn = document.getElementById('loginBtn');
+            const loadingState = document.getElementById('loginLoadingState');
+
+            errorMsg.style.display = 'none';
+            successMsg.style.display = 'none';
+
+            if (!email || !password) {
+                errorMsg.textContent = '❌ Please enter both email and password';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            if (!usernameFromEmail(email).startsWith('delivery')) {
+                errorMsg.textContent = '❌ Invalid delivery partner account. Email must start with "delivery"';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            loginBtn.disabled = true;
+            loadingState.style.display = 'block';
+
+            try {
+                const { error: authError } = await sbClient.auth.signInWithPassword({
+                    email,
+                    password,
+                });
+
+                if (authError) throw new Error(authError.message);
+
+                // Confirm a matching delivery_partners profile exists and
+                // is active before letting them into the dashboard — the
+                // table's own `id` is a separate serial column, unrelated
+                // to the Supabase Auth user id, so it's looked up by the
+                // (unique) email instead.
+                const { data: partner, error: partnerError } = await sbClient
+                    .from('delivery_partners')
+                    .select('id, status')
+                    .eq('email', email)
+                    .single();
+
+                if (partnerError || !partner) {
+                    await sbClient.auth.signOut();
+                    throw new Error('No delivery partner profile found for this account.');
+                }
+
+                if (partner.status !== 'active') {
+                    await sbClient.auth.signOut();
+                    throw new Error(`This account is ${partner.status}. Contact support for help.`);
+                }
+
+                successMsg.textContent = '✅ Login successful! Redirecting...';
+                successMsg.style.display = 'block';
+
+                setTimeout(() => {
+                    window.location.href = 'deliverydashboard.html';
+                }, 1000);
+
+            } catch (err) {
+                errorMsg.textContent = '❌ ' + (err.message || 'Login failed. Please try again.');
+                errorMsg.style.display = 'block';
+                loginBtn.disabled = false;
+                loadingState.style.display = 'none';
+            }
+        }
+
+        async function handleRegister(event) {
+            event.preventDefault();
+
+            const email = document.getElementById('registerEmail').value.trim();
+            const password = document.getElementById('registerPassword').value;
+            const passwordConfirm = document.getElementById('registerPasswordConfirm').value;
+            const errorMsg = document.getElementById('registerErrorMsg');
+            const successMsg = document.getElementById('registerSuccessMsg');
+            const registerBtn = document.getElementById('registerBtn');
+            const loadingState = document.getElementById('registerLoadingState');
+
+            errorMsg.style.display = 'none';
+            successMsg.style.display = 'none';
+
+            if (!email || !password || !passwordConfirm) {
+                errorMsg.textContent = '❌ Please fill in all fields';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            if (!usernameFromEmail(email).startsWith('delivery')) {
+                errorMsg.textContent = '❌ Email must start with "delivery" (e.g. delivery1@reperi.com)';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            if (password.length < 6) {
+                errorMsg.textContent = '❌ Password must be at least 6 characters';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            if (password !== passwordConfirm) {
+                errorMsg.textContent = '❌ Passwords do not match';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            registerBtn.disabled = true;
+            loadingState.style.display = 'block';
+
+            try {
+                // STEP 1: Create the Supabase Auth account — this is what
+                // actually stores and verifies the password.
+                const { data: signUpData, error: signUpError } = await sbClient.auth.signUp({
+                    email,
+                    password,
+                });
+
+                if (signUpError) throw new Error(signUpError.message);
+
+                // STEP 2: Create the matching delivery_partners profile row.
+                // `id` is left out entirely — it's a SERIAL column that
+                // auto-increments (1, 2, 3, ...) on its own and is NOT the
+                // Supabase Auth user id.
+                const { error: insertError } = await sbClient
+                    .from('delivery_partners')
+                    .insert({
+                        email,
+                        password_hash: PASSWORD_HASH_PLACEHOLDER,
+                        status: 'active',
+                    });
+
+                if (insertError) {
+                    if (insertError.code === '23505') {
+                        throw new Error('A delivery partner profile with this email already exists.');
+                    }
+                    throw new Error(insertError.message);
+                }
+
+                if (signUpData.session) {
+                    // Email confirmation is off for this project — already
+                    // signed in, go straight to the dashboard.
+                    successMsg.textContent = '✅ Account created! Redirecting...';
+                    successMsg.style.display = 'block';
+                    setTimeout(() => {
+                        window.location.href = 'deliverydashboard.html';
+                    }, 1000);
+                } else {
+                    // Email confirmation is required before a session exists.
+                    successMsg.textContent = '✅ Account created! Check your email to confirm your account, then log in.';
+                    successMsg.style.display = 'block';
+                    registerBtn.disabled = false;
+                    loadingState.style.display = 'none';
+                    setTimeout(() => switchTab('login'), 2500);
+                }
+
+            } catch (err) {
+                errorMsg.textContent = '❌ ' + (err.message || 'Registration failed. Please try again.');
+                errorMsg.style.display = 'block';
+                registerBtn.disabled = false;
+                loadingState.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

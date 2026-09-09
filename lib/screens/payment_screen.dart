@@ -26,6 +26,14 @@ class PaymentScreen extends StatefulWidget {
   /// which are always online-only.
   final bool onlineOnly;
 
+  /// Whether to offer the "Doorstep Pickup & Drop (+₹100)" add-on. Left on
+  /// by default for the many package-booking screens that navigate here
+  /// directly; subscriptions, the pollution certificate, and the vehicle
+  /// health check turn it off since those aren't a pickup/drop-a-vehicle
+  /// service. Also suppressed automatically whenever [billItems] is set
+  /// (the fleet flow), which already shows its own itemized total.
+  final bool showPickupDropOption;
+
   const PaymentScreen({
     super.key,
     required this.title,
@@ -35,6 +43,7 @@ class PaymentScreen extends StatefulWidget {
     this.billItems,
     this.onSuccess,
     this.onlineOnly = false,
+    this.showPickupDropOption = true,
   });
 
   @override
@@ -47,7 +56,72 @@ class _PaymentScreenState
     with SingleTickerProviderStateMixin {
   bool orderPlaced = false;
   bool isProcessing = false;
-  
+
+  // ── Doorstep pickup & drop add-on ──
+  bool _addPickupDrop = false;
+  static const int _pickupDropFee = 100;
+
+  bool get _showPickupDrop => widget.showPickupDropOption && widget.billItems == null;
+
+  /// Null when [PaymentScreen.price] isn't a plain "₹NNN" amount (e.g. a
+  /// "Get Quote"/"Custom Quote" placeholder) — the pickup/drop fee and the
+  /// computed total only make sense when there's a real number to add to.
+  int? get _baseAmountRupees {
+    final digits = widget.price.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return null;
+    return int.tryParse(digits);
+  }
+
+  int? get _totalAmountRupees {
+    final base = _baseAmountRupees;
+    if (base == null) return null;
+    return base + (_addPickupDrop ? _pickupDropFee : 0);
+  }
+
+  String get _totalPriceDisplay {
+    final total = _totalAmountRupees;
+    return total != null ? '₹$total' : widget.price;
+  }
+
+  void _setPickupDrop(bool value) {
+    if (!value) {
+      setState(() => _addPickupDrop = false);
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF262626),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Doorstep Pickup & Drop',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          '₹100 will be added to your bill for doorstep pickup and drop-off. Continue?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() => _addPickupDrop = true);
+            },
+            child: const Text(
+              'YES, ADD ₹100',
+              style: TextStyle(color: Color(0xFFD4A017), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
   // ── Address state ──
   String selectedAddress = 'Loading address...';
   double? selectedLatitude;
@@ -216,9 +290,10 @@ class _PaymentScreenState
     });
 
     try {
-      // Parse the price string into paise (smallest currency unit)
-      final priceDigits = widget.price.replaceAll(RegExp(r'[^0-9]'), '');
-      final amountInRupees = int.tryParse(priceDigits) ?? 0;
+      // Package amount plus the doorstep pickup/drop fee if the customer
+      // added it — falls back to the raw price string's digits when
+      // there's no add-on to fold in.
+      final amountInRupees = _totalAmountRupees ?? 0;
       final amountInPaise = amountInRupees * 100;
 
       if (amountInPaise <= 0) {
@@ -312,10 +387,11 @@ class _PaymentScreenState
           'vehicle_id': widget.vehicleId,
           'package_name': widget.title,
           'package_price': widget.price,
+          if (_showPickupDrop) 'pickupdrop': _addPickupDrop ? 'yes' : 'no',
           'razorpay_order_id': result.orderId,
           'razorpay_payment_id': result.paymentId,
           'payment_status': 'paid',
-          
+
           // ── Location Data ──
           'pickup_address': defaultAddr?['address'] ?? 'Not specified',
           'pickup_latitude': defaultAddr?['latitude'],
@@ -387,8 +463,9 @@ class _PaymentScreenState
         'vehicle_id': widget.vehicleId,
         'package_name': widget.title,
         'package_price': widget.price,
+        if (_showPickupDrop) 'pickupdrop': _addPickupDrop ? 'yes' : 'no',
         'payment_status': 'cod', // cash on delivery/pickup
-        
+
         // ── Location Data ──
         'pickup_address': defaultAddr?['address'] ?? 'Not specified',
         'pickup_latitude': defaultAddr?['latitude'],
@@ -415,6 +492,23 @@ class _PaymentScreenState
         SnackBar(content: Text(e.toString())),
       );
     }
+  }
+
+  Widget _billRow(String label, String value, {Color? valueColor}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor ?? Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -678,6 +772,59 @@ class _PaymentScreenState
                           const SizedBox(
                               height: 28),
 
+                          /// BILL BREAKDOWN — package amount, the (always
+                          /// free, for now) platform fee, and the optional
+                          /// doorstep pickup/drop add-on.
+                          _billRow('Package Amount', widget.price),
+                          const SizedBox(height: 10),
+                          _billRow('Platform Fee', 'Free', valueColor: const Color(0xFF6FCF97)),
+                          if (_showPickupDrop) ...[
+                            const SizedBox(height: 14),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF262626),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFF3A3A3A)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.local_shipping_outlined, color: Colors.white70, size: 20),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Doorstep Pickup & Drop',
+                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                                        ),
+                                        Text(
+                                          _addPickupDrop ? '+ ₹$_pickupDropFee added' : 'Not added',
+                                          style: TextStyle(
+                                            color: _addPickupDrop ? const Color(0xFFD4A017) : Colors.white54,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Switch(
+                                    value: _addPickupDrop,
+                                    onChanged: _setPickupDrop,
+                                    activeColor: const Color(0xFFD4A017),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          Container(
+                            height: 1,
+                            color: const Color(0xFF3A3A3A),
+                          ),
+                          const SizedBox(height: 20),
+
                           Container(
                             width:
                                 double.infinity,
@@ -728,7 +875,7 @@ class _PaymentScreenState
                                         12),
 
                                 Text(
-                                  widget.price,
+                                  _totalPriceDisplay,
 
                                   style:
                                       const TextStyle(
@@ -746,7 +893,7 @@ class _PaymentScreenState
                               ],
                             ),
                           ),
-                          if (widget.billItems != null) ...[ 
+                          if (widget.billItems != null) ...[
                             const SizedBox(height: 20),
                             Container(
                               padding: const EdgeInsets.all(18),

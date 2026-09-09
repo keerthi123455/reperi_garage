@@ -159,121 +159,9 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
     super.dispose();
   }
 
-  // ── Extract price value
-  int _extractPrice(String priceStr) {
-    return int.tryParse(priceStr.replaceAll('₹', '').replaceAll(',', '')) ?? 0;
-  }
-
-  // ── Show doorstep pickup dialog
-  void _showDoorstepPickupDialog() {
-    final selectedPkg = packages[selectedPackage];
-    final basePrice = _extractPrice(selectedPkg['price'] as String);
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: AppColors.surfaceRaised,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 90,
-                height: 90,
-                decoration: BoxDecoration(
-                  color: _gold.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.local_shipping_rounded,
-                  color: _gold,
-                  size: 48,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Doorstep Pickup?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.txt,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'We can pick up your vehicle from your home and drop it back after service',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.txt.withOpacity(0.7),
-                  fontSize: 14,
-                  height: 1.6,
-                ),
-              ),
-              const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _gold,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _proceedToPayment(basePrice + 100);
-                  },
-                  child: Text(
-                    'Yes, Add ₹100',
-                    style: TextStyle(
-                      color: AppColors.onAccentDark,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    side: const BorderSide(color: _gold, width: 2),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _proceedToPayment(basePrice);
-                  },
-                  child: const Text(
-                    'No, I\'ll Drop It Myself',
-                    style: TextStyle(
-                      color: _gold,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Proceed to payment
-  void _proceedToPayment(int finalPrice) {
+  // ── Proceed to payment — the doorstep pickup/drop add-on is now asked
+  // on PaymentScreen itself, not here.
+  void _proceedToPayment() {
     final selectedPkg = packages[selectedPackage];
 
     Navigator.push(
@@ -281,7 +169,7 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: selectedPkg['title'] as String,
-          price: '₹$finalPrice',
+          price: selectedPkg['price'] as String,
           duration: selectedPkg['duration'] as String,
           vehicleId: widget.vehicle['id'].toString(),
         ),
@@ -313,7 +201,7 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                             height: 400,
                             width: double.infinity,
                             child: Image.asset(
-                              'assets/images/carspa_hero.jpeg',
+                              'assets/images/carspa.jpeg',
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) => Container(
                                 color: AppColors.surfaceRaised,
@@ -681,7 +569,7 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                           ),
                           onPressed: selectedPackage == -1
                               ? null
-                              : _showDoorstepPickupDialog,
+                              : _proceedToPayment,
                           child: Text(
                             selectedPackage == -1 ? 'Select a package' : 'Book Now',
                             style: TextStyle(

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/address_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/placeholder_box.dart';
@@ -230,6 +232,33 @@ class _InspectionScreenState extends State<InspectionScreen> {
     );
   }
 
+  /// Records the completed booking in its own table rather than the
+  /// generic `bookings` one — a vehicle health check isn't a pickup/drop
+  /// package booking, so it gets its own home.
+  Future<void> _saveInspectionBooking(String orderId, String paymentId) async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    final defaultAddr = await AddressService().getDefaultAddress();
+
+    await Supabase.instance.client.from('inspection_booking').insert({
+      'user_id': user.id,
+      'vehicle_id': widget.vehicleId,
+      'razorpay_order_id': orderId,
+      'razorpay_payment_id': paymentId,
+      'pickup_address': defaultAddr?['address'],
+      'pickup_latitude': defaultAddr?['latitude'],
+      'pickup_longitude': defaultAddr?['longitude'],
+      'dropoff_address': defaultAddr?['address'],
+      'dropoff_latitude': defaultAddr?['latitude'],
+      'dropoff_longitude': defaultAddr?['longitude'],
+      // No delivery-partner assignment logic exists yet — left null until
+      // there's a table/service to assign one from.
+      'delivery_partner_id': null,
+      'status': 'booked',
+    });
+  }
+
   void _planInspection() {
     Navigator.push(
       context,
@@ -239,6 +268,8 @@ class _InspectionScreenState extends State<InspectionScreen> {
           price: 'Get Quote',
           duration: 'Report in 30 min',
           vehicleId: widget.vehicleId,
+          showPickupDropOption: false,
+          onSuccess: _saveInspectionBooking,
         ),
       ),
     );
