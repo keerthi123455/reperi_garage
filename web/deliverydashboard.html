@@ -299,6 +299,61 @@
             pointer-events: none;
         }
 
+        .stage-block {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid #333;
+        }
+
+        .stage-current {
+            color: #D4A017;
+            font-weight: 800;
+            font-size: 13px;
+            margin-bottom: 3px;
+        }
+
+        .stage-updated {
+            color: #777;
+            font-size: 11px;
+            margin-bottom: 12px;
+        }
+
+        .advance-btn {
+            width: 100%;
+            padding: 12px;
+            background: #D4A017;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: 800;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+        }
+
+        .advance-btn:hover {
+            background: #e6b820;
+        }
+
+        .advance-btn:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .delivered-pill {
+            display: inline-block;
+            padding: 8px 14px;
+            background: rgba(81, 207, 102, 0.15);
+            color: #51cf66;
+            border-radius: 8px;
+            font-weight: 800;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
         .no-bookings {
             text-align: center;
             padding: 40px 20px;
@@ -374,6 +429,44 @@
 
         const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        // The fixed pickup/drop stage sequence a delivery partner drives a
+        // booking through. null (not in this list) means "booked, nothing
+        // done yet" — shown to the customer as "Initiating Pickup".
+        const STAGE_ORDER = ['pickup_started', 'picked_up', 'to_garage', 'delivered'];
+        const STAGE_COLUMN = {
+            pickup_started: 'stage_pickup_started_at',
+            picked_up: 'stage_picked_up_at',
+            to_garage: 'stage_to_garage_at',
+            delivered: 'stage_delivered_at',
+        };
+        const STAGE_LABEL = {
+            null: 'Initiating Pickup',
+            pickup_started: 'Pickup Started',
+            picked_up: 'Vehicle Picked Up',
+            to_garage: 'Vehicle To Garage',
+            delivered: 'Vehicle Delivered',
+        };
+        // What the button says to move OUT of the given current stage.
+        const NEXT_BUTTON_LABEL = {
+            null: 'Start Pickup',
+            pickup_started: 'Vehicle Picked Up',
+            picked_up: 'Vehicle To Garage',
+            to_garage: 'Vehicle Delivered',
+        };
+
+        function nextStage(current) {
+            if (current == null) return STAGE_ORDER[0];
+            const idx = STAGE_ORDER.indexOf(current);
+            if (idx === -1 || idx === STAGE_ORDER.length - 1) return null;
+            return STAGE_ORDER[idx + 1];
+        }
+
+        let currentPartnerId = null;
+        // Keyed by "sourceTable::id" so the inline onclick handlers below
+        // don't need to smuggle a JSON blob through an HTML attribute.
+        let bookingsIndex = {};
+        const keyFor = (b) => `${b.sourceTable}::${b.id}`;
+
         window.addEventListener('load', async () => {
             await checkAuthentication();
         });
@@ -414,6 +507,8 @@
                 if (error || !partner) {
                     throw new Error('No delivery partner profile found for this account.');
                 }
+
+                currentPartnerId = partner.id;
 
                 document.getElementById('partnerEmail').textContent = partner.email;
                 document.getElementById('partnerId').textContent = partner.id;
@@ -457,7 +552,9 @@
                 if (pollutionRes.error) throw pollutionRes.error;
                 if (inspectionRes.error) throw inspectionRes.error;
 
-                const normalize = (rows, typeLabel, defaultTitle) => (rows || []).map((r) => ({
+                const normalize = (rows, typeLabel, defaultTitle, sourceTable) => (rows || []).map((r) => ({
+                    sourceTable,
+                    id: r.id,
                     typeLabel,
                     title: r.package_name || defaultTitle,
                     price: r.package_price || r.price || null,
@@ -467,15 +564,25 @@
                     pickupLng: r.pickup_longitude,
                     pickupDrop: r.pickupdrop,
                     createdAt: r.created_at,
+                    deliveryStage: r.delivery_stage || null,
+                    stageTimestamps: {
+                        pickup_started: r.stage_pickup_started_at,
+                        picked_up: r.stage_picked_up_at,
+                        to_garage: r.stage_to_garage_at,
+                        delivered: r.stage_delivered_at,
+                    },
                 }));
 
                 const all = [
-                    ...normalize(bookingsRes.data, 'Service Booking', 'Service Booking'),
-                    ...normalize(pollutionRes.data, 'Pollution Certificate', 'Pollution Certificate Check'),
-                    ...normalize(inspectionRes.data, 'Vehicle Health Check', 'Vehicle Health Check'),
+                    ...normalize(bookingsRes.data, 'Service Booking', 'Service Booking', 'bookings'),
+                    ...normalize(pollutionRes.data, 'Pollution Certificate', 'Pollution Certificate Check', 'pollution_booking'),
+                    ...normalize(inspectionRes.data, 'Vehicle Health Check', 'Vehicle Health Check', 'inspection_booking'),
                 ];
 
                 all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+                bookingsIndex = {};
+                all.forEach((b) => { bookingsIndex[keyFor(b)] = b; });
 
                 displayBookings(all);
             } catch (err) {
@@ -510,6 +617,46 @@
             `;
         }
 
+        function formatFullDateTime(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            return d.toLocaleString(undefined, {
+                weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+                hour: 'numeric', minute: '2-digit',
+            });
+        }
+
+        // Only bookings actually being picked up/dropped off ever get a
+        // delivery_partner_id assigned in the first place (see
+        // payment_screen.dart's _pickupDropYes), so every card here has
+        // pickupdrop = 'yes' in practice — but check explicitly anyway
+        // rather than assuming.
+        function renderStageBlock(b) {
+            if ((b.pickupDrop || '').toLowerCase() !== 'yes') return '';
+
+            const stage = b.deliveryStage;
+            const label = STAGE_LABEL[stage];
+            const updatedAt = stage ? b.stageTimestamps[stage] : b.createdAt;
+            const nextLabel = NEXT_BUTTON_LABEL[stage];
+
+            const updatedHtml = updatedAt
+                ? `<div class="stage-updated">Updated: ${escapeHtml(formatFullDateTime(updatedAt))}</div>`
+                : '';
+
+            const actionHtml = stage === 'delivered'
+                ? `<span class="delivered-pill">✅ Trip Completed</span>`
+                : `<button class="advance-btn" onclick="advanceStageByKey('${keyFor(b)}')">${escapeHtml(nextLabel)}</button>`;
+
+            return `
+                <div class="stage-block">
+                    <div class="stage-current">${escapeHtml(label)}</div>
+                    ${updatedHtml}
+                    ${actionHtml}
+                </div>
+            `;
+        }
+
         function renderBookingCard(b) {
             const hasCoords = b.pickupLat != null && b.pickupLng != null;
             const navigateHtml = hasCoords
@@ -525,12 +672,14 @@
                         </div>
                         ${b.price ? `<div class="booking-price">${escapeHtml(String(b.price))}</div>` : ''}
                     </div>
+                    <div class="booking-detail-row"><strong>Booked:</strong> ${escapeHtml(formatFullDateTime(b.createdAt))}</div>
                     <div class="booking-detail-row"><strong>Status:</strong> ${escapeHtml(b.status)}</div>
                     <div class="booking-detail-row"><strong>Pickup:</strong> ${escapeHtml(b.pickupAddress || 'Not specified')}</div>
                     <div class="booking-footer">
                         ${b.pickupDrop ? `<span class="pickupdrop-pill">Pickup &amp; Drop: ${escapeHtml(b.pickupDrop)}</span>` : '<span></span>'}
                         ${navigateHtml}
                     </div>
+                    ${renderStageBlock(b)}
                 </div>
             `;
         }
@@ -539,6 +688,54 @@
             const div = document.createElement('div');
             div.textContent = str;
             return div.innerHTML;
+        }
+
+        async function advanceStageByKey(key) {
+            const booking = bookingsIndex[key];
+            if (booking) await advanceStage(booking);
+        }
+
+        async function advanceStage(booking) {
+            const next = nextStage(booking.deliveryStage);
+            if (!next) return; // already delivered — trip is closed
+
+            const column = STAGE_COLUMN[next];
+            const nowIso = new Date().toISOString();
+
+            const { error } = await sbClient
+                .from(booking.sourceTable)
+                .update({ delivery_stage: next, [column]: nowIso })
+                .eq('id', booking.id);
+
+            if (error) {
+                alert('Failed to update stage: ' + error.message);
+                return;
+            }
+
+            if (next === 'delivered') {
+                await incrementDeliveriesCompleted();
+            }
+
+            await fetchAssignedBookings(currentPartnerId);
+        }
+
+        async function incrementDeliveriesCompleted() {
+            const { data, error } = await sbClient
+                .from('delivery_partners')
+                .select('total_deliveries_completed')
+                .eq('id', currentPartnerId)
+                .single();
+
+            if (error || !data) return;
+
+            const updated = (data.total_deliveries_completed || 0) + 1;
+
+            await sbClient
+                .from('delivery_partners')
+                .update({ total_deliveries_completed: updated })
+                .eq('id', currentPartnerId);
+
+            document.getElementById('partnerDeliveries').textContent = updated;
         }
 
         async function handleLogout() {

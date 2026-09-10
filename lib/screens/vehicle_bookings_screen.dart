@@ -985,6 +985,21 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                 ),
                               ),
 
+                              if ((booking['pickupdrop'] ?? '')
+                                      .toString()
+                                      .toLowerCase() ==
+                                  'yes')
+                                _DeliveryStageTracker(
+                                  stage: booking['delivery_stage'],
+                                  stageTimestamps: {
+                                    'pickup_started': booking['stage_pickup_started_at'],
+                                    'picked_up': booking['stage_picked_up_at'],
+                                    'to_garage': booking['stage_to_garage_at'],
+                                    'delivered': booking['stage_delivered_at'],
+                                  },
+                                  createdAt: booking['created_at'],
+                                ),
+
                               const SizedBox(height: 22),
 
                               Row(
@@ -1067,7 +1082,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   }) {
     final status = (booking['status'] ?? 'booked').toString();
     final price = booking['price']?.toString();
-    final dateStr = formatDate(booking['created_at'] ?? '');
+    final dateStr = formatFullDateTime(booking['created_at']);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 22),
@@ -1118,6 +1133,19 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                 letterSpacing: 1,
               ),
             ),
+          ),
+          // Pollution/inspection bookings are always doorstep pickup+drop
+          // (see supabase_pollution_inspection_tables.sql), so this tracker
+          // always applies here — no pickupdrop check needed.
+          _DeliveryStageTracker(
+            stage: booking['delivery_stage'],
+            stageTimestamps: {
+              'pickup_started': booking['stage_pickup_started_at'],
+              'picked_up': booking['stage_picked_up_at'],
+              'to_garage': booking['stage_to_garage_at'],
+              'delivered': booking['stage_delivered_at'],
+            },
+            createdAt: booking['created_at'],
           ),
         ],
       ),
@@ -1181,6 +1209,158 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// A day/date/time formatter shared by the delivery-stage tracker and the
+/// pollution/inspection compliance cards, e.g. "Wed, 10 Sep 2026, 3:45 PM".
+String formatFullDateTime(dynamic iso) {
+  if (iso == null) return '';
+  try {
+    final date = DateTime.parse(iso.toString()).toLocal();
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final hour12 = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final period = date.hour >= 12 ? 'PM' : 'AM';
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '${days[date.weekday - 1]}, ${date.day} ${months[date.month - 1]} '
+        '${date.year}, $hour12:$minute $period';
+  } catch (_) {
+    return '';
+  }
+}
+
+/// An Amazon-style horizontal stepper showing where a booking's doorstep
+/// pickup/drop currently stands, driven by the delivery partner from
+/// web/deliverydashboard.html. `stage` is null until the partner taps
+/// "Start Pickup" there — shown here as "Initiating Pickup" — then moves
+/// through pickup_started -> picked_up -> to_garage -> delivered.
+class _DeliveryStageTracker extends StatelessWidget {
+  const _DeliveryStageTracker({
+    required this.stage,
+    required this.stageTimestamps,
+    required this.createdAt,
+  });
+
+  final String? stage;
+
+  /// Keyed by stage name (pickup_started/picked_up/to_garage/delivered) —
+  /// when each stage was reached, or null if not reached yet.
+  final Map<String, dynamic> stageTimestamps;
+
+  final dynamic createdAt;
+
+  static const _stageKeys = ['booked', 'pickup_started', 'picked_up', 'to_garage', 'delivered'];
+
+  static const _nodeLabels = {
+    'booked': 'Initiating\nPickup',
+    'pickup_started': 'Pickup\nStarted',
+    'picked_up': 'Picked\nUp',
+    'to_garage': 'To\nGarage',
+    'delivered': 'Delivered',
+  };
+
+  static const _statusText = {
+    'booked': 'Initiating Pickup',
+    'pickup_started': 'Pickup Started',
+    'picked_up': 'Vehicle Picked Up',
+    'to_garage': 'On The Way To Garage',
+    'delivered': 'Vehicle Delivered',
+  };
+
+  static const Color _gold = Color(0xFFD4A017);
+
+  int get _activeIndex => _stageKeys.indexOf(stage ?? 'booked');
+
+  dynamic get _currentTimestamp {
+    if (stage == null) return createdAt;
+    return stageTimestamps[stage] ?? createdAt;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activeIndex = _activeIndex;
+    final timestamp = formatFullDateTime(_currentTimestamp);
+
+    return Container(
+      margin: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSunken,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _statusText[stage ?? 'booked']!,
+            style: const TextStyle(color: _gold, fontWeight: FontWeight.w900, fontSize: 15),
+          ),
+          if (timestamp.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Text(timestamp, style: TextStyle(color: AppColors.mut, fontSize: 11.5)),
+          ],
+          const SizedBox(height: 18),
+          Row(
+            children: List.generate(_stageKeys.length, (i) {
+              final reached = i <= activeIndex;
+              final leftLineReached = i > 0 && i <= activeIndex;
+              final rightLineReached = i < _stageKeys.length - 1 && i < activeIndex;
+              return Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: i == 0
+                          ? const SizedBox()
+                          : Container(height: 3, color: leftLineReached ? _gold : AppColors.line),
+                    ),
+                    Container(
+                      width: 13,
+                      height: 13,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: reached ? _gold : AppColors.line,
+                      ),
+                    ),
+                    Expanded(
+                      child: i == _stageKeys.length - 1
+                          ? const SizedBox()
+                          : Container(height: 3, color: rightLineReached ? _gold : AppColors.line),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: List.generate(_stageKeys.length, (i) {
+              final key = _stageKeys[i];
+              final reached = i <= activeIndex;
+              return Expanded(
+                child: Text(
+                  _nodeLabels[key]!,
+                  textAlign: i == 0
+                      ? TextAlign.start
+                      : (i == _stageKeys.length - 1 ? TextAlign.end : TextAlign.center),
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    height: 1.25,
+                    fontWeight: reached ? FontWeight.w800 : FontWeight.w500,
+                    color: reached ? AppColors.txt : AppColors.mut,
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
       ),
     );
   }
