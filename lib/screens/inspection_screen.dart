@@ -4,6 +4,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/address_service.dart';
+import '../services/delivery_partner_assignment_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/placeholder_box.dart';
@@ -240,6 +241,9 @@ class _InspectionScreenState extends State<InspectionScreen> {
     if (user == null) return;
 
     final defaultAddr = await AddressService().getDefaultAddress();
+    // Alternates between delivery partner 1 and 2 for every booking.
+    final deliveryPartnerId =
+        await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('inspection_booking');
 
     await Supabase.instance.client.from('inspection_booking').insert({
       'user_id': user.id,
@@ -252,9 +256,10 @@ class _InspectionScreenState extends State<InspectionScreen> {
       'dropoff_address': defaultAddr?['address'],
       'dropoff_latitude': defaultAddr?['latitude'],
       'dropoff_longitude': defaultAddr?['longitude'],
-      // No delivery-partner assignment logic exists yet — left null until
-      // there's a table/service to assign one from.
-      'delivery_partner_id': null,
+      'delivery_partner_id': deliveryPartnerId,
+      // Always yes — a vehicle health check is doorstep pickup/drop by
+      // nature, no opt-out toggle for this service.
+      'pickupdrop': 'yes',
       'status': 'booked',
     });
   }

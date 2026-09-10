@@ -205,6 +205,7 @@ class _HomeScreenState extends State<HomeScreen> {
           carNumber: (row['car_number'] ?? '').toString(),
           photoUrl: row['photo_url'] as String?,
           bookingStatus: await _fetchLatestBookingStatus(id),
+          hasActiveSubscription: await _fetchHasActiveSubscription(id),
         );
       }));
 
@@ -238,6 +239,24 @@ class _HomeScreenState extends State<HomeScreen> {
       return bookingRows.first['booking_status'] as String?;
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Whether this specific vehicle — not any vehicle on the account — has
+  /// an active subscription, for that vehicle's own "ACTIVE SUB" badge.
+  Future<bool> _fetchHasActiveSubscription(String vehicleId) async {
+    try {
+      final rows = List<Map<String, dynamic>>.from(
+        await Supabase.instance.client
+            .from('subscriptions')
+            .select('id')
+            .eq('vehicle_id', vehicleId)
+            .eq('status', 'active')
+            .limit(1),
+      );
+      return rows.isNotEmpty;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -358,7 +377,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openMyVehicles() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()))
+        .then((_) => _loadVehicles());
+  }
+
+  /// Bound to the "+" tile at the end of the vehicle carousel — same
+  /// destination as [_openMyVehicles], but lands straight in the
+  /// add-vehicle sheet instead of just the profile screen.
+  void _openAddVehicle() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProfileScreen(autoOpenAddVehicle: true)),
+    ).then((_) => _loadVehicles());
   }
 
   void _openMyBookingsFromDrawer() {
@@ -678,6 +708,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             vehicles: _vehicles,
                             onTap: _openVehicleBookings,
                             onPhotoTap: _showVehiclePhotoSourceSheet,
+                            onAddVehicle: _openAddVehicle,
                             onPageChanged: (page) => setState(() => _activeVehicleIndex = page),
                           ),
                         const SizedBox(height: 6),

@@ -21,7 +21,7 @@
 
         .container {
             width: 100%;
-            max-width: 600px;
+            max-width: 640px;
             margin: 0 auto;
         }
 
@@ -87,11 +87,15 @@
 
         #dashboardScreen {
             display: none;
+        }
+
+        .card {
             background: #1a1a1a;
             border-radius: 20px;
             padding: 30px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
             border: 1px solid #333;
+            margin-bottom: 20px;
         }
 
         .dashboard-header {
@@ -184,6 +188,126 @@
             background: rgba(255, 107, 107, 0.15);
             color: #ff6b6b;
         }
+
+        .section-title {
+            color: #D4A017;
+            font-size: 16px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+        }
+
+        .bookings-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .booking-card {
+            background: #262626;
+            border: 1px solid #3a3a3a;
+            border-radius: 14px;
+            padding: 18px;
+        }
+
+        .booking-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .booking-title {
+            color: #fff;
+            font-weight: 800;
+            font-size: 15px;
+        }
+
+        .booking-type {
+            color: #666;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+        }
+
+        .booking-price {
+            color: #D4A017;
+            font-weight: 900;
+            font-size: 16px;
+            white-space: nowrap;
+        }
+
+        .booking-detail-row {
+            color: #999;
+            font-size: 12.5px;
+            margin-bottom: 6px;
+            line-height: 1.5;
+        }
+
+        .booking-detail-row strong {
+            color: #ccc;
+        }
+
+        .booking-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid #333;
+        }
+
+        .pickupdrop-pill {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 10.5px;
+            font-weight: 800;
+            text-transform: uppercase;
+            background: rgba(212, 160, 23, 0.12);
+            color: #D4A017;
+        }
+
+        .navigate-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 18px;
+            background: #D4A017;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: 800;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .navigate-btn:hover {
+            background: #e6b820;
+        }
+
+        .navigate-btn.disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .no-bookings {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .no-bookings p {
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -200,33 +324,45 @@
         </div>
 
         <div id="dashboardScreen">
-            <div class="dashboard-header">
-                <h2>🚚 Delivery Dashboard</h2>
-                <button class="logout-btn" onclick="handleLogout()">LOGOUT</button>
+            <div class="card">
+                <div class="dashboard-header">
+                    <h2>🚚 Delivery Dashboard</h2>
+                    <button class="logout-btn" onclick="handleLogout()">LOGOUT</button>
+                </div>
+
+                <div class="partner-info">
+                    <div class="email" id="partnerEmail"></div>
+
+                    <div class="info-row">
+                        <span class="info-label">Partner ID</span>
+                        <span class="info-value" id="partnerId">—</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Status</span>
+                        <span class="info-value" id="partnerStatus">—</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Rating</span>
+                        <span class="info-value" id="partnerRating">—</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Deliveries Completed</span>
+                        <span class="info-value" id="partnerDeliveries">—</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Partner Since</span>
+                        <span class="info-value" id="partnerSince">—</span>
+                    </div>
+                </div>
             </div>
 
-            <div class="partner-info">
-                <div class="email" id="partnerEmail"></div>
-
-                <div class="info-row">
-                    <span class="info-label">Partner ID</span>
-                    <span class="info-value" id="partnerId">—</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Status</span>
-                    <span class="info-value" id="partnerStatus">—</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Rating</span>
-                    <span class="info-value" id="partnerRating">—</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Deliveries Completed</span>
-                    <span class="info-value" id="partnerDeliveries">—</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Partner Since</span>
-                    <span class="info-value" id="partnerSince">—</span>
+            <div class="card">
+                <div class="section-title">Assigned Bookings</div>
+                <div id="bookingsContent">
+                    <div style="text-align: center; padding: 40px; color: #999;">
+                        <div class="loading-spinner"></div>
+                        <p style="margin-top: 15px;">Loading bookings...</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -295,9 +431,114 @@
 
                 document.getElementById('loadingScreen').style.display = 'none';
                 document.getElementById('dashboardScreen').style.display = 'block';
+
+                await fetchAssignedBookings(partner.id);
             } catch (err) {
                 showErrorScreen(err.message);
             }
+        }
+
+        // Pulls this partner's assigned rows from all three booking-type
+        // tables (they're separate tables, not one shared one — see
+        // payment_screen.dart / pollution_screen.dart / inspection_
+        // screen.dart in the app) and normalizes them into one shape so
+        // they can be rendered as a single merged, sorted list.
+        async function fetchAssignedBookings(partnerId) {
+            const bookingsContent = document.getElementById('bookingsContent');
+
+            try {
+                const [bookingsRes, pollutionRes, inspectionRes] = await Promise.all([
+                    sbClient.from('bookings').select('*').eq('delivery_partner_id', partnerId),
+                    sbClient.from('pollution_booking').select('*').eq('delivery_partner_id', partnerId),
+                    sbClient.from('inspection_booking').select('*').eq('delivery_partner_id', partnerId),
+                ]);
+
+                if (bookingsRes.error) throw bookingsRes.error;
+                if (pollutionRes.error) throw pollutionRes.error;
+                if (inspectionRes.error) throw inspectionRes.error;
+
+                const normalize = (rows, typeLabel, defaultTitle) => (rows || []).map((r) => ({
+                    typeLabel,
+                    title: r.package_name || defaultTitle,
+                    price: r.package_price || r.price || null,
+                    status: r.payment_status || r.status || 'unknown',
+                    pickupAddress: r.pickup_address,
+                    pickupLat: r.pickup_latitude,
+                    pickupLng: r.pickup_longitude,
+                    pickupDrop: r.pickupdrop,
+                    createdAt: r.created_at,
+                }));
+
+                const all = [
+                    ...normalize(bookingsRes.data, 'Service Booking', 'Service Booking'),
+                    ...normalize(pollutionRes.data, 'Pollution Certificate', 'Pollution Certificate Check'),
+                    ...normalize(inspectionRes.data, 'Vehicle Health Check', 'Vehicle Health Check'),
+                ];
+
+                all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+                displayBookings(all);
+            } catch (err) {
+                bookingsContent.innerHTML = `
+                    <div class="no-bookings">
+                        <p>❌ Error loading bookings: ${err.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function navigateUrl(lat, lng) {
+            return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+        }
+
+        function displayBookings(bookings) {
+            const bookingsContent = document.getElementById('bookingsContent');
+
+            if (!bookings.length) {
+                bookingsContent.innerHTML = `
+                    <div class="no-bookings">
+                        <p>No bookings assigned yet.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            bookingsContent.innerHTML = `
+                <div class="bookings-list">
+                    ${bookings.map(renderBookingCard).join('')}
+                </div>
+            `;
+        }
+
+        function renderBookingCard(b) {
+            const hasCoords = b.pickupLat != null && b.pickupLng != null;
+            const navigateHtml = hasCoords
+                ? `<a class="navigate-btn" href="${navigateUrl(b.pickupLat, b.pickupLng)}" target="_blank" rel="noopener">🧭 Navigate</a>`
+                : `<span class="navigate-btn disabled">🧭 No location</span>`;
+
+            return `
+                <div class="booking-card">
+                    <div class="booking-header">
+                        <div>
+                            <div class="booking-title">${escapeHtml(b.title)}</div>
+                            <div class="booking-type">${escapeHtml(b.typeLabel)}</div>
+                        </div>
+                        ${b.price ? `<div class="booking-price">${escapeHtml(String(b.price))}</div>` : ''}
+                    </div>
+                    <div class="booking-detail-row"><strong>Status:</strong> ${escapeHtml(b.status)}</div>
+                    <div class="booking-detail-row"><strong>Pickup:</strong> ${escapeHtml(b.pickupAddress || 'Not specified')}</div>
+                    <div class="booking-footer">
+                        ${b.pickupDrop ? `<span class="pickupdrop-pill">Pickup &amp; Drop: ${escapeHtml(b.pickupDrop)}</span>` : '<span></span>'}
+                        ${navigateHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
         }
 
         async function handleLogout() {

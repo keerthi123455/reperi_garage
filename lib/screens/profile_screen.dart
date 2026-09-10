@@ -16,7 +16,13 @@ import '../widgets/error_display.dart';
 const Color _highlightYellow = Color(0xFFFFD600);
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.autoOpenAddVehicle = false});
+
+  /// When true, opens the "Add Vehicle" sheet as soon as this screen
+  /// appears — used by the home screen's "+" tile at the end of the
+  /// vehicle carousel, which should land straight in that flow instead of
+  /// just the profile screen.
+  final bool autoOpenAddVehicle;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -115,6 +121,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
+    if (widget.autoOpenAddVehicle) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) openAddVehicleSheet();
+      });
+    }
   }
 
   void _onThemeChanged() {

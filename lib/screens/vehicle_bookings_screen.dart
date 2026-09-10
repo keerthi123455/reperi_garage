@@ -32,6 +32,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   Set<String> unreadBookingIds = {};
   List insuranceUpdates = [];
   List washHistory = [];
+  List pollutionBookings = [];
+  List inspectionBookings = [];
   bool loading = true;
   bool _insuranceExpanded = false;
   bool _subscriptionExpanded = false;
@@ -44,6 +46,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     fetchInsuranceUpdates();
     fetchSubscription();
     fetchWashHistory();
+    fetchPollutionBookings();
+    fetchInspectionBookings();
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
@@ -191,6 +195,36 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     });
   }
 
+  Future<void> fetchPollutionBookings() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('pollution_booking')
+          .select('*')
+          .eq('vehicle_id', widget.vehicleId)
+          .order('created_at', ascending: false);
+
+      if (!mounted) return;
+      setState(() => pollutionBookings = response as List);
+    } catch (e) {
+      debugPrint('Error fetching pollution bookings: $e');
+    }
+  }
+
+  Future<void> fetchInspectionBookings() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('inspection_booking')
+          .select('*')
+          .eq('vehicle_id', widget.vehicleId)
+          .order('created_at', ascending: false);
+
+      if (!mounted) return;
+      setState(() => inspectionBookings = response as List);
+    } catch (e) {
+      debugPrint('Error fetching inspection bookings: $e');
+    }
+  }
+
   String formatDate(String dateStr) {
     try {
       final date = DateTime.parse(dateStr);
@@ -300,6 +334,15 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       ),
                     ),
 
+                    // This entire section only applies to THIS vehicle —
+                    // `subscription` comes from fetchSubscription(), which
+                    // queries `subscriptions` filtered to
+                    // `vehicle_id = widget.vehicleId`, and stays `{}` when
+                    // this vehicle has none. Previously this whole block
+                    // rendered unconditionally with a hardcoded title/price
+                    // fallback, making every vehicle look like it had an
+                    // active subscription regardless of the actual data.
+                    if (subscription.isNotEmpty) ...[
                     const SizedBox(height: 34),
 
                     const Text(
@@ -340,9 +383,10 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Text(
-                                        'Car Wash Subscription - Luxury Cars',
-                                        style: TextStyle(
+                                      Text(
+                                        subscription['plan_title'] ??
+                                            'Car Wash Subscription',
+                                        style: const TextStyle(
                                           color: Color(0xFFD4A017),
                                           fontSize: 18,
                                           fontWeight: FontWeight.w900,
@@ -353,7 +397,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
                                           Text(
-                                            '₹${subscription['price'] ?? '1200'}/month',
+                                            '₹${subscription['price'] ?? '-'}/month',
                                             style: TextStyle(
                                               color: AppColors.txt,
                                               fontSize: 16,
@@ -557,6 +601,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                         ),
                       ),
                     ),
+                    ], // end if (subscription.isNotEmpty)
 
                     const SizedBox(height: 34),
 
@@ -962,6 +1007,32 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       );
                     }).toList(),
 
+                    if (pollutionBookings.isNotEmpty ||
+                        inspectionBookings.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      Text(
+                        'Pollution & Inspection',
+                        style: TextStyle(
+                          color: AppColors.txt,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      ...pollutionBookings.map(
+                        (b) => _buildComplianceCard(
+                          title: 'Pollution Check',
+                          booking: b,
+                        ),
+                      ),
+                      ...inspectionBookings.map(
+                        (b) => _buildComplianceCard(
+                          title: 'Vehicle Inspection',
+                          booking: b,
+                        ),
+                      ),
+                    ],
+
                     const SizedBox(height: 40),
                   ],
                 ),
@@ -989,6 +1060,69 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
         'car_model': widget.carModel,
         'car_number': widget.carNumber,
       };
+
+  Widget _buildComplianceCard({
+    required String title,
+    required Map booking,
+  }) {
+    final status = (booking['status'] ?? 'booked').toString();
+    final price = booking['price']?.toString();
+    final dateStr = formatDate(booking['created_at'] ?? '');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 22),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: AppColors.txt,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (price != null)
+            Text(
+              '₹$price',
+              style: const TextStyle(
+                color: Color(0xFFD4A017),
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          const SizedBox(height: 12),
+          Text(
+            dateStr,
+            style: TextStyle(color: AppColors.mut, fontSize: 13),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFD4A017),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              status.toUpperCase(),
+              style: TextStyle(
+                color: AppColors.onAccentDark,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _showImageViewer(BuildContext context, String imageUrl, String title) {
     showDialog(

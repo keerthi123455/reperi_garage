@@ -6,6 +6,7 @@ import 'package:reperi_garage/services/address_service.dart';
 import 'package:reperi_garage/screens/address_management_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '/services/admin_assignment_service.dart';  // ✅ NEW: Admin assignment service
+import '/services/delivery_partner_assignment_service.dart';
 
 class PaymentScreen extends StatefulWidget {
   final String title;
@@ -34,6 +35,12 @@ class PaymentScreen extends StatefulWidget {
   /// (the fleet flow), which already shows its own itemized total.
   final bool showPickupDropOption;
 
+  /// When [showPickupDropOption] is off and this is true, the default
+  /// `bookings` insert still writes `pickupdrop: 'yes'` instead of
+  /// omitting the column — for services (like roadside assistance) that
+  /// are inherently a pickup, just without the optional ₹100 toggle.
+  final bool forcePickupDropYes;
+
   const PaymentScreen({
     super.key,
     required this.title,
@@ -44,6 +51,7 @@ class PaymentScreen extends StatefulWidget {
     this.onSuccess,
     this.onlineOnly = false,
     this.showPickupDropOption = true,
+    this.forcePickupDropYes = false,
   });
 
   @override
@@ -62,6 +70,15 @@ class _PaymentScreenState
   static const int _pickupDropFee = 100;
 
   bool get _showPickupDrop => widget.showPickupDropOption && widget.billItems == null;
+
+  /// Whether this booking is actually being picked up/dropped off — used to
+  /// decide whether a delivery partner should be assigned at all. A "no"
+  /// (or no pickup/drop concept for this booking) means there's nothing for
+  /// a delivery partner to do.
+  bool get _pickupDropYes {
+    if (_showPickupDrop) return _addPickupDrop;
+    return widget.forcePickupDropYes;
+  }
 
   /// Null when [PaymentScreen.price] isn't a plain "₹NNN" amount (e.g. a
   /// "Get Quote"/"Custom Quote" placeholder) — the pickup/drop fee and the
@@ -381,13 +398,22 @@ class _PaymentScreenState
         
         // ✅ NEW: Get admin ID for load-balanced assignment
         final assignedAdminId = await AdminAssignmentService.getNextAdminId();
-        
+        // Only assign a delivery partner when there's actually a
+        // pickup/drop for one to handle.
+        final deliveryPartnerId = _pickupDropYes
+            ? await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('bookings')
+            : null;
+
         await supabase.from('bookings').insert({
           'user_id': user!.id,
           'vehicle_id': widget.vehicleId,
           'package_name': widget.title,
           'package_price': widget.price,
-          if (_showPickupDrop) 'pickupdrop': _addPickupDrop ? 'yes' : 'no',
+          if (_showPickupDrop)
+            'pickupdrop': _addPickupDrop ? 'yes' : 'no'
+          else if (widget.forcePickupDropYes)
+            'pickupdrop': 'yes',
+          if (deliveryPartnerId != null) 'delivery_partner_id': deliveryPartnerId,
           'razorpay_order_id': result.orderId,
           'razorpay_payment_id': result.paymentId,
           'payment_status': 'paid',
@@ -439,48 +465,65 @@ class _PaymentScreenState
     });
 
     try {
-      // ── Get location and customer details ──
-      final addressService = AddressService();
-      final defaultAddr = await addressService.getDefaultAddress();
-      
-      // Get customer details from profiles
-      Map<String, dynamic>? profileData;
-      try {
-        profileData = await supabase
-            .from('profiles')
-            .select('full_name, phone')
-            .eq('id', user.id)
-            .single();
-      } catch (e) {
-        // Profile might not exist, continue with null values
-      }
-      
-      // ✅ NEW: Get admin ID for load-balanced assignment
-      final assignedAdminId = await AdminAssignmentService.getNextAdminId();
-      
-      await supabase.from('bookings').insert({
-        'user_id': user.id,
-        'vehicle_id': widget.vehicleId,
-        'package_name': widget.title,
-        'package_price': widget.price,
-        if (_showPickupDrop) 'pickupdrop': _addPickupDrop ? 'yes' : 'no',
-        'payment_status': 'cod', // cash on delivery/pickup
+      // Fleet payments / subscriptions & compliance bookings use the
+      // custom callback, same as the online-payment path — otherwise a
+      // Cash-on-Pickup subscription booking would land in `bookings`
+      // instead of its own table.
+      if (widget.onSuccess != null) {
+        await widget.onSuccess!('COD', 'COD');
+      } else {
+        // ── Get location and customer details ──
+        final addressService = AddressService();
+        final defaultAddr = await addressService.getDefaultAddress();
 
-        // ── Location Data ──
-        'pickup_address': defaultAddr?['address'] ?? 'Not specified',
-        'pickup_latitude': defaultAddr?['latitude'],
-        'pickup_longitude': defaultAddr?['longitude'],
-        'dropoff_address': defaultAddr?['address'] ?? 'Not specified',
-        'dropoff_latitude': defaultAddr?['latitude'],
-        'dropoff_longitude': defaultAddr?['longitude'],
-        
-        // ── Customer Details ──
-        'customer_name': profileData?['full_name'] ?? 'Unknown',
-        'customer_phone': profileData?['phone'],
-        
-        // ✅ NEW: Admin Assignment (Load-Balanced)
-        'assigned_to_admin_id': assignedAdminId,
-      });
+        // Get customer details from profiles
+        Map<String, dynamic>? profileData;
+        try {
+          profileData = await supabase
+              .from('profiles')
+              .select('full_name, phone')
+              .eq('id', user.id)
+              .single();
+        } catch (e) {
+          // Profile might not exist, continue with null values
+        }
+
+        // ✅ NEW: Get admin ID for load-balanced assignment
+        final assignedAdminId = await AdminAssignmentService.getNextAdminId();
+        // Only assign a delivery partner when there's actually a
+        // pickup/drop for one to handle.
+        final deliveryPartnerId = _pickupDropYes
+            ? await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('bookings')
+            : null;
+
+        await supabase.from('bookings').insert({
+          'user_id': user.id,
+          'vehicle_id': widget.vehicleId,
+          'package_name': widget.title,
+          'package_price': widget.price,
+          if (_showPickupDrop)
+            'pickupdrop': _addPickupDrop ? 'yes' : 'no'
+          else if (widget.forcePickupDropYes)
+            'pickupdrop': 'yes',
+          if (deliveryPartnerId != null) 'delivery_partner_id': deliveryPartnerId,
+          'payment_status': 'cod', // cash on delivery/pickup
+
+          // ── Location Data ──
+          'pickup_address': defaultAddr?['address'] ?? 'Not specified',
+          'pickup_latitude': defaultAddr?['latitude'],
+          'pickup_longitude': defaultAddr?['longitude'],
+          'dropoff_address': defaultAddr?['address'] ?? 'Not specified',
+          'dropoff_latitude': defaultAddr?['latitude'],
+          'dropoff_longitude': defaultAddr?['longitude'],
+
+          // ── Customer Details ──
+          'customer_name': profileData?['full_name'] ?? 'Unknown',
+          'customer_phone': profileData?['phone'],
+
+          // ✅ NEW: Admin Assignment (Load-Balanced)
+          'assigned_to_admin_id': assignedAdminId,
+        });
+      }
 
       await _showSuccessAndGoHome();
     } catch (e) {

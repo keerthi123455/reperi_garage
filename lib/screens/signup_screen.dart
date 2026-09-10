@@ -70,6 +70,14 @@ class _SignupScreenState extends State<SignupScreen>
         data: {'phone': phone},
       );
 
+      // Delivery partner accounts sign up through this same screen —
+      // detected purely by email convention (delivery1@reperi.com,
+      // delivery2@..., etc., matching the prefix used everywhere else
+      // for these accounts). When it matches, also create the
+      // delivery_partners profile row so the account can log into
+      // web/delivery.html, which looks a partner up by email.
+      await _maybeCreateDeliveryPartnerProfile(email);
+
       if (!mounted) return;
 
       Navigator.pushReplacement(
@@ -83,6 +91,34 @@ class _SignupScreenState extends State<SignupScreen>
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// Creates the matching `delivery_partners` row for delivery-partner
+  /// accounts (email starting with "delivery", e.g. delivery1@reperi.com)
+  /// — the same convention web/delivery.html's own register form uses.
+  /// `id` is left out entirely so its SERIAL default (1, 2, 3, ...)
+  /// applies; it's unrelated to the Supabase Auth user id. Runs quietly:
+  /// a failure here (duplicate email, RLS, etc.) doesn't block the normal
+  /// signup flow, since this account still works as a regular customer
+  /// account either way — it just wouldn't be able to log into
+  /// delivery.html until the row exists.
+  Future<void> _maybeCreateDeliveryPartnerProfile(String email) async {
+    final username = email.split('@').first.toLowerCase();
+    if (!username.startsWith('delivery')) return;
+
+    try {
+      await Supabase.instance.client.from('delivery_partners').insert({
+        'email': email,
+        // Supabase Auth already stores the real credential securely
+        // server-side — this column is redundant, but NOT NULL in the
+        // given schema, so a fixed placeholder satisfies the constraint
+        // without duplicating (or exposing) the actual password.
+        'password_hash': 'managed_by_supabase_auth',
+        'status': 'active',
+      });
+    } catch (e) {
+      // Swallowed deliberately — see doc comment above.
     }
   }
 

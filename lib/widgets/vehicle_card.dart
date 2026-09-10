@@ -86,8 +86,10 @@ class VehicleCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          const _ActiveSubBadge(),
+                          if (vehicle.hasActiveSubscription) ...[
+                            const SizedBox(width: 8),
+                            const _ActiveSubBadge(),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 10),

@@ -8,6 +8,7 @@ class Vehicle {
     required this.carNumber,
     this.photoUrl,
     this.bookingStatus,
+    this.hasActiveSubscription = false,
   });
 
   final String id;
@@ -20,6 +21,12 @@ class Vehicle {
   /// bookings yet.
   final String? bookingStatus;
 
+  /// Whether this specific vehicle has a `subscriptions` row with
+  /// `status = 'active'` — drives the "ACTIVE SUB" badge on its card. Each
+  /// vehicle has its own subscription; this must never be true for every
+  /// vehicle just because one of them is subscribed.
+  final bool hasActiveSubscription;
+
   Vehicle copyWith({String? photoUrl}) {
     return Vehicle(
       id: id,
@@ -28,6 +35,7 @@ class Vehicle {
       carNumber: carNumber,
       photoUrl: photoUrl ?? this.photoUrl,
       bookingStatus: bookingStatus,
+      hasActiveSubscription: hasActiveSubscription,
     );
   }
 
@@ -42,6 +50,7 @@ class Vehicle {
       carNumber: carNumber,
       photoUrl: photoUrl,
       bookingStatus: bookingStatus,
+      hasActiveSubscription: hasActiveSubscription,
     );
   }
 }
