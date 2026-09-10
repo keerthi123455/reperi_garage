@@ -5,6 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reperi Delivery Partner - Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      // Same OneSignal app as web/index.html and the Flutter app — this
+      // just binds *this device's* push identity to whichever delivery
+      // partner logs in here, using the 'delivery_<delivery_partners.id>'
+      // scheme so supabase/functions/notify-on-db-change/index.ts can
+      // target them.
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(async function (OneSignal) {
+        await OneSignal.init({
+          appId: "6bc39a67-c05a-4ba4-b950-9ccfc8e9b9b6",
+          safari_web_id: "web.onesignal.auto.195e7e66-9dea-4e11-b56c-b4a654da5ab7",
+          allowLocalhostAsSecureOrigin: true,
+        });
+      });
+
+      function oneSignalLogin(externalId) {
+        window.OneSignalDeferred = window.OneSignalDeferred || [];
+        OneSignalDeferred.push(async function (OneSignal) {
+          await OneSignal.login(externalId);
+        });
+      }
+
+      function oneSignalLogout() {
+        window.OneSignalDeferred = window.OneSignalDeferred || [];
+        OneSignalDeferred.push(async function (OneSignal) {
+          await OneSignal.logout();
+        });
+      }
+    </script>
     <style>
         * {
             margin: 0;
@@ -509,6 +539,7 @@
                 }
 
                 currentPartnerId = partner.id;
+                oneSignalLogin('delivery_' + currentPartnerId);
 
                 document.getElementById('partnerEmail').textContent = partner.email;
                 document.getElementById('partnerId').textContent = partner.id;
@@ -739,6 +770,7 @@
         }
 
         async function handleLogout() {
+            oneSignalLogout();
             await sbClient.auth.signOut();
             window.location.href = 'delivery.html';
         }

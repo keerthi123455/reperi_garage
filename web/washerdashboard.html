@@ -5,6 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reperi Washer - Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      // Same OneSignal app as web/index.html and the Flutter app — this
+      // just binds *this device's* push identity to whichever washer logs
+      // in here, using the 'washer_<washers.id>' scheme so
+      // supabase/functions/notify-on-db-change/index.ts can target them.
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(async function (OneSignal) {
+        await OneSignal.init({
+          appId: "6bc39a67-c05a-4ba4-b950-9ccfc8e9b9b6",
+          safari_web_id: "web.onesignal.auto.195e7e66-9dea-4e11-b56c-b4a654da5ab7",
+          allowLocalhostAsSecureOrigin: true,
+        });
+      });
+
+      function oneSignalLogin(externalId) {
+        window.OneSignalDeferred = window.OneSignalDeferred || [];
+        OneSignalDeferred.push(async function (OneSignal) {
+          await OneSignal.login(externalId);
+        });
+      }
+
+      function oneSignalLogout() {
+        window.OneSignalDeferred = window.OneSignalDeferred || [];
+        OneSignalDeferred.push(async function (OneSignal) {
+          await OneSignal.logout();
+        });
+      }
+    </script>
     <style>
         * {
             margin: 0;
@@ -440,6 +469,7 @@
                 currentWasherId = washerData.id;
                 document.getElementById('washerId').textContent = currentWasherId;
                 console.log('✅ Washer found:', { id: currentWasherId, email });
+                oneSignalLogin('washer_' + currentWasherId);
 
                 await fetchSubscriptions(currentWasherId);
             } catch (err) {
@@ -715,6 +745,7 @@
         }
 
         async function handleLogout() {
+            oneSignalLogout();
             await sbClient.auth.signOut();
             window.location.href = 'washerlogin.html';
         }

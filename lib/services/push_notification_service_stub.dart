@@ -6,6 +6,8 @@ class PushNotificationService {
 
   static Future<void> init() async {}
 
+  static Future<void> requestPermission() async {}
+
   static void loginAsCustomer(String supabaseUserId) {}
 
   static void loginAsFleet(String fleetUserId) {}

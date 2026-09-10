@@ -11,7 +11,12 @@ class PushNotificationService {
 
   static bool _initialized = false;
 
-  /// Call once, early in main(), before runApp().
+  /// Call once, early in main(), before runApp(). Only sets up the SDK —
+  /// does NOT prompt for notification permission, so it's safe to call
+  /// before the user has seen any screen. Call [requestPermission]
+  /// separately once there's actual context for why (e.g. right after
+  /// login), per Play Store guidance to request permissions only when a
+  /// feature that needs them is about to be used.
   static Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
@@ -21,10 +26,14 @@ class PushNotificationService {
     }
 
     OneSignal.initialize(_appId);
+  }
 
-    // Prompts the OS-level notification permission dialog (Android 13+,
-    // iOS). Safe to call even on platforms/OS versions that don't need
-    // it — it's a no-op there.
+  /// Prompts the OS-level notification permission dialog (Android 13+,
+  /// iOS). Safe to call multiple times or on platforms/OS versions that
+  /// don't need it — the OS only ever shows the dialog once per install
+  /// (until the user resets permissions), so this is a no-op if the user
+  /// already granted or denied it.
+  static Future<void> requestPermission() async {
     await OneSignal.Notifications.requestPermission(true);
   }
 

@@ -14,7 +14,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.reperi.autocare"
+    namespace = "com.reperi.autocare.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -24,8 +24,10 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.reperi.autocare"
+        // com.reperi.autocare was already reserved on Google Play (either by
+        // an earlier test upload or another account), so the app is
+        // registered there as com.reperi.autocare.app instead.
+        applicationId = "com.reperi.autocare.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
