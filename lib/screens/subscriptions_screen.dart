@@ -3,6 +3,7 @@ import 'payment_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../services/address_service.dart';
 
 class SubscriptionsScreen extends StatefulWidget {
   final String vehicleId;
@@ -174,6 +175,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
       final planDetails = _getPlanDetails();
       final endDate = DateTime.now().add(const Duration(days: 30));
+      final defaultAddr = await AddressService().getDefaultAddress();
 
       await Supabase.instance.client.from('subscriptions').insert({
         'user_id': user.id,
@@ -186,6 +188,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         'end_date': endDate.toIso8601String(),
         'payment_id': paymentId,
         'order_id': orderId,
+        'pickup_address': defaultAddr?['address'],
+        'pickup_latitude': defaultAddr?['latitude'],
+        'pickup_longitude': defaultAddr?['longitude'],
+        'pickup_address_name': defaultAddr?['name'],
       });
 
       print('✅ Subscription saved to database');

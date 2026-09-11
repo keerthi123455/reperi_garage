@@ -253,9 +253,11 @@ class _InspectionScreenState extends State<InspectionScreen> {
       'pickup_address': defaultAddr?['address'],
       'pickup_latitude': defaultAddr?['latitude'],
       'pickup_longitude': defaultAddr?['longitude'],
+      'pickup_address_name': defaultAddr?['name'],
       'dropoff_address': defaultAddr?['address'],
       'dropoff_latitude': defaultAddr?['latitude'],
       'dropoff_longitude': defaultAddr?['longitude'],
+      'dropoff_address_name': defaultAddr?['name'],
       'delivery_partner_id': deliveryPartnerId,
       // Always yes — a vehicle health check is doorstep pickup/drop by
       // nature, no opt-out toggle for this service.

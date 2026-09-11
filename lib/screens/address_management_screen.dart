@@ -143,6 +143,7 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
   void _showAddAddressSheet() {
     final nameController = TextEditingController();
     final addressController = TextEditingController();
+    final detailsController = TextEditingController();
 
     showModalBottomSheet(
       context: context,
@@ -153,6 +154,7 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
           context: ctx,
           nameController: nameController,
           addressController: addressController,
+          detailsController: detailsController,
           addressService: _addressService,
           onSaved: () {
             _loadAddresses();
@@ -207,24 +209,46 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
             )
           : addresses.isEmpty
               ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.location_off,
-                        size: 64,
-                        color: AppColors.mut,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No addresses yet',
-                        style: TextStyle(
-                          color: AppColors.mut,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 40),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 88,
+                          height: 88,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: goldAccent.withOpacity(0.1),
+                          ),
+                          child: Icon(
+                            Icons.location_off_rounded,
+                            size: 40,
+                            color: goldAccent.withOpacity(0.7),
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 20),
+                        Text(
+                          'No addresses yet',
+                          style: TextStyle(
+                            color: AppColors.txt,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Add one below using your current location — '
+                          'we\'ll use it for pickup and drop-off.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.mut,
+                            fontSize: 13,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               : ListView.builder(
@@ -474,6 +498,14 @@ class _AddressInputSheet extends StatefulWidget {
   final BuildContext context;
   final TextEditingController nameController;
   final TextEditingController addressController;
+
+  /// House/flat/door number and landmark — the part reverse-geocoding
+  /// can never know, since it only describes the street/area a GPS point
+  /// falls on. Kept as its own field so it's clearly optional and doesn't
+  /// get confused with the detected address, but is merged into the one
+  /// `address` string the database actually stores.
+  final TextEditingController detailsController;
+
   final AddressService addressService;
   final VoidCallback onSaved;
   final Function(String) onError;
@@ -482,6 +514,7 @@ class _AddressInputSheet extends StatefulWidget {
     required this.context,
     required this.nameController,
     required this.addressController,
+    required this.detailsController,
     required this.addressService,
     required this.onSaved,
     required this.onError,
@@ -491,9 +524,7 @@ class _AddressInputSheet extends StatefulWidget {
   State<_AddressInputSheet> createState() => _AddressInputSheetState();
 }
 
-class _AddressInputSheetState extends State<_AddressInputSheet>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _AddressInputSheetState extends State<_AddressInputSheet> {
   double? selectedLat;
   double? selectedLng;
   bool isDetectingLocation = false;
@@ -501,7 +532,6 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     themeController.addListener(_onThemeChanged);
   }
 
@@ -512,7 +542,6 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
   @override
   void dispose() {
     themeController.removeListener(_onThemeChanged);
-    _tabController.dispose();
     super.dispose();
   }
 
@@ -649,10 +678,14 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
   Future<void> _saveAddress() async {
     FocusScope.of(context).unfocus();
     final name = widget.nameController.text.trim();
-    final address = widget.addressController.text.trim();
+    final detectedAddress = widget.addressController.text.trim();
+    final details = widget.detailsController.text.trim();
+    final locationDetected = selectedLat != null && selectedLng != null;
 
-    // Validate BEFORE attempting to save anything.
-    if (name.isEmpty || address.isEmpty) {
+    // Validate BEFORE attempting to save anything. Manual typing is gone,
+    // so a real detected location is required — there's no fallback
+    // address text to accept instead.
+    if (name.isEmpty || !locationDetected) {
       await showDialog<void>(
         context: context,
         builder: (dialogContext) {
@@ -669,11 +702,11 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
               ),
             ),
             content: Text(
-              name.isEmpty && address.isEmpty
-                  ? 'Please enter an address name and your full address.'
+              name.isEmpty && !locationDetected
+                  ? 'Please enter an address name and detect your location.'
                   : name.isEmpty
                       ? 'Please enter an address name.'
-                      : 'Please enter your full address.',
+                      : 'Please detect your location first.',
               style: TextStyle(
                 color: AppColors.mut,
                 height: 1.4,
@@ -698,12 +731,18 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
       return;
     }
 
+    // House/flat/door number and landmark, when given, lead the address
+    // so it reads naturally: "Flat 302, ABC Apartments, <detected street,
+    // locality, pincode>" rather than being tacked on at the end.
+    final address =
+        details.isEmpty ? detectedAddress : '$details, $detectedAddress';
+
     try {
       await widget.addressService.addAddress(
         name: name,
         address: address,
-        latitude: selectedLat ?? 0.0,
-        longitude: selectedLng ?? 0.0,
+        latitude: selectedLat!,
+        longitude: selectedLng!,
       );
 
       if (!mounted) return;
@@ -805,6 +844,15 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
                   color: AppColors.txt,
                 ),
               ),
+              const SizedBox(height: 6),
+              Text(
+                'We use your live location for pickup & drop — no manual typing needed.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: AppColors.mut,
+                  height: 1.4,
+                ),
+              ),
               const SizedBox(height: 24),
 
               // ===== ADDRESS NAME FIELD =====
@@ -863,70 +911,89 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
               ),
               const SizedBox(height: 20),
 
-              // ===== TAB BAR =====
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceRaised,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: AppColors.line,
-                    width: 1,
-                  ),
-                ),
-                padding: const EdgeInsets.all(4),
-                child: TabBar(
-                  controller: _tabController,
-                  indicator: BoxDecoration(
-                    color: goldAccent,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  labelStyle: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                    letterSpacing: 0.2,
-                  ),
-                  labelColor: AppColors.onAccentDark,
-                  unselectedLabelColor: AppColors.mut,
-                  labelPadding: EdgeInsets.zero,
-                  splashFactory: NoSplash.splashFactory,
-                  dividerColor: Colors.transparent,
-                  tabs: const [
-                    Tab(text: 'Type Address'),
-                    Tab(text: 'Detect Location'),
-                  ],
+              // ===== HOUSE / FLAT / DOOR NO. FIELD =====
+              Text(
+                'House / flat / door no. & landmark (optional)',
+                style: TextStyle(
+                  color: AppColors.mut,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 20),
-
-              // ===== TAB CONTENT =====
-              SizedBox(
-                height: 220,
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    // Tab 1: Manual Entry
-                    _ManualEntryTab(
-                      addressController: widget.addressController,
-                    ),
-
-                    // Tab 2: Detect Location
-                    _DetectLocationTab(
-                      isDetecting: isDetectingLocation,
-                      isLocationDetected:
-                          selectedLat != null && selectedLng != null,
-                      addressText: widget.addressController.text,
-                      onDetect: _detectLocation,
-                      onReset: () {
-                        setState(() {
-                          selectedLat = null;
-                          selectedLng = null;
-                          widget.addressController.clear();
-                        });
-                      },
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
+                child: TextField(
+                  controller: widget.detailsController,
+                  style: TextStyle(
+                    color: AppColors.txt,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    hintText: 'e.g. Flat 302, ABC Apartments, near XYZ Mall',
+                    hintStyle: TextStyle(color: AppColors.mut, fontSize: 13),
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Icon(Icons.home_work_outlined,
+                          color: goldAccent, size: 22),
+                    ),
+                    filled: true,
+                    fillColor: AppColors.surfaceRaised,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: AppColors.line, width: 1),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: goldAccent, width: 2),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 16,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // ===== LOCATION =====
+              Text(
+                'Location',
+                style: TextStyle(
+                  color: AppColors.mut,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _DetectLocationTab(
+                isDetecting: isDetectingLocation,
+                isLocationDetected:
+                    selectedLat != null && selectedLng != null,
+                addressText: widget.addressController.text,
+                onDetect: _detectLocation,
+                onReset: () {
+                  setState(() {
+                    selectedLat = null;
+                    selectedLng = null;
+                    widget.addressController.clear();
+                  });
+                },
               ),
               const SizedBox(height: 24),
 
@@ -1028,85 +1095,7 @@ class _AddressInputSheetState extends State<_AddressInputSheet>
   }
 }
 
-// ===== TAB 1: MANUAL ENTRY =====
-class _ManualEntryTab extends StatefulWidget {
-  final TextEditingController addressController;
-
-  const _ManualEntryTab({
-    required this.addressController,
-  });
-
-  @override
-  State<_ManualEntryTab> createState() => _ManualEntryTabState();
-}
-
-class _ManualEntryTabState extends State<_ManualEntryTab> {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: TextField(
-            controller: widget.addressController,
-            style: TextStyle(
-              color: AppColors.txt,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-            maxLines: 4,
-            decoration: InputDecoration(
-              hintText: 'Enter full address\n(e.g., 123 Main St, City, ZIP)',
-              hintStyle: TextStyle(
-                color: AppColors.mut,
-                fontSize: 13,
-              ),
-              prefixIcon: Padding(
-                padding: const EdgeInsets.only(top: 12.0),
-                child: Icon(Icons.location_on, color: goldAccent, size: 22),
-              ),
-              filled: true,
-              fillColor: AppColors.surfaceRaised,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: AppColors.line,
-                  width: 1,
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: goldAccent,
-                  width: 2,
-                ),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 18,
-                vertical: 16,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ===== TAB 2: DETECT LOCATION =====
+// ===== DETECT LOCATION =====
 class _DetectLocationTab extends StatelessWidget {
   final bool isDetecting;
   final bool isLocationDetected;

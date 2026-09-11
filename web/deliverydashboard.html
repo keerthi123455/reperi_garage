@@ -591,6 +591,7 @@
                     price: r.package_price || r.price || null,
                     status: r.payment_status || r.status || 'unknown',
                     pickupAddress: r.pickup_address,
+                    pickupAddressName: r.pickup_address_name,
                     pickupLat: r.pickup_latitude,
                     pickupLng: r.pickup_longitude,
                     pickupDrop: r.pickupdrop,
@@ -705,7 +706,7 @@
                     </div>
                     <div class="booking-detail-row"><strong>Booked:</strong> ${escapeHtml(formatFullDateTime(b.createdAt))}</div>
                     <div class="booking-detail-row"><strong>Status:</strong> ${escapeHtml(b.status)}</div>
-                    <div class="booking-detail-row"><strong>Pickup:</strong> ${escapeHtml(b.pickupAddress || 'Not specified')}</div>
+                    <div class="booking-detail-row"><strong>Pickup${b.pickupAddressName ? ` (${escapeHtml(b.pickupAddressName)})` : ''}:</strong> ${escapeHtml(b.pickupAddress || 'Not specified')}</div>
                     <div class="booking-footer">
                         ${b.pickupDrop ? `<span class="pickupdrop-pill">Pickup &amp; Drop: ${escapeHtml(b.pickupDrop)}</span>` : '<span></span>'}
                         ${navigateHtml}

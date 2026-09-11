@@ -219,6 +219,35 @@
             color: #D4A017;
         }
 
+        .navigate-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+            padding: 10px 18px;
+            background: #D4A017;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: 800;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .navigate-btn:hover {
+            background: #e6b820;
+        }
+
+        .navigate-btn.disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
         .subscription-expanded {
             display: none;
             margin-top: 20px;
@@ -523,6 +552,10 @@
 
             subscriptions.forEach((sub) => {
                 const totalCompleted = sub.total_services_completed || 0;
+                const hasCoords = sub.pickup_latitude != null && sub.pickup_longitude != null;
+                const navigateHtml = hasCoords
+                    ? `<a class="navigate-btn" href="https://www.google.com/maps/dir/?api=1&destination=${sub.pickup_latitude},${sub.pickup_longitude}&travelmode=driving" target="_blank" rel="noopener">🧭 Navigate</a>`
+                    : `<span class="navigate-btn disabled">🧭 No location</span>`;
                 html += `
                     <div class="subscription-card">
                         <div class="subscription-header" onclick="toggleSubscription(${sub.id})">
@@ -539,6 +572,8 @@
                             <p><strong>Price:</strong> ₹${sub.price || '0'}</p>
                             <p><strong>Frequency:</strong> ${sub.frequency || 'N/A'}</p>
                             <p><strong>Date Started:</strong> ${new Date(sub.created_at).toLocaleDateString('en-IN')}</p>
+                            <p><strong>Pickup${sub.pickup_address_name ? ` (${sub.pickup_address_name})` : ''}:</strong> ${sub.pickup_address || 'Not specified'}</p>
+                            ${navigateHtml}
                         </div>
 
                         <div class="subscription-expanded" id="expanded-${sub.id}">

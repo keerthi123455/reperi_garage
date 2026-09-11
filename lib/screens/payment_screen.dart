@@ -7,6 +7,7 @@ import 'package:reperi_garage/screens/address_management_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '/services/admin_assignment_service.dart';  // ✅ NEW: Admin assignment service
 import '/services/delivery_partner_assignment_service.dart';
+import '/services/service_area.dart';
 
 class PaymentScreen extends StatefulWidget {
   final String title;
@@ -177,7 +178,7 @@ class _PaymentScreenState
   Future<void> _loadDefaultAddress() async {
     try {
       final defaultAddr = await _addressService.getDefaultAddress();
-      
+
       if (mounted) {
         setState(() {
           if (defaultAddr != null) {
@@ -190,6 +191,16 @@ class _PaymentScreenState
           addressLoading = false;
         });
       }
+
+      // Fleet payments (billItems set) aren't gated by the consumer
+      // doorstep-service area — only check for the regular booking flow,
+      // and only once we actually have coordinates to check.
+      if (widget.billItems == null &&
+          selectedLatitude != null &&
+          selectedLongitude != null &&
+          !ServiceArea.isWithinServiceArea(selectedLatitude!, selectedLongitude!)) {
+        _showOutOfServiceAreaDialog();
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -198,6 +209,37 @@ class _PaymentScreenState
         });
       }
     }
+  }
+
+  /// Shown when the customer's address falls outside the area this app
+  /// currently services — blocks them from reaching checkout at all by
+  /// popping back to whichever booking screen sent them here.
+  void _showOutOfServiceAreaDialog() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF262626),
+        title: const Text(
+          'Not Available in Your Area',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'We are not operational in your area yet!',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // close dialog
+              Navigator.pop(context); // leave PaymentScreen
+            },
+            child: const Text('OK', style: TextStyle(color: Color(0xFFD4A017))),
+          ),
+        ],
+      ),
+    );
   }
   
   /// Check if address is valid before proceeding to payment
@@ -422,9 +464,11 @@ class _PaymentScreenState
           'pickup_address': defaultAddr?['address'] ?? 'Not specified',
           'pickup_latitude': defaultAddr?['latitude'],
           'pickup_longitude': defaultAddr?['longitude'],
+          'pickup_address_name': defaultAddr?['name'],
           'dropoff_address': defaultAddr?['address'] ?? 'Not specified',
           'dropoff_latitude': defaultAddr?['latitude'],
           'dropoff_longitude': defaultAddr?['longitude'],
+          'dropoff_address_name': defaultAddr?['name'],
           
           // ── Customer Details ──
           'customer_name': profileData?['full_name'] ?? 'Unknown',
@@ -512,9 +556,11 @@ class _PaymentScreenState
           'pickup_address': defaultAddr?['address'] ?? 'Not specified',
           'pickup_latitude': defaultAddr?['latitude'],
           'pickup_longitude': defaultAddr?['longitude'],
+          'pickup_address_name': defaultAddr?['name'],
           'dropoff_address': defaultAddr?['address'] ?? 'Not specified',
           'dropoff_latitude': defaultAddr?['latitude'],
           'dropoff_longitude': defaultAddr?['longitude'],
+          'dropoff_address_name': defaultAddr?['name'],
 
           // ── Customer Details ──
           'customer_name': profileData?['full_name'] ?? 'Unknown',
