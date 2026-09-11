@@ -438,6 +438,21 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Bound to the header's search icon — lands directly on the Services
+  /// screen with the search field already focused, instead of just
+  /// showing the catalog like [_openServices].
+  void _openServicesSearch() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ServicesScreen(
+          activeVehicle: _activeVehicleMap,
+          autoFocusSearch: true,
+        ),
+      ),
+    );
+  }
+
   Future<void> _openFleetLogin() async {
     final prefs = await SharedPreferences.getInstance();
     final loggedIn = prefs.getBool('fleet_logged_in') ?? false;
@@ -669,7 +684,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 AppHeader(
                   onMenu: () => _scaffoldKey.currentState?.openDrawer(),
-                  onBell: () => _flash('No new notifications'),
+                  onSearch: _openServicesSearch,
                 ),
                 Expanded(
                   child: SingleChildScrollView(

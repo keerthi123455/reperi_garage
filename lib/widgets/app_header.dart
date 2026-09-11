@@ -10,13 +10,15 @@ class AppHeader extends StatelessWidget {
   const AppHeader({
     super.key,
     required this.onMenu,
-    required this.onBell,
-    this.hasNotification = true,
+    required this.onSearch,
   });
 
   final VoidCallback onMenu;
-  final VoidCallback onBell;
-  final bool hasNotification;
+
+  /// Opens the Services screen with its search field focused and ready
+  /// to type — this icon used to be a notification bell, but there was
+  /// no notification center to open, so it's now a direct search shortcut.
+  final VoidCallback onSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -59,9 +61,8 @@ class AppHeader extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               _IconButtonChip(
-                icon: Symbols.notifications,
-                onTap: onBell,
-                showDot: hasNotification,
+                icon: Symbols.search,
+                onTap: onSearch,
               ),
             ],
           ),
@@ -120,12 +121,10 @@ class _IconButtonChip extends StatelessWidget {
   const _IconButtonChip({
     required this.icon,
     required this.onTap,
-    this.showDot = false,
   });
 
   final IconData icon;
   final VoidCallback onTap;
-  final bool showDot;
 
   @override
   Widget build(BuildContext context) {
@@ -143,27 +142,7 @@ class _IconButtonChip extends StatelessWidget {
             borderRadius: BorderRadius.circular(13),
             border: Border.all(color: AppColors.line),
           ),
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
-            children: [
-              Icon(icon, size: 22, color: AppColors.txt, weight: 400, fill: 0),
-              if (showDot)
-                Positioned(
-                  top: -3,
-                  right: -2,
-                  child: Container(
-                    width: 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.accent,
-                      border: Border.all(color: AppColors.chipBg, width: 2),
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          child: Icon(icon, size: 22, color: AppColors.txt, weight: 400, fill: 0),
         ),
       ),
     );

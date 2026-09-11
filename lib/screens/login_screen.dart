@@ -6,7 +6,6 @@ import 'signup_screen.dart';
 import 'admin_dashboard_screen.dart';
 import 'package:reperi_garage/services/error_handler.dart';
 import 'package:reperi_garage/widgets/error_display.dart';
-import '../widgets/notification_permission_dialog.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -424,15 +423,6 @@ class _LoginScreenState extends State<LoginScreen>
           email: email,
           password: password,
         );
-
-        if (!mounted) return;
-
-        // Show the branded rationale before the OS permission dialog,
-        // now that the user has just taken a deliberate action (logging
-        // in) — not at app launch, where there's no context for why.
-        // Awaited before navigating so the dialog isn't orphaned by the
-        // route swap below.
-        await showNotificationPermissionPrimer(context);
 
         if (!mounted) return;
 

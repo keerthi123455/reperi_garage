@@ -656,7 +656,13 @@ final List<_Package> _kCatalog = [
 class ServicesScreen extends StatefulWidget {
   final Map<String, dynamic>? activeVehicle;
 
-  const ServicesScreen({super.key, this.activeVehicle});
+  /// When true, the search field grabs focus (and pops the keyboard open)
+  /// as soon as this screen appears — used by the home screen's search
+  /// icon, which should land the user ready to type immediately instead
+  /// of just showing the catalog.
+  final bool autoFocusSearch;
+
+  const ServicesScreen({super.key, this.activeVehicle, this.autoFocusSearch = false});
 
   @override
   State<ServicesScreen> createState() => _ServicesScreenState();
@@ -664,6 +670,7 @@ class ServicesScreen extends StatefulWidget {
 
 class _ServicesScreenState extends State<ServicesScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
 
   static const Color _gold = Color(0xFFD4A017);
@@ -675,6 +682,13 @@ class _ServicesScreenState extends State<ServicesScreen> {
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.trim().toLowerCase());
     });
+    if (widget.autoFocusSearch) {
+      // Requested after the first frame — the focus system isn't ready
+      // to hand focus to a not-yet-laid-out field during initState itself.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _searchFocusNode.requestFocus();
+      });
+    }
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
@@ -689,6 +703,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
   void dispose() {
     themeController.removeListener(_onThemeChanged);
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -1183,6 +1198,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
         ),
         child: TextField(
           controller: _searchController,
+          focusNode: _searchFocusNode,
           style: TextStyle(color: AppColors.txt, fontSize: 15),
           decoration: InputDecoration(
             hintText: 'Search any package or keyword…',

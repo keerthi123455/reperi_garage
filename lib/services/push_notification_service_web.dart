@@ -29,22 +29,17 @@ class PushNotificationService {
     (deferred as JSObject).callMethod('push'.toJS, callback.toJS);
   }
 
-  /// OneSignal.init() itself runs directly from web/index.html, immediately
-  /// on page load — not delayed until Flutter boots and this Dart code
-  /// runs. That matches OneSignal's own Custom Code integration snippet
-  /// and avoids double-initializing the SDK, so there's nothing left for
-  /// this method to do; it exists to keep the same call shape as the
-  /// mobile implementation.
-  static Future<void> init() async {}
-
-  /// Prompts the browser's notification permission dialog. Call this once
-  /// there's actual context for why (e.g. right after login) rather than
-  /// on page load, per Play Store guidance to request permissions only
-  /// when a feature that needs them is about to be used.
-  static Future<void> requestPermission() async {
+  static Future<void> init() async {
     if (_initStarted) return;
     _initStarted = true;
 
+    // OneSignal.init() itself now runs directly from web/index.html,
+    // immediately on page load — not delayed until Flutter boots and
+    // this Dart code runs. That matches OneSignal's own Custom Code
+    // integration snippet and avoids double-initializing the SDK.
+    //
+    // This just handles the one remaining step: explicitly asking for
+    // notification permission, which init() does not do by itself.
     _runWhenReady((oneSignal) {
       final notifications = oneSignal.getProperty('Notifications'.toJS);
       if (notifications != null && !notifications.isUndefinedOrNull) {

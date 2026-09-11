@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../widgets/custom_textfield.dart';
-import '../widgets/notification_permission_dialog.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
 
@@ -78,15 +77,6 @@ class _SignupScreenState extends State<SignupScreen>
       // delivery_partners profile row so the account can log into
       // web/delivery.html, which looks a partner up by email.
       await _maybeCreateDeliveryPartnerProfile(email);
-
-      if (!mounted) return;
-
-      // Show the branded rationale before the OS permission dialog, now
-      // that the user has just taken a deliberate action (signing up) —
-      // not at app launch, where there's no context for why. Awaited
-      // before navigating so the dialog isn't orphaned by the route swap
-      // below.
-      await showNotificationPermissionPrimer(context);
 
       if (!mounted) return;
 
