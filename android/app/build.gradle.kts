@@ -15,7 +15,11 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.reperi.autocare.app"
-    compileSdk = flutter.compileSdkVersion
+    // Google Play now requires targeting API 36+ (bumped from 35);
+    // hardcoded here rather than left on flutter.compileSdkVersion since
+    // that only tracks whatever's bundled with the installed Flutter SDK,
+    // which may lag behind Play's latest requirement.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -31,9 +35,11 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        targetSdk = 36
+        // Bumped from 1 — Play Console rejected a re-upload with the same
+        // versionCode, so it was already consumed by an earlier attempt.
+        versionCode = 2
+        versionName = "1.0.1"
     }
 
     signingConfigs {

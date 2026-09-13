@@ -66,6 +66,17 @@ class _Package {
   });
 }
 
+/// A [_Package] that matched a search, plus the specific feature(s) that
+/// matched so the card can show *why* it's relevant instead of just its
+/// generic tagline — this is what was missing when searching "oil change"
+/// used to surface "Essential" with no mention of oil anywhere on the card.
+class _SearchHit {
+  final _Package package;
+  final List<String> matchedFeatures;
+  final double score;
+  const _SearchHit(this.package, this.matchedFeatures, this.score);
+}
+
 const Map<String, Color> _kCategoryAccent = {
   'Periodic Servicing': Color(0xFF4FA3E3),
   'Car Wash & Cleaning': Color(0xFF26C6DA),
@@ -101,6 +112,201 @@ const List<String> _kCategoryOrder = [
   'Roadside Assistance',
   'Business Solutions',
 ];
+
+// ── Search ────────────────────────────────────────────────────────────
+// The old search only matched if the *exact typed phrase* appeared
+// somewhere (e.g. "brake fail" would never match a feature called "Brake
+// inspection" since "brake fail" isn't a substring of it). Real users —
+// especially older ones less familiar with app search — type symptoms in
+// their own words, plural or singular, sometimes misspelled ("brake
+// fail", "car not starting", "tyres", "olie chnage"), not the exact
+// package wording. So search now:
+//   1. splits the query into words and matches each one independently,
+//   2. expands everyday words into the service-catalog terms they mean
+//      (a large, ever-growing dictionary below — not just a handful of
+//      phrases someone happened to test),
+//   3. tries the singular form of plurals ("tyres" → "tyre"),
+//   4. and falls back to fuzzy (typo-tolerant) matching against every
+//      word that actually appears in the catalog, so even a misspelled
+//      or unlisted word still finds the closest relevant package instead
+//      of nothing at all.
+const Set<String> _kSearchStopWords = {
+  'a', 'an', 'the', 'is', 'my', 'me', 'i', 'to', 'of', 'in', 'on', 'for',
+  'and', 'or', 'not', 'no', 'it', 'car', 'please', 'need', 'want', 'have',
+  'has', 'with', 'issue', 'problem', 'help', 'why', 'what', 'how', 'doing',
+  'im', 'am', 'are', 'this', 'that', 'some', 'any', 'get', 'getting',
+};
+
+// Everyday words and car-part/symptom names → the terms actually used in
+// the catalog. Lets someone search how a problem *feels*, or name a part
+// in plain language, and still land on the closest relevant package —
+// covering far more than oil/brake/paint so "anything people put" has a
+// real shot at finding something.
+const Map<String, List<String>> _kSearchSynonyms = {
+  // Symptoms
+  'fail': ['brake', 'battery'],
+  'failing': ['brake', 'battery'],
+  'failed': ['brake', 'battery'],
+  'start': ['battery', 'engine'],
+  'starting': ['battery', 'engine'],
+  'dead': ['battery'],
+  'jump': ['battery', 'roadside'],
+  'jumpstart': ['battery', 'roadside'],
+  'noise': ['engine', 'diagnostic'],
+  'noisy': ['engine', 'diagnostic'],
+  'sound': ['engine', 'diagnostic'],
+  'sounds': ['engine', 'diagnostic'],
+  'smoke': ['engine'],
+  'smoking': ['engine'],
+  'overheat': ['engine', 'ac'],
+  'overheating': ['engine', 'ac'],
+  'heating': ['engine', 'ac'],
+  'hot': ['ac', 'cooling'],
+  'cool': ['ac', 'cooling'],
+  'cooling': ['ac'],
+  'shake': ['balancing', 'alignment'],
+  'shaking': ['balancing', 'alignment'],
+  'vibration': ['balancing', 'alignment'],
+  'vibrating': ['balancing', 'alignment'],
+  'pull': ['alignment'],
+  'pulling': ['alignment'],
+  'scratch': ['paint', 'polish'],
+  'scratches': ['paint', 'polish'],
+  'scratched': ['paint', 'polish'],
+  'fade': ['paint', 'polish'],
+  'faded': ['paint', 'polish'],
+  // No 'change'/'replace' → 'replacement' entry here on purpose: those
+  // words already literally appear inside features like "Engine Oil
+  // Change" and "Air Filter Replacement" ("replace" is even a literal
+  // substring of "replacement"), so they match directly. Mapping them to
+  // the single generic word "replacement" used to flood totally
+  // unrelated queries (e.g. "windshield change") with servicing results
+  // just because "replacement" appears in a dozen unrelated features.
+  'dent': ['dent'],
+  'dents': ['dent'],
+  'dented': ['dent'],
+  'rust': ['rust'],
+  'rusting': ['rust'],
+  'rusted': ['rust'],
+  'leak': ['oil', 'ac', 'coolant'],
+  'leaking': ['oil', 'ac', 'coolant'],
+  'puncture': ['tyre'],
+  'punctured': ['tyre'],
+  'flat': ['tyre', 'roadside'],
+  'break': ['brake'],
+  'breaks': ['brake'],
+  'breakdown': ['roadside', 'battery'],
+  'stuck': ['alignment', 'suspension'],
+  'accident': ['accident', 'dent', 'insurance'],
+  'damage': ['dent', 'paint', 'insurance'],
+  'damaged': ['dent', 'paint', 'insurance'],
+  'shine': ['polish', 'wax', 'wash'],
+  'shiny': ['polish', 'wax', 'wash'],
+  'dull': ['polish', 'paint'],
+  'smell': ['odour', 'sanitization'],
+  'smelly': ['odour', 'sanitization'],
+  'dirty': ['wash', 'clean'],
+  'sticky': ['wash', 'clean', 'sanitization'],
+  'squeak': ['brake', 'suspension'],
+  'squeaking': ['brake', 'suspension'],
+  'grinding': ['brake', 'suspension'],
+  'wobble': ['balancing', 'alignment'],
+  'wobbling': ['balancing', 'alignment'],
+  'bumpy': ['suspension', 'alignment'],
+  'hard': ['alignment', 'suspension'],
+  'stiff': ['alignment', 'suspension'],
+  'tight': ['alignment', 'suspension'],
+  'tighten': ['alignment', 'suspension'],
+  'heavy': ['alignment', 'suspension'],
+  'loose': ['alignment', 'suspension'],
+  'slow': ['brake', 'engine'],
+  'slipping': ['brake', 'balancing'],
+  'burning': ['brake', 'engine'],
+  'warning': ['diagnostic'],
+  'light': ['diagnostic'],
+  'lights': ['diagnostic'],
+  'error': ['diagnostic'],
+  'sensor': ['diagnostic'],
+  'mileage': ['diagnostic', 'engine'],
+  'fuel': ['diagnostic', 'engine'],
+  'efficiency': ['diagnostic', 'engine'],
+  'performance': ['diagnostic', 'engine'],
+  'pickup': ['diagnostic', 'engine'],
+  // Parts & systems
+  'brakes': ['brake'],
+  'engine': ['engine'],
+  'tyre': ['tyre'],
+  'tyres': ['tyre'],
+  'tire': ['tyre'],
+  'tires': ['tyre'],
+  'wheel': ['wheel', 'alignment'],
+  'wheels': ['wheel', 'alignment'],
+  'alloy': ['alloy', 'wheel'],
+  'alloys': ['alloy', 'wheel'],
+  'battery': ['battery'],
+  'batteries': ['battery'],
+  'clutch': ['engine', 'diagnostic'],
+  'gear': ['engine', 'diagnostic'],
+  'gears': ['engine', 'diagnostic'],
+  'gearbox': ['engine', 'diagnostic'],
+  'transmission': ['engine', 'diagnostic'],
+  'steering': ['alignment', 'suspension'],
+  'suspension': ['suspension'],
+  'shocker': ['suspension'],
+  'shockers': ['suspension'],
+  'exhaust': ['engine', 'diagnostic'],
+  'silencer': ['engine', 'diagnostic'],
+  'radiator': ['ac', 'engine'],
+  'coolant': ['ac', 'coolant'],
+  'electrical': ['diagnostic'],
+  'electric': ['diagnostic'],
+  'wiring': ['diagnostic'],
+  'horn': ['diagnostic'],
+  // "wash" was dropped from wiper/window on purpose: "wash" is such a
+  // common word across the catalog (it's in nearly every wash package's
+  // features) that it drowned out the more relevant diagnostics result
+  // for a malfunction complaint like "window issue".
+  'wiper': ['diagnostic'],
+  'wipers': ['diagnostic'],
+  'window': ['diagnostic'],
+  'windows': ['diagnostic'],
+  'lock': ['diagnostic'],
+  'locking': ['diagnostic'],
+  'key': ['diagnostic'],
+  'remote': ['diagnostic'],
+  'windshield': ['glass'],
+  'windscreen': ['glass'],
+  'mirror': ['glass', 'wash'],
+  'mirrors': ['glass', 'wash'],
+  'bumper': ['dent', 'paint'],
+  'panel': ['dent', 'paint'],
+  'body': ['dent', 'paint'],
+  'seat': ['wash', 'clean'],
+  'seats': ['wash', 'clean'],
+  'upholstery': ['wash', 'clean'],
+  'interior': ['wash', 'clean', 'vacuum'],
+  'ac': ['ac'],
+  'aircon': ['ac'],
+  'compressor': ['ac'],
+  'insurance': ['insurance'],
+  'claim': ['insurance'],
+  'subscription': ['subscription'],
+  'monthly': ['subscription'],
+  'towing': ['roadside', 'towing'],
+  'tow': ['roadside', 'towing'],
+  'stranded': ['roadside'],
+  'coating': ['coating', 'ceramic'],
+  'wrap': ['wrap'],
+  'film': ['film', 'ppf'],
+  'polish': ['polish'],
+  'polishing': ['polish'],
+  'wash': ['wash'],
+  'washing': ['wash'],
+  'clean': ['wash', 'clean'],
+  'cleaning': ['wash', 'clean'],
+  'detailing': ['detailing'],
+  'detail': ['detailing'],
+};
 
 Widget _bookService(Map<String, dynamic>? v) => BookServiceScreen(vehicle: v!);
 Widget _servicingPkg(Map<String, dynamic>? v) =>
@@ -653,6 +859,103 @@ final List<_Package> _kCatalog = [
   ),
 ];
 
+// Every distinct word (3+ letters) appearing anywhere in the catalog —
+// built once, lazily, the first time search is used. This is the
+// dictionary fuzzy matching checks a typed word against, so a typo like
+// "olie" or "brek" still lands on "oil" / "brake" instead of nothing.
+final Set<String> _kCatalogVocabulary = () {
+  final words = <String>{};
+  final wordPattern = RegExp(r'[a-z]+');
+  for (final pkg in _kCatalog) {
+    for (final text in [pkg.name, pkg.category, pkg.tagline, ...pkg.features]) {
+      for (final match in wordPattern.allMatches(text.toLowerCase())) {
+        final w = match.group(0)!;
+        if (w.length >= 3) words.add(w);
+      }
+    }
+  }
+  return words;
+}();
+
+// Words so generic they appear in nearly every package ("check",
+// "inspection", "cleaning", "change"...). Two problems come from that:
+//   1. Fuzzy typo-matching against one of these by spelling alone is more
+//      likely coincidence than intent (e.g. "crack" is only 2 edits from
+//      "check"), so fuzzy matching skips them entirely.
+//   2. Someone typing one of these words outright ("windshield change")
+//      would otherwise have it outscore a rarer, far more specific word
+//      in the same query ("glass") just because it happens to also
+//      appear in a couple of unrelated oil-change features — so ranking
+//      gives them a fixed discount instead of full weight.
+// They're still fully searchable if someone types them outright — just
+// not allowed to drown out a more specific word in the same search.
+const Set<String> _kGenericCatalogWords = {
+  'check', 'checks', 'inspection', 'cleaning', 'clean', 'quality',
+  'final', 'complete', 'everything', 'package', 'service', 'services',
+  'premium', 'free', 'point', 'report', 'level', 'system', 'digital',
+  'health', 'basic', 'full', 'advanced', 'general', 'change', 'changed',
+  'changing', 'replace', 'replacement', 'replacements',
+};
+
+/// Naive English singularizer — good enough to turn "tyres"/"brakes"/
+/// "batteries" back into words that actually appear in the catalog
+/// without needing a plural entry for every single one.
+String _singularize(String word) {
+  if (word.length > 4 && word.endsWith('ies')) {
+    return '${word.substring(0, word.length - 3)}y';
+  }
+  if (word.length > 4 && word.endsWith('ses')) {
+    return word.substring(0, word.length - 2);
+  }
+  if (word.length > 4 && word.endsWith('es')) {
+    return word.substring(0, word.length - 2);
+  }
+  if (word.length > 3 && word.endsWith('s') && !word.endsWith('ss')) {
+    return word.substring(0, word.length - 1);
+  }
+  return word;
+}
+
+/// Classic edit-distance — counts the single-character insertions,
+/// deletions or substitutions needed to turn [a] into [b]. Used to find
+/// the catalog word closest to a misspelled search term.
+int _levenshtein(String a, String b) {
+  if (a == b) return 0;
+  if (a.isEmpty) return b.length;
+  if (b.isEmpty) return a.length;
+  var prev = List<int>.generate(b.length + 1, (i) => i);
+  var curr = List<int>.filled(b.length + 1, 0);
+  for (var i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (var j = 1; j <= b.length; j++) {
+      final cost = a[i - 1] == b[j - 1] ? 0 : 1;
+      final deletion = curr[j - 1] + 1;
+      final insertion = prev[j] + 1;
+      final substitution = prev[j - 1] + cost;
+      curr[j] = [deletion, insertion, substitution].reduce((x, y) => x < y ? x : y);
+    }
+    final tmp = prev;
+    prev = curr;
+    curr = tmp;
+  }
+  return prev[b.length];
+}
+
+/// Finds catalog words close enough to [word] to be a likely typo of it,
+/// so search still works even for a word we never explicitly listed as a
+/// synonym and that doesn't literally appear anywhere in the catalog.
+Set<String> _fuzzyCatalogMatches(String word) {
+  if (word.length < 3) return const {};
+  final maxDistance = word.length <= 4 ? 1 : (word.length <= 7 ? 2 : 3);
+  final matches = <String>{};
+  for (final vocabWord in _kCatalogVocabulary) {
+    if (_kGenericCatalogWords.contains(vocabWord)) continue;
+    if ((vocabWord.length - word.length).abs() > maxDistance) continue;
+    if (_levenshtein(word, vocabWord) <= maxDistance) matches.add(vocabWord);
+  }
+  return matches;
+}
+
 class ServicesScreen extends StatefulWidget {
   final Map<String, dynamic>? activeVehicle;
 
@@ -707,14 +1010,93 @@ class _ServicesScreenState extends State<ServicesScreen> {
     super.dispose();
   }
 
-  List<_Package> get _filtered {
-    if (_searchQuery.isEmpty) return _kCatalog;
-    return _kCatalog.where((pkg) {
-      if (pkg.name.toLowerCase().contains(_searchQuery)) return true;
-      if (pkg.category.toLowerCase().contains(_searchQuery)) return true;
-      if (pkg.tagline.toLowerCase().contains(_searchQuery)) return true;
-      return pkg.features.any((f) => f.toLowerCase().contains(_searchQuery));
-    }).toList();
+  // The catalog view shown when nothing is being searched.
+  List<_Package> get _filtered => _searchQuery.isEmpty ? _kCatalog : const [];
+
+  /// Search terms for the current query, mapped to a confidence tier
+  /// (1 = primary, 0 = fuzzy fallback). Primary terms are the words the
+  /// user actually typed (stopwords removed), their singular forms
+  /// ("tyres" → "tyre"), the everyday-language synonyms expanded from
+  /// either form (e.g. "brake fail" → {brake, fail, battery}), and the
+  /// full phrase itself (so an exact match like "car wash" scores
+  /// highest). Fuzzy terms are, for any word that still isn't recognised
+  /// anywhere, the closest catalog word by spelling — kept separate and
+  /// scored lower so a typo guess never outranks something the user
+  /// actually meant.
+  Map<String, int> get _searchTerms {
+    if (_searchQuery.isEmpty) return const {};
+    final words = _searchQuery
+        .split(RegExp(r'\s+'))
+        .where((w) => w.length >= 2 && !_kSearchStopWords.contains(w))
+        .toSet();
+    final terms = <String, int>{};
+    void addPrimary(String t) => terms[t] = 1;
+    void addFuzzy(String t) => terms.putIfAbsent(t, () => 0);
+    if (_searchQuery.length >= 2) addPrimary(_searchQuery);
+    for (final w in words) {
+      addPrimary(w);
+      final singular = _singularize(w);
+      addPrimary(singular);
+      final synonyms = _kSearchSynonyms[w] ?? _kSearchSynonyms[singular];
+      var recognised = synonyms != null;
+      if (synonyms != null) {
+        for (final s in synonyms) {
+          addPrimary(s);
+        }
+      }
+      if (_kCatalogVocabulary.contains(w) || _kCatalogVocabulary.contains(singular)) {
+        recognised = true;
+      }
+      // This word means nothing to the catalog on its own — it might be
+      // a typo of a word that does (e.g. "olie" meant "oil"). Look for
+      // the closest real catalog word instead of giving up on it, but
+      // mark it low-confidence so it only ever fills in gaps.
+      if (!recognised) {
+        for (final f in _fuzzyCatalogMatches(w)) {
+          addFuzzy(f);
+        }
+      }
+    }
+    return terms;
+  }
+
+  /// Every package that matches at least one search term, ranked by
+  /// relevance (name matches count most, then features, then category and
+  /// tagline; a term found only via typo-guessing counts for much less,
+  /// and an overly generic catalog word counts for less too, so it can't
+  /// bury a rarer, more specific word from the same search), each
+  /// carrying the specific feature(s) that matched so the UI can show
+  /// exactly why it was suggested.
+  List<_SearchHit> get _searchHits {
+    final terms = _searchTerms;
+    if (terms.isEmpty) return const [];
+    final hits = <_SearchHit>[];
+    for (final pkg in _kCatalog) {
+      double score = 0;
+      final matched = <String>{};
+      final name = pkg.name.toLowerCase();
+      final category = pkg.category.toLowerCase();
+      final tagline = pkg.tagline.toLowerCase();
+      for (final entry in terms.entries) {
+        final term = entry.key;
+        final isPrimary = entry.value == 1;
+        final genericPenalty = _kGenericCatalogWords.contains(term) ? 0.3 : 1.0;
+        if (name.contains(term)) score += (isPrimary ? 6 : 2) * genericPenalty;
+        if (category.contains(term)) score += (isPrimary ? 2 : 1) * genericPenalty;
+        if (tagline.contains(term)) score += (isPrimary ? 2 : 1) * genericPenalty;
+        for (final feature in pkg.features) {
+          if (feature.toLowerCase().contains(term)) {
+            score += (isPrimary ? 4 : 1) * genericPenalty;
+            if (isPrimary) matched.add(feature);
+          }
+        }
+      }
+      if (score > 0) {
+        hits.add(_SearchHit(pkg, matched.take(2).toList(), score));
+      }
+    }
+    hits.sort((a, b) => b.score.compareTo(a.score));
+    return hits;
   }
 
   // ── Actions ──────────────────────────────────────────────────────────
@@ -875,7 +1257,13 @@ class _ServicesScreenState extends State<ServicesScreen> {
           ),
           child: ListView(
             controller: scrollController,
-            padding: const EdgeInsets.fromLTRB(24, 14, 24, 28),
+            // The BOOK NOW button sits at the very bottom of this sheet —
+            // on phones with a gesture nav bar or on-screen back/home/
+            // recents buttons, a flat 28px isn't enough clearance and the
+            // button ends up partly behind/under it. Add the device's own
+            // safe-area bottom inset on top of the usual padding so the
+            // button always clears it.
+            padding: EdgeInsets.fromLTRB(24, 14, 24, 28 + MediaQuery.of(context).padding.bottom),
             children: [
               Center(
                 child: Container(
@@ -916,14 +1304,14 @@ class _ServicesScreenState extends State<ServicesScreen> {
                             ),
                             child: Text('MOST POPULAR',
                                 style: TextStyle(
-                                    color: accent, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+                                    color: accent, fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
                           ),
                         Text(pkg.name,
-                            style: TextStyle(color: AppColors.txt, fontSize: 19, fontWeight: FontWeight.w900)),
+                            style: TextStyle(color: AppColors.txt, fontSize: 22, fontWeight: FontWeight.w900)),
                         const SizedBox(height: 4),
                         Text(
                           pkg.duration.isEmpty ? pkg.price : '${pkg.price} • ${pkg.duration}',
-                          style: TextStyle(color: accent, fontSize: 14, fontWeight: FontWeight.w800),
+                          style: TextStyle(color: accent, fontSize: 16, fontWeight: FontWeight.w800),
                         ),
                       ],
                     ),
@@ -931,23 +1319,23 @@ class _ServicesScreenState extends State<ServicesScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              Text(pkg.tagline, style: TextStyle(color: AppColors.mut, fontSize: 13, height: 1.5)),
+              Text(pkg.tagline, style: TextStyle(color: AppColors.mut, fontSize: 15, height: 1.5)),
               const SizedBox(height: 20),
               if (pkg.features.isNotEmpty) ...[
                 Text("WHAT'S INCLUDED",
                     style: TextStyle(
-                        color: AppColors.txt, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                        color: AppColors.txt, fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
                 const SizedBox(height: 12),
                 ...pkg.features.map((f) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.only(bottom: 12),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.check_circle, color: accent, size: 17),
+                          Icon(Icons.check_circle, color: accent, size: 19),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(f,
-                                style: TextStyle(color: AppColors.txt.withOpacity(0.85), fontSize: 13, height: 1.4)),
+                                style: TextStyle(color: AppColors.txt.withOpacity(0.85), fontSize: 15, height: 1.4)),
                           ),
                         ],
                       ),
@@ -969,7 +1357,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                       child: Text('MORE DETAILS',
-                          style: TextStyle(color: accent, fontWeight: FontWeight.w800, fontSize: 12.5)),
+                          style: TextStyle(color: accent, fontWeight: FontWeight.w800, fontSize: 14.5)),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -1008,7 +1396,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                         ? 'COMING SOON'
                         : (pkg.directBook ? 'BOOK NOW' : 'VIEW OPTIONS'),
                     style: TextStyle(
-                        color: AppColors.onAccentDark, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                        color: AppColors.onAccentDark, fontWeight: FontWeight.w900, letterSpacing: 0.6, fontSize: 15),
                   ),
                 ),
               ),
@@ -1021,6 +1409,8 @@ class _ServicesScreenState extends State<ServicesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isSearching = _searchQuery.isNotEmpty;
+    final searchHits = isSearching ? _searchHits : const <_SearchHit>[];
     final filtered = _filtered;
     final Map<String, List<_Package>> grouped = {};
     for (final pkg in filtered) {
@@ -1040,9 +1430,33 @@ class _ServicesScreenState extends State<ServicesScreen> {
               ),
             ),
           ),
-          if (filtered.isEmpty)
-            SliverFillRemaining(child: _buildNoResults())
-          else
+          if (isSearching) ...[
+            if (searchHits.isEmpty)
+              SliverFillRemaining(child: _buildNoResults())
+            else ...[
+              SliverToBoxAdapter(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: _buildSearchResultsHeader(searchHits.length),
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: Column(
+                      children: searchHits
+                          .map((hit) => _buildPackageCard(hit.package,
+                              matchedFeatures: hit.matchedFeatures, showCategoryChip: true))
+                          .toList(),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ] else
             for (final category in _kCategoryOrder)
               if (grouped.containsKey(category)) ...[
                 SliverToBoxAdapter(
@@ -1155,7 +1569,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                   'ALL PACKAGES',
                   style: TextStyle(
                     color: _gold,
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 2.5,
                   ),
@@ -1166,7 +1580,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                 'What does your car need today?',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 22,
+                  fontSize: 24,
                   fontWeight: FontWeight.w800,
                   height: 1.3,
                 ),
@@ -1199,10 +1613,10 @@ class _ServicesScreenState extends State<ServicesScreen> {
         child: TextField(
           controller: _searchController,
           focusNode: _searchFocusNode,
-          style: TextStyle(color: AppColors.txt, fontSize: 15),
+          style: TextStyle(color: AppColors.txt, fontSize: 17),
           decoration: InputDecoration(
-            hintText: 'Search any package or keyword…',
-            hintStyle: TextStyle(color: AppColors.mut),
+            hintText: 'e.g. "oil change", "brake fail", "paint fade"…',
+            hintStyle: TextStyle(color: AppColors.mut, fontSize: 15),
             prefixIcon: Icon(Icons.search_rounded,
                 color: _gold.withOpacity(0.7), size: 22),
             suffixIcon: _searchQuery.isNotEmpty
@@ -1245,7 +1659,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
             title.toUpperCase(),
             style: TextStyle(
               color: AppColors.txt,
-              fontSize: 13,
+              fontSize: 15,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.8,
             ),
@@ -1266,9 +1680,30 @@ class _ServicesScreenState extends State<ServicesScreen> {
     );
   }
 
+  // ── Search results header ───────────────────────────────────
+  Widget _buildSearchResultsHeader(int count) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+      child: Text(
+        count == 1
+            ? '1 package matches "$_searchQuery"'
+            : '$count packages match "$_searchQuery"',
+        style: TextStyle(color: AppColors.mut, fontSize: 15, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+
   // ── Package card ───────────────────────────────────────────
-  Widget _buildPackageCard(_Package pkg) {
+  // [matchedFeatures] — when this card is shown as a search result, the
+  // specific feature(s) from the package that matched what was typed
+  // (e.g. searching "oil change" shows "Includes: Engine Oil Change"
+  // right on the card instead of a generic tagline nobody can connect to
+  // their search). [showCategoryChip] labels which section the package
+  // is normally found under, since search results aren't grouped by
+  // category the way the browse view is.
+  Widget _buildPackageCard(_Package pkg, {List<String>? matchedFeatures, bool showCategoryChip = false}) {
     final accent = _kCategoryAccent[pkg.category] ?? _gold;
+    final hasMatch = matchedFeatures != null && matchedFeatures.isNotEmpty;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
       child: GestureDetector(
@@ -1278,12 +1713,13 @@ class _ServicesScreenState extends State<ServicesScreen> {
           decoration: BoxDecoration(
             color: AppColors.surfaceRaised,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: accent.withOpacity(0.22)),
+            border: Border.all(color: accent.withOpacity(hasMatch ? 0.55 : 0.22), width: hasMatch ? 1.4 : 1),
             boxShadow: [
               BoxShadow(color: accent.withOpacity(0.04), blurRadius: 14, offset: const Offset(0, 4)),
             ],
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 width: 48,
@@ -1299,6 +1735,14 @@ class _ServicesScreenState extends State<ServicesScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (showCategoryChip)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          pkg.category.toUpperCase(),
+                          style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1),
+                        ),
+                      ),
                     Row(
                       children: [
                         Expanded(
@@ -1306,37 +1750,88 @@ class _ServicesScreenState extends State<ServicesScreen> {
                             pkg.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: AppColors.txt, fontSize: 15, fontWeight: FontWeight.w800),
+                            style: TextStyle(color: AppColors.txt, fontSize: 18, fontWeight: FontWeight.w800),
                           ),
                         ),
                         if (pkg.comingSoon)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: AppColors.chipBg,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text('SOON',
                                 style: TextStyle(
-                                    color: AppColors.mut, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                                    color: AppColors.mut, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                           )
                         else if (pkg.price.isNotEmpty)
                           Text(pkg.price,
-                              style: TextStyle(color: accent, fontSize: 13, fontWeight: FontWeight.w800)),
+                              style: TextStyle(color: accent, fontSize: 16, fontWeight: FontWeight.w800)),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      pkg.tagline,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: AppColors.mut, fontSize: 12, height: 1.4),
+                    const SizedBox(height: 8),
+                    if (hasMatch)
+                      // Plain white-on-black, big and short — a badge
+                      // that's easy to spot and easy to read at a
+                      // glance, not something you have to stop and parse.
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: accent.withOpacity(0.4), width: 1.4),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.check_circle, color: Colors.black, size: 18),
+                            const SizedBox(width: 7),
+                            Expanded(
+                              child: Text(
+                                'Matches: ${matchedFeatures.join(', ')}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: Colors.black, fontSize: 15, fontWeight: FontWeight.w800, height: 1.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Text(
+                        pkg.tagline,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: AppColors.mut, fontSize: 14, height: 1.4),
+                      ),
+                    const SizedBox(height: 10),
+                    // A clearly button-shaped hint — filled background,
+                    // not just an icon and small text — so it doesn't
+                    // read as decoration; it looks like something you tap.
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'TAP TO VIEW',
+                            style: TextStyle(
+                                color: AppColors.onAccentDark, fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 0.4),
+                          ),
+                          const SizedBox(width: 5),
+                          Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.onAccentDark),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Icon(Icons.arrow_forward_ios_rounded, size: 12, color: accent.withOpacity(0.6)),
             ],
           ),
         ),
@@ -1345,6 +1840,11 @@ class _ServicesScreenState extends State<ServicesScreen> {
   }
 
   // ── No-results state ──────────────────────────────────────
+  // With word-by-word matching plus everyday-language synonyms, this
+  // should now be rare — but when it does happen, don't just say "not
+  // found" and stop. Point straight at our most popular packages, and
+  // put a big, unmissable call button front and center: someone who
+  // can't find what they want by typing should never be stuck.
   Widget _buildNoResults() {
     final suggestions = _kCatalog.where((p) => p.popular).toList();
     return Center(
@@ -1356,14 +1856,36 @@ class _ServicesScreenState extends State<ServicesScreen> {
             Icon(Icons.search_off_rounded, size: 52, color: AppColors.mut.withOpacity(0.5)),
             const SizedBox(height: 16),
             Text(
-              'No packages found for "$_searchQuery"',
-              style: TextStyle(color: AppColors.mut, fontSize: 15),
+              'We couldn\'t match "$_searchQuery" to a package',
+              style: TextStyle(color: AppColors.txt, fontSize: 18, fontWeight: FontWeight.w800),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 10),
             Text(
-              'Try out our:',
-              style: TextStyle(color: AppColors.txt, fontSize: 16, fontWeight: FontWeight.w800),
+              'Not sure what to search? Just call us and describe the problem — we\'ll tell you exactly what you need.',
+              style: TextStyle(color: AppColors.mut, fontSize: 15, height: 1.5),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _callUs,
+                icon: const Icon(Icons.call_rounded, size: 22),
+                label: const Text('CALL AN EXPERT NOW'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.6, fontSize: 15),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+            Text(
+              'Or try one of our most popular packages:',
+              style: TextStyle(color: AppColors.txt, fontSize: 17, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 14),
             Wrap(
@@ -1386,7 +1908,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                       border: Border.all(color: accent.withOpacity(0.35)),
                     ),
                     child: Text(pkg.name,
-                        style: TextStyle(color: accent, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                        style: TextStyle(color: accent, fontSize: 14.5, fontWeight: FontWeight.w700)),
                   ),
                 );
               }).toList(),

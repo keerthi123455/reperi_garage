@@ -10,10 +10,6 @@
     <!-- Required for: Picking PDF files (RC, License, Aadhaar, PAN, Insurance) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     
-    <!-- WRITE_EXTERNAL_STORAGE: Allows app to write/save files to device storage -->
-    <!-- Required for: Saving temporary files during upload -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    
     <!-- ======================================
          ANDROID 13+ SPECIFIC PERMISSIONS
          These replace READ/WRITE_EXTERNAL_STORAGE on newer Android versions
@@ -22,14 +18,6 @@
     <!-- READ_MEDIA_IMAGES: Allows app to read image files (damage photos) -->
     <!-- Android API 33+: Required instead of READ_EXTERNAL_STORAGE for images -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    
-    <!-- READ_MEDIA_VIDEO: Allows app to read video files -->
-    <!-- Android API 33+: Future-proofing if video uploads are added -->
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    
-    <!-- READ_MEDIA_AUDIO: Allows app to read audio files -->
-    <!-- Android API 33+: Future-proofing if audio uploads are added -->
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <!-- ======================================
          LOCATION PERMISSIONS
@@ -93,6 +81,21 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Handles the "reperi://reset-password" deep link that
+                 Supabase's password-reset email redirects to (see
+                 resetPasswordForEmail's redirectTo in login_screen.dart).
+                 Without this, Android has no app registered for the
+                 "reperi" scheme, so tapping the reset link in the email
+                 just opens the browser and goes nowhere — the link never
+                 reaches the app. iOS already has this scheme declared in
+                 Info.plist's CFBundleURLTypes. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="reperi" android:host="reset-password" />
             </intent-filter>
         </activity>
         

@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../widgets/custom_textfield.dart';
 import 'home_screen.dart';
-import 'login_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -80,9 +79,17 @@ class _SignupScreenState extends State<SignupScreen>
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
+      // pushReplacement only swaps this SignupScreen for HomeScreen —
+      // LoginScreen (pushed underneath when the user tapped "Register
+      // Now") would stay buried as the stack's first route. The bottom
+      // nav's Home button pops back to whatever route is first, so a
+      // freshly-registered user tapping Home would get popped all the
+      // way back to that buried LoginScreen — looking like a logout.
+      // Clearing the whole stack here guarantees Home is the first route.
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
       );
     } catch (e) {
       if (!mounted) return;
@@ -261,11 +268,14 @@ class _SignupScreenState extends State<SignupScreen>
                         ),
                         GestureDetector(
                           onTap: () {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const LoginScreen()),
-                            );
+                            // This screen is only ever reached by pushing
+                            // on top of LoginScreen (its "Register Now"
+                            // link), so the one already underneath is
+                            // right there — pop back to it instead of
+                            // pushReplacement, which would leave a
+                            // second, redundant LoginScreen stacked below
+                            // the original one.
+                            Navigator.pop(context);
                           },
                           child: const Text(
                             'Sign In',

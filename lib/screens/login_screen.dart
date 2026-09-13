@@ -426,9 +426,18 @@ class _LoginScreenState extends State<LoginScreen>
 
         if (!mounted) return;
 
-        Navigator.pushReplacement(
+        // pushReplacement only swaps the top route — if this LoginScreen
+        // was itself pushed on top of another screen (e.g. reached via
+        // Signup's "Already have an account?" link), that screen would
+        // stay buried at the bottom of the stack as the "first" route.
+        // The bottom nav's Home button pops back to whatever route is
+        // first, so it would land back on that buried screen instead of
+        // Home — looking exactly like an unexpected logout. Clearing the
+        // whole stack here guarantees Home is truly the first route.
+        Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const HomeScreen()),
+          (route) => false,
         );
       } else {
         // Admin login via local database
@@ -442,11 +451,12 @@ class _LoginScreenState extends State<LoginScreen>
 
         if (response.isNotEmpty) {
           final adminId = response[0]['id'];
-          Navigator.pushReplacement(
+          Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
               builder: (_) => AdminDashboardScreen(adminId: adminId),
             ),
+            (route) => false,
           );
         } else {
           ErrorDisplay.showErrorSnackBar(

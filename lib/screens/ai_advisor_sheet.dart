@@ -468,9 +468,73 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
     }
 
     // ── Car services ──────────────────────────────────────────────────────────
-    if (q.contains('scratch') || q.contains('paint') ||
-        q.contains('bumper') || q.contains('dent')) {
+    // Instead of a fixed if/else chain (first category whose one or two
+    // exact words show up wins, so "windshield damage" or "steering
+    // tight" matched nothing), every category gets a broad list of the
+    // everyday words and symptom phrases a real customer types, the query
+    // is scored against all of them, and whichever category collects the
+    // most matches wins — the same "search should recommend something
+    // relevant to whatever you type" approach used on the Services screen.
+    // Order here still breaks ties, so a query equally close to two
+    // categories keeps the old priority (paint/dent first, wash last).
+    final categoryKeywords = <String, List<String>>{
+      'paint': [
+        'scratch', 'scratches', 'scratched', 'paint', 'bumper', 'dent', 'dents',
+        'dented', 'panel', 'rust', 'rusting', 'rusted', 'fade', 'faded', 'chip',
+        'chipped', 'peeling', 'windshield', 'windscreen', 'body damage', 'faded paint',
+      ],
+      'tyre': [
+        'tyre', 'tyres', 'tire', 'tires', 'wheel', 'wheels', 'alloy', 'alloys',
+        'vibration', 'vibrating', 'shake', 'shaking', 'wobble', 'wobbling',
+        'alignment', 'steering', 'pulling', 'pull', 'puncture', 'punctured',
+        'flat tyre', 'flat tire', 'balancing', 'rotation', 'suspension',
+        'tight steering', 'stiff steering', 'heavy steering', 'noisy', 'humming',
+        'grinding wheel', 'wheel bearing', 'clunking',
+      ],
+      'ac': [
+        'ac', 'a/c', 'aircon', 'air condition', 'cooling', 'not cooling',
+        'cold air', 'hot air', 'compressor', 'ac gas', 'vent', 'ac vent', 'ac smell',
+      ],
+      'brake': [
+        'brake', 'brakes', 'braking', 'squeak', 'squeaking', 'squeal', 'grinding',
+        'brake fail', 'brake failing', 'brake failure', 'soft pedal', 'spongy brake',
+      ],
+      'battery': [
+        'battery', 'batteries', 'start', 'starting', "won't start", 'wont start',
+        'not starting', 'dead battery', 'dead', 'jump', 'jumpstart', 'charging', 'alternator',
+      ],
+      'engine': [
+        'engine', 'noise', 'noisy', 'sound', 'pickup', 'power', 'performance', 'book service',
+        'general service', 'maintenance', 'oil change', 'oil', 'service due',
+        'mileage', 'fuel efficiency', 'smoke', 'smoking', 'overheat', 'overheating',
+        'clutch', 'gear', 'gearbox', 'transmission', 'exhaust', 'silencer', 'horn',
+        'electrical', 'wiring', 'sensor', 'warning light', 'check engine',
+        'window', 'windows', 'wiper', 'wipers', 'lock', 'locking', 'key', 'remote',
+        'mirror',
+      ],
+      'accident': [
+        'accident', 'crash', 'hit', 'collision', 'bang', 'insurance claim', 'insurance',
+      ],
+      'wash': [
+        'wash', 'washing', 'clean', 'cleaning', 'dirty', 'dust', 'dusty', 'smell',
+        'smelly', 'seat cover', 'interior clean', 'upholstery',
+      ],
+    };
+
+    String? bestCategory;
+    int bestScore = 0;
+    for (final entry in categoryKeywords.entries) {
+      final score = entry.value.where((kw) => q.contains(kw)).length;
+      if (score > bestScore) {
+        bestScore = score;
+        bestCategory = entry.key;
+      }
+    }
+
+    if (bestCategory == 'paint') {
       return {
+        'text':
+            "Scratches, dents and chipped paint don't heal on their own — bare metal left exposed can start rusting within days, especially after rain. Better to sort it now than let a small mark turn into a bigger repair.",
         'recommendation': {
           'issue': '🎨 Paint Damage / Surface Scratches',
           'packages': [
@@ -491,10 +555,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       };
     }
 
-    if (q.contains('tyre') || q.contains('tire') ||
-        q.contains('vibration') || q.contains('alignment') ||
-        q.contains('steering')) {
+    if (bestCategory == 'tyre') {
       return {
+        'text':
+            "Vibration, pulling to one side, heavy steering, or a new humming/noisy sound from the wheels usually points to misalignment, imbalance, or a worn wheel bearing — driving on it wears your tyres unevenly and can quietly increase your braking distance. Worth getting checked before your next long drive.",
         'recommendation': {
           'issue': '🔧 Wheel / Tyre Issue',
           'packages': [
@@ -509,8 +573,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       };
     }
 
-    if (q.contains('ac') || q.contains('cool') || q.contains('air condition')) {
+    if (bestCategory == 'ac') {
       return {
+        'text':
+            "Weak cooling is usually a refrigerant leak or a clogged vent — it won't fix itself, and running the compressor low on gas for too long can damage it. A quick check now is a lot cheaper than a compressor replacement later.",
         'recommendation': {
           'issue': '❄️ AC Performance Issue',
           'packages': [
@@ -531,8 +597,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       };
     }
 
-    if (q.contains('brake') || q.contains('squeak') || q.contains('braking')) {
+    if (bestCategory == 'brake') {
       return {
+        'text':
+            "Please don't wait on this one — squeaking, grinding or a soft pedal is usually your brake pads warning you before it starts affecting your stopping distance. This is a safety item, so get it looked at as soon as you can.",
         'recommendation': {
           'issue': '🛑 Brake System Issue',
           'packages': [
@@ -547,8 +615,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       };
     }
 
-    if (q.contains('battery') || q.contains('start') || q.contains("won't start")) {
+    if (bestCategory == 'battery') {
       return {
+        'text':
+            "A car that's slow to start or won't start at all is usually a battery that's genuinely failing, not just low on charge — it's worth testing before it leaves you stranded somewhere inconvenient.",
         'recommendation': {
           'issue': '🔋 Battery / Starting Issue',
           'packages': [
@@ -563,11 +633,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       };
     }
 
-    if (q.contains('engine') || q.contains('noise') ||
-        q.contains('pickup') || q.contains('power') ||
-        q.contains('book service') || q.contains('general service') ||
-        q.contains('maintenance')) {
+    if (bestCategory == 'engine') {
       return {
+        'text':
+            "Unusual engine noise, reduced pickup, or a warning light is your car's way of flagging something early — catching it now is almost always cheaper than waiting for it to become a bigger repair.",
         'recommendation': {
           'issue': '⚙️ Engine Performance Issue',
           'packages': [
@@ -588,8 +657,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       };
     }
 
-    if (q.contains('accident') || q.contains('crash') || q.contains('hit')) {
+    if (bestCategory == 'accident') {
       return {
+        'text':
+            "Sorry to hear that. For any accident damage, take a few photos before anything is touched — it helps a lot if you plan to file an insurance claim — and get the vehicle inspected soon so it doesn't sit with hidden structural damage.",
         'recommendation': {
           'issue': '🚨 Accident Damage',
           'packages': [
@@ -604,8 +675,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       };
     }
 
-    if (q.contains('wash') || q.contains('clean') || q.contains('dirty')) {
+    if (bestCategory == 'wash') {
       return {
+        'text':
+            "A clean car isn't just about looks — dust, grime and bird droppings can eat into your paint and interior surfaces over time if left too long. A regular wash keeps that from becoming a bigger problem.",
         'recommendation': {
           'issue': '🚿 Vehicle Cleaning',
           'packages': [
@@ -649,6 +722,8 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
 
     // Generic vehicle query → 21-step inspection
     return {
+      'text':
+          "I couldn't pin that down to one specific issue, but a full inspection is a good place to start — it checks the engine, brakes and battery together so nothing gets missed.",
       'recommendation': {
         'issue': '🔍 General Vehicle Inspection',
         'packages': [
@@ -896,9 +971,13 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
             if (msg['image'] != null &&
                 (msg['text'] as String?)?.isNotEmpty == true)
               const SizedBox(height: 6),
-            if (msg['recommendation'] != null)
-              _buildRecommendationCard(msg['recommendation'])
-            else if ((msg['text'] as String?)?.isNotEmpty == true)
+            // Advice text and the package recommendation used to be
+            // either/or — a category match would return both a 'text'
+            // (some advice about the issue) and a 'recommendation', but
+            // only the card ever rendered, silently dropping the advice.
+            // Now both show, advice first, so the bot actually "says
+            // something" instead of just dropping a card.
+            if ((msg['text'] as String?)?.isNotEmpty == true)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
@@ -920,6 +999,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
                       fontSize: 14, height: 1.5),
                 ),
               ),
+            if ((msg['text'] as String?)?.isNotEmpty == true && msg['recommendation'] != null)
+              const SizedBox(height: 10),
+            if (msg['recommendation'] != null)
+              _buildRecommendationCard(msg['recommendation']),
           ],
         ),
       ),
@@ -1024,7 +1107,13 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
   }
 
   Widget _buildPackageTile(Map<String, dynamic> pkg) {
-    return Container(
+    // The whole tile navigates to the package now, not just BOOK NOW —
+    // same "tap anywhere on the card" behavior as the Services screen's
+    // search results, so tapping the name, price or features also works.
+    // BOOK NOW and CALL below still work as their own, more specific taps.
+    return GestureDetector(
+      onTap: () => _bookNow(pkg),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: _surfaceAlt,
@@ -1158,6 +1247,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
             ),
           ),
         ],
+      ),
       ),
     );
   }
