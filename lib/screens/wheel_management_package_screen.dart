@@ -11,6 +11,7 @@ import 'payment_screen.dart';
 class _Tier {
   final String name;
   final String price;
+  final String duration;
   final String tagline;
   final String bestFor;
   final Color accent;
@@ -20,6 +21,7 @@ class _Tier {
   const _Tier({
     required this.name,
     required this.price,
+    required this.duration,
     required this.tagline,
     required this.bestFor,
     required this.accent,
@@ -28,58 +30,68 @@ class _Tier {
   });
 }
 
+// Matches the real Wheel Alignment (₹499), Wheel Balancing (₹299), and
+// Wheel Alignment and Balancing (₹799) packages — the same three the Tyre
+// Care screen and the Services catalog offer, just presented in this
+// screen's tier-card UI.
 const _tiers = [
   _Tier(
-    name: 'PRECISION ALIGNMENT',
-    price: '₹999',
+    name: 'WHEEL ALIGNMENT',
+    price: '₹499',
+    duration: '45 mins',
     tagline: 'Better handling, smoother driving, and longer tyre life',
     bestFor:
         'Every 8,000–10,000 km, after hitting potholes, or when the car pulls to one side.',
     accent: Color(0xFF4FA3E3),
     highlights: [
-      'Computerized Wheel Alignment',
-      'Steering Alignment Check',
-      'Suspension Geometry Inspection',
-      'Tyre Pressure Adjustment',
-      'Front & Rear Tyre Wear Inspection',
-      'Steering Wheel Centering',
-      'Road Test After Alignment',
-      'Digital Alignment Report',
+      'Computerized alignment',
+      'Steering correction',
+      'Camber adjustment',
+      'Wheel angle optimization',
+      'Road stability testing',
     ],
   ),
   _Tier(
-    name: 'COMPLETE WHEEL CARE',
-    price: '₹1,999',
-    tagline: 'Maximize tyre life and improve driving comfort',
+    name: 'WHEEL BALANCING',
+    price: '₹299',
+    duration: '30 mins',
+    tagline: 'Improves ride quality and tyre longevity',
+    bestFor: 'Every 10,000 km, or if you feel vibration at highway speed.',
+    accent: Color(0xFF4CAF7A),
+    highlights: [
+      'Dynamic balancing',
+      'Wheel weight calibration',
+      'Vibration reduction',
+      'High-speed balancing',
+      'Extra charges up to ₹200 may apply (tyre-dependent)',
+    ],
+  ),
+  _Tier(
+    name: 'WHEEL ALIGNMENT AND BALANCING',
+    price: '₹799',
+    duration: '60 mins',
+    tagline: 'Our most complete wheel care combo, in one visit',
     bestFor: 'New tyres, high-speed vibration issues, or every 10,000 km.',
     accent: Color(0xFFD4A017),
     recommended: true,
     highlights: [
-      'Everything in Precision Alignment',
-      'Computerized Wheel Balancing (All 4 Wheels)',
-      'Alloy Wheel Inspection',
-      'Tyre Rotation (if applicable)',
-      'Valve & Air Leak Check',
-      'Wheel Nut Torque Check',
-      'Suspension & Steering Linkage Inspection',
-      'Brake Disc Visual Inspection',
-      'Tyre Tread Depth Measurement',
-      'Tyre Health Report with Replacement Advice',
-      'Complimentary Tyre Shine',
+      'Everything in Wheel Alignment',
+      'Dynamic balancing',
+      'Wheel weight calibration',
+      'Extra charges up to ₹200 may apply (tyre-dependent)',
     ],
   ),
 ];
 
-// (feature, ₹999, ₹1,999)
+// (feature, ₹499, ₹299, ₹799)
 const _comparisonRows = [
-  ('Wheel Alignment', '✅', '✅'),
-  ('Wheel Balancing', '❌', '✅'),
-  ('Tyre Rotation', '❌', '✅'),
-  ('Suspension Check', '✅', 'Detailed'),
-  ('Tyre Pressure Adjustment', '✅', '✅'),
-  ('Steering Check', '✅', '✅'),
-  ('Digital Report', '✅', '✅'),
-  ('Tyre Health Report', '❌', '✅'),
+  ('Computerized Alignment', '✅', '❌', '✅'),
+  ('Steering Correction', '✅', '❌', '✅'),
+  ('Camber Adjustment', '✅', '❌', '✅'),
+  ('Dynamic Balancing', '❌', '✅', '✅'),
+  ('Wheel Weight Calibration', '❌', '✅', '✅'),
+  ('Road Stability Testing', '✅', '❌', '✅'),
+  ('Extra Charges (tyre-dependent)', '—', 'Up to ₹200', 'Up to ₹200'),
 ];
 
 const _whyChooseUs = [
@@ -92,7 +104,11 @@ const _whyChooseUs = [
 class WheelManagementPackageScreen extends StatefulWidget {
   final String vehicleId;
 
-  const WheelManagementPackageScreen({super.key, required this.vehicleId});
+  /// When set (matches one of the tier names above, case-insensitive),
+  /// that tier is pre-selected and scrolled into view on open.
+  final String? highlightPackage;
+
+  const WheelManagementPackageScreen({super.key, required this.vehicleId, this.highlightPackage});
 
   @override
   State<WheelManagementPackageScreen> createState() =>
@@ -101,11 +117,30 @@ class WheelManagementPackageScreen extends StatefulWidget {
 
 class _WheelManagementPackageScreenState
     extends State<WheelManagementPackageScreen> {
-  int _selectedTier = 1; // default to Complete Wheel Care (recommended)
+  int _selectedTier = 2; // default to Wheel Alignment and Balancing (recommended)
+  final List<GlobalKey> _cardKeys = List.generate(_tiers.length, (_) => GlobalKey());
 
   @override
   void initState() {
     super.initState();
+    if (widget.highlightPackage != null) {
+      final target = widget.highlightPackage!.toLowerCase();
+      final match = _tiers.indexWhere((t) => t.name.toLowerCase() == target);
+      if (match != -1) {
+        _selectedTier = match;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final ctx = _cardKeys[match].currentContext;
+          if (ctx != null) {
+            Scrollable.ensureVisible(
+              ctx,
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeInOut,
+              alignment: 0.1,
+            );
+          }
+        });
+      }
+    }
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
@@ -136,7 +171,7 @@ class _WheelManagementPackageScreenState
         builder: (_) => PaymentScreen(
           title: tier.name,
           price: tier.price,
-          duration: '1-2 hrs',
+          duration: tier.duration,
           vehicleId: widget.vehicleId,
         ),
       ),
@@ -276,6 +311,7 @@ class _WheelManagementPackageScreenState
                       final tier = _tiers[i];
                       final isSelected = i == _selectedTier;
                       return GestureDetector(
+                        key: _cardKeys[i],
                         onTap: () => setState(() => _selectedTier = i),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
@@ -454,8 +490,9 @@ class _WheelManagementPackageScreenState
                               TableCellVerticalAlignment.middle,
                           columnWidths: const {
                             0: FixedColumnWidth(190),
-                            1: FixedColumnWidth(90),
-                            2: FixedColumnWidth(90),
+                            1: FixedColumnWidth(80),
+                            2: FixedColumnWidth(80),
+                            3: FixedColumnWidth(80),
                           },
                           children: [
                             TableRow(
@@ -475,7 +512,7 @@ class _WheelManagementPackageScreenState
                                 ),
                                 const Padding(
                                   padding: EdgeInsets.symmetric(vertical: 10),
-                                  child: Text('₹999',
+                                  child: Text('₹499',
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                           color: Color(0xFF4FA3E3),
@@ -484,7 +521,16 @@ class _WheelManagementPackageScreenState
                                 ),
                                 const Padding(
                                   padding: EdgeInsets.symmetric(vertical: 10),
-                                  child: Text('₹1,999',
+                                  child: Text('₹299',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          color: Color(0xFF4CAF7A),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800)),
+                                ),
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 10),
+                                  child: Text('₹799',
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                           color: Color(0xFFD4A017),
@@ -523,6 +569,15 @@ class _WheelManagementPackageScreenState
                                     padding:
                                         const EdgeInsets.symmetric(vertical: 12),
                                     child: Text(row.$3,
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                            color: AppColors.txt.withOpacity(0.7),
+                                            fontSize: 12.5)),
+                                  ),
+                                  Padding(
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 12),
+                                    child: Text(row.$4,
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                             color: AppColors.txt.withOpacity(0.7),
@@ -579,12 +634,16 @@ class _WheelManagementPackageScreenState
                                           color: const Color(0xFFD4A017),
                                           size: 26),
                                       const SizedBox(height: 10),
-                                      Text(
-                                        f.$2,
-                                        style: TextStyle(
-                                            color: AppColors.txt,
-                                            fontSize: 12.5,
-                                            fontWeight: FontWeight.w700),
+                                      Flexible(
+                                        child: Text(
+                                          f.$2,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                              color: AppColors.txt,
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w700),
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -659,22 +718,33 @@ class _WheelManagementPackageScreenState
                         ),
                       ],
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.calendar_month,
-                            color: AppColors.onAccentDark, size: 22),
-                        const SizedBox(width: 10),
-                        Text(
-                          'BOOK ${selected.name} • ${selected.price}',
-                          style: TextStyle(
-                            color: AppColors.onAccentDark,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.5,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.calendar_month,
+                              color: AppColors.onAccentDark, size: 22),
+                          const SizedBox(width: 10),
+                          // A tier name can run long ("WHEEL ALIGNMENT AND
+                          // BALANCING") — Flexible + ellipsis keeps this bar
+                          // from overflowing horizontally instead of just
+                          // hoping every name stays short.
+                          Flexible(
+                            child: Text(
+                              'BOOK ${selected.name} • ${selected.price}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: AppColors.onAccentDark,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),

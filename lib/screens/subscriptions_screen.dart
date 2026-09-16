@@ -8,9 +8,15 @@ import '../services/address_service.dart';
 class SubscriptionsScreen extends StatefulWidget {
   final String vehicleId;
 
+  /// This screen represents a single service with no sub-packages to
+  /// select between, so there's nothing further to highlight — accepted
+  /// only so callers that pass it (see buildPackageScreenFor) compile.
+  final String? highlightPackage;
+
   const SubscriptionsScreen({
     super.key,
     required this.vehicleId,
+    this.highlightPackage,
   });
 
   @override

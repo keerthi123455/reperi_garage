@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:reperi_garage/services/address_service.dart';
@@ -529,6 +530,18 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
   double? selectedLng;
   bool isDetectingLocation = false;
 
+  // Manual entry — a second way to set the location besides GPS detection,
+  // for when the customer isn't standing at the pickup address (e.g.
+  // booking for a relative's place, or their own live GPS point falls
+  // outside the service area and they need to pick a real in-area
+  // address instead). Kept as a plain toggle rather than a full
+  // TabBar/TabController — same visual effect, less machinery.
+  bool _useManualEntry = false;
+  bool isGeocoding = false;
+  final _streetController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _pincodeController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -542,6 +555,9 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
   @override
   void dispose() {
     themeController.removeListener(_onThemeChanged);
+    _streetController.dispose();
+    _cityController.dispose();
+    _pincodeController.dispose();
     super.dispose();
   }
 
@@ -674,75 +690,165 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
     });
   }
 
+  Future<void> _showSimpleDialog(String title, String message) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: AppColors.surfaceRaised,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Text(title, style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w800)),
+          content: Text(message, style: TextStyle(color: AppColors.mut, height: 1.4)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK', style: TextStyle(color: goldAccent, fontWeight: FontWeight.w700)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Turns the manual Street/City/PIN Code fields into real coordinates —
+  /// the same `geocoding` package already used elsewhere in this file for
+  /// the reverse direction (coordinates → address on Detect Location).
+  /// Returns null (after showing why) if the fields are incomplete or
+  /// nothing could be found for them.
+  Future<({double lat, double lng, String address})?> _geocodeManualAddress() async {
+    final street = _streetController.text.trim();
+    final city = _cityController.text.trim();
+    final pincode = _pincodeController.text.trim();
+
+    if (street.isEmpty || city.isEmpty || !RegExp(r'^\d{6}$').hasMatch(pincode)) {
+      await _showSimpleDialog(
+        'Incomplete Address',
+        'Please fill in the street/area, city, and a valid 6-digit PIN code.',
+      );
+      return null;
+    }
+
+    setState(() => isGeocoding = true);
+    try {
+      // The PIN code is what actually narrows this down to the right
+      // area — without it, a common street name could match a
+      // same-named street in a completely different city.
+      final results = await locationFromAddress('$street, $city, $pincode, India');
+      if (results.isEmpty) {
+        if (mounted) setState(() => isGeocoding = false);
+        await _showSimpleDialog(
+          "Couldn't Find That Address",
+          'Try adding more detail (a nearby landmark or a fuller street name), '
+              'or double check the PIN code.',
+        );
+        return null;
+      }
+      if (mounted) setState(() => isGeocoding = false);
+      return (
+        lat: results.first.latitude,
+        lng: results.first.longitude,
+        address: '$street, $city - $pincode',
+      );
+    } catch (e) {
+      if (mounted) setState(() => isGeocoding = false);
+      await _showSimpleDialog(
+        "Couldn't Find That Address",
+        'Something went wrong looking that address up. Please check your '
+            'connection and try again.',
+      );
+      return null;
+    }
+  }
+
+  Widget _locationModeTab({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? goldAccent.withOpacity(0.14) : AppColors.surfaceRaised,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? goldAccent : AppColors.line,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 18, color: selected ? goldAccent : AppColors.mut),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? goldAccent : AppColors.mut,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Save address to database
   Future<void> _saveAddress() async {
     FocusScope.of(context).unfocus();
     final name = widget.nameController.text.trim();
-    final detectedAddress = widget.addressController.text.trim();
     final details = widget.detailsController.text.trim();
-    final locationDetected = selectedLat != null && selectedLng != null;
 
-    // Validate BEFORE attempting to save anything. Manual typing is gone,
-    // so a real detected location is required — there's no fallback
-    // address text to accept instead.
-    if (name.isEmpty || !locationDetected) {
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            backgroundColor: AppColors.surfaceRaised,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-            ),
-            title: Text(
-              'Incomplete Address',
-              style: TextStyle(
-                color: AppColors.txt,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            content: Text(
-              name.isEmpty && !locationDetected
-                  ? 'Please enter an address name and detect your location.'
-                  : name.isEmpty
-                      ? 'Please enter an address name.'
-                      : 'Please detect your location first.',
-              style: TextStyle(
-                color: AppColors.mut,
-                height: 1.4,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text(
-                  'OK',
-                  style: TextStyle(
-                    color: goldAccent,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      );
-
+    if (name.isEmpty) {
+      await _showSimpleDialog('Incomplete Address', 'Please enter an address name.');
       return;
     }
 
+    String resolvedAddress;
+    double lat;
+    double lng;
+
+    if (_useManualEntry) {
+      final geocoded = await _geocodeManualAddress();
+      if (geocoded == null) return; // dialog already shown
+      resolvedAddress = geocoded.address;
+      lat = geocoded.lat;
+      lng = geocoded.lng;
+    } else {
+      if (selectedLat == null || selectedLng == null) {
+        await _showSimpleDialog('Incomplete Address', 'Please detect your location first.');
+        return;
+      }
+      resolvedAddress = widget.addressController.text.trim();
+      lat = selectedLat!;
+      lng = selectedLng!;
+    }
+
     // House/flat/door number and landmark, when given, lead the address
-    // so it reads naturally: "Flat 302, ABC Apartments, <detected street,
-    // locality, pincode>" rather than being tacked on at the end.
-    final address =
-        details.isEmpty ? detectedAddress : '$details, $detectedAddress';
+    // so it reads naturally: "Flat 302, ABC Apartments, <street, locality,
+    // pincode>" rather than being tacked on at the end.
+    final address = details.isEmpty ? resolvedAddress : '$details, $resolvedAddress';
 
     try {
       await widget.addressService.addAddress(
         name: name,
         address: address,
-        latitude: selectedLat!,
-        longitude: selectedLng!,
+        latitude: lat,
+        longitude: lng,
+        // A freshly added address is what the customer just told us they
+        // want to use right now — it should be the one their next
+        // booking picks up, not silently sit unselected until they find
+        // the radio button on the address list themselves.
+        isDefault: true,
       );
 
       if (!mounted) return;
@@ -756,42 +862,9 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
       widget.onError(e.toString());
 
       // Also show in-sheet error dialog
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            backgroundColor: AppColors.surfaceRaised,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-            ),
-            title: Text(
-              'Could Not Save Address',
-              style: TextStyle(
-                color: AppColors.txt,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            content: Text(
-              'Something went wrong while saving your address.\n\n$e',
-              style: TextStyle(
-                color: AppColors.mut,
-                height: 1.4,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text(
-                  'OK',
-                  style: TextStyle(
-                    color: goldAccent,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+      await _showSimpleDialog(
+        'Could Not Save Address',
+        'Something went wrong while saving your address.\n\n$e',
       );
     }
   }
@@ -846,7 +919,7 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
               ),
               const SizedBox(height: 6),
               Text(
-                'We use your live location for pickup & drop — no manual typing needed.',
+                'Detect your current location, or enter an address manually.',
                 style: TextStyle(
                   fontSize: 12.5,
                   color: AppColors.mut,
@@ -981,24 +1054,61 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
                 ),
               ),
               const SizedBox(height: 8),
-              _DetectLocationTab(
-                isDetecting: isDetectingLocation,
-                isLocationDetected:
-                    selectedLat != null && selectedLng != null,
-                addressText: widget.addressController.text,
-                onDetect: _detectLocation,
-                onReset: () {
-                  setState(() {
-                    selectedLat = null;
-                    selectedLng = null;
-                    widget.addressController.clear();
-                  });
-                },
+
+              // Two ways to set the location: detect it live, or type it
+              // — for whenever the customer isn't standing at the pickup
+              // spot themselves (booking for someone else, or their own
+              // live location happens to be out of the service area).
+              Row(
+                children: [
+                  Expanded(
+                    child: _locationModeTab(
+                      label: 'Detect Location',
+                      icon: Icons.my_location,
+                      selected: !_useManualEntry,
+                      onTap: () => setState(() => _useManualEntry = false),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _locationModeTab(
+                      label: 'Enter Address',
+                      icon: Icons.edit_location_alt_outlined,
+                      selected: _useManualEntry,
+                      onTap: () => setState(() => _useManualEntry = true),
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 16),
+
+              if (_useManualEntry)
+                _ManualAddressTab(
+                  streetController: _streetController,
+                  cityController: _cityController,
+                  pincodeController: _pincodeController,
+                )
+              else
+                _DetectLocationTab(
+                  isDetecting: isDetectingLocation,
+                  isLocationDetected:
+                      selectedLat != null && selectedLng != null,
+                  addressText: widget.addressController.text,
+                  onDetect: _detectLocation,
+                  onReset: () {
+                    setState(() {
+                      selectedLat = null;
+                      selectedLng = null;
+                      widget.addressController.clear();
+                    });
+                  },
+                ),
               const SizedBox(height: 24),
 
-              // ===== LOCATION DETECTED INDICATOR =====
-              if (selectedLat != null && selectedLng != null)
+              // ===== LOCATION DETECTED INDICATOR (Detect mode only —
+              // manual mode confirms by actually saving, since the
+              // address isn't geocoded until Save is tapped) =====
+              if (!_useManualEntry && selectedLat != null && selectedLng != null)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(
@@ -1040,7 +1150,7 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
                     ],
                   ),
                 ),
-              if (selectedLat != null && selectedLng != null)
+              if (!_useManualEntry && selectedLat != null && selectedLng != null)
                 const SizedBox(height: 16),
               const SizedBox(height: 20),
 
@@ -1058,7 +1168,7 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
                   ],
                 ),
                 child: GestureDetector(
-                  onTap: _saveAddress,
+                  onTap: isGeocoding ? null : _saveAddress,
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 16),
@@ -1074,16 +1184,27 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
                         width: 1.5,
                       ),
                     ),
-                    child: Text(
-                      'Save Address',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
-                        color: AppColors.onAccentDark,
-                      ),
-                    ),
+                    child: isGeocoding
+                        ? const Center(
+                            child: SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                              ),
+                            ),
+                          )
+                        : Text(
+                            'Save Address',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                              color: AppColors.onAccentDark,
+                            ),
+                          ),
                   ),
                 ),
               ),
@@ -1238,6 +1359,94 @@ class _DetectLocationTab extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+// ===== MANUAL ADDRESS ENTRY =====
+// Street + City + a dedicated PIN Code field — the PIN code is what
+// actually narrows a forward-geocode lookup down to the right area (a
+// street name alone is rarely unique across the country), so it gets its
+// own field rather than being just another word buried in one free-text
+// box. Nothing is geocoded here as you type; that happens once, when
+// Save Address is tapped (see _geocodeManualAddress in the parent).
+class _ManualAddressTab extends StatelessWidget {
+  final TextEditingController streetController;
+  final TextEditingController cityController;
+  final TextEditingController pincodeController;
+
+  const _ManualAddressTab({
+    required this.streetController,
+    required this.cityController,
+    required this.pincodeController,
+  });
+
+  InputDecoration _decoration({required String hint, required IconData icon}) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: AppColors.mut, fontSize: 13),
+      prefixIcon: Icon(icon, color: goldAccent, size: 20),
+      filled: true,
+      fillColor: AppColors.surfaceRaised,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: AppColors.line, width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: goldAccent, width: 2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: streetController,
+          style: TextStyle(color: AppColors.txt, fontSize: 14, fontWeight: FontWeight.w500),
+          decoration: _decoration(hint: 'Street / area (e.g. MG Road)', icon: Icons.signpost_outlined),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 3,
+              child: TextField(
+                controller: cityController,
+                style: TextStyle(color: AppColors.txt, fontSize: 14, fontWeight: FontWeight.w500),
+                decoration: _decoration(hint: 'City', icon: Icons.location_city_outlined),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: TextField(
+                controller: pincodeController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                style: TextStyle(color: AppColors.txt, fontSize: 14, fontWeight: FontWeight.w500),
+                decoration: _decoration(hint: 'PIN Code', icon: Icons.pin_drop_outlined)
+                    .copyWith(counterText: ''),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'The PIN code helps us find the exact location.',
+          style: TextStyle(color: AppColors.mut, fontSize: 11.5),
+        ),
+      ],
     );
   }
 }

@@ -9,9 +9,14 @@ class BookServiceScreen extends StatefulWidget {
 
   final Map<String, dynamic> vehicle;
 
+  /// When set (matches one of the tile titles below, e.g. "Quick Service"),
+  /// that tile is pre-selected and scrolled into view on open.
+  final String? highlightPackage;
+
   const BookServiceScreen({
     super.key,
     required this.vehicle,
+    this.highlightPackage,
   });
 
   @override
@@ -23,6 +28,7 @@ class _BookServiceScreenState
     extends State<BookServiceScreen> {
 
   int selectedIndex = 0;
+  final List<GlobalKey> _cardKeys = [];
 
   List<Map<String, dynamic>> services = [
 
@@ -107,11 +113,31 @@ class _BookServiceScreenState
   @override
   void initState() {
     super.initState();
+    _cardKeys.addAll(List.generate(services.length, (_) => GlobalKey()));
+    if (widget.highlightPackage != null) {
+      final target = widget.highlightPackage!.toLowerCase();
+      final match = services.indexWhere(
+          (s) => (s['title'] as String).toLowerCase() == target);
+      if (match != -1) selectedIndex = match;
+    }
     _fetchServiceData();
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
+    if (widget.highlightPackage != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _cardKeys[selectedIndex].currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(
+            ctx,
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeInOut,
+            alignment: 0.1,
+          );
+        }
+      });
+    }
   }
 
   void _onThemeChanged() {
@@ -321,6 +347,7 @@ class _BookServiceScreenState
                             final isSelected = index == selectedIndex;
 
                             return Padding(
+                              key: _cardKeys[index],
                               padding: EdgeInsets.only(
                                 bottom: index == services.length - 1 ? 0 : 16,
                               ),

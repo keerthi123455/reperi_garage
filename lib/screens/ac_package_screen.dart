@@ -784,13 +784,17 @@ class _AcPackageScreenState extends State<AcPackageScreen>
                         children: [
                           Icon(f.$1, color: const Color(0xFFD4A017), size: 24),
                           const SizedBox(height: 10),
-                          Text(
-                            f.$2,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppColors.txt,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                          Flexible(
+                            child: Text(
+                              f.$2,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: AppColors.txt,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '/services/payment_service_factory.dart';
 import 'home_screen.dart';
+import 'profile_screen.dart';
 import 'package:reperi_garage/services/address_service.dart';
 import 'package:reperi_garage/screens/address_management_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -42,6 +43,18 @@ class PaymentScreen extends StatefulWidget {
   /// are inherently a pickup, just without the optional ₹100 toggle.
   final bool forcePickupDropYes;
 
+  /// Whether this booking needs a real vehicle behind it. True for every
+  /// ordinary service booking (the default); set to false for the couple
+  /// of flows that legitimately have no single vehicle to book against —
+  /// Roadside Assistance and the fleet "Pay Now" flow — which pass an
+  /// empty [vehicleId] on purpose. When true and [vehicleId] is empty,
+  /// this screen shows an "add a vehicle first" prompt instead of the
+  /// payment form, since every package-browsing screen upstream of this
+  /// one is allowed to be reached without a vehicle (so people can look
+  /// around before adding one) and this is the one place that actually
+  /// needs it.
+  final bool vehicleRequired;
+
   const PaymentScreen({
     super.key,
     required this.title,
@@ -53,6 +66,7 @@ class PaymentScreen extends StatefulWidget {
     this.onlineOnly = false,
     this.showPickupDropOption = true,
     this.forcePickupDropYes = false,
+    this.vehicleRequired = true,
   });
 
   @override
@@ -168,10 +182,48 @@ class _PaymentScreenState
       parent: _controller,
       curve: Curves.elasticOut,
     );
-    
+
+    // Package-browsing screens upstream (the catalog, tier pickers, etc.)
+    // are reachable without a vehicle so people can look around before
+    // adding one — this is the one place that actually needs a real
+    // vehicle, so it's the one place that checks. Deferred a frame since
+    // showDialog needs the widget tree to have already been laid out.
+    if (widget.vehicleRequired && widget.vehicleId.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showVehicleRequiredDialog());
+    }
+
     // ── Initialize address service and load default address ──
     _addressService = AddressService();
     _loadDefaultAddress();
+  }
+
+  /// Shown instead of letting the user proceed to checkout with no
+  /// vehicle to book the service against.
+  void _showVehicleRequiredDialog() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF262626),
+        title: const Text(
+          'ADD A VEHICLE TO BOOK THIS SERVICE',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // close dialog
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen(autoOpenAddVehicle: true)),
+              );
+            },
+            child: const Text('ADD VEHICLE', style: TextStyle(color: Color(0xFFD4A017))),
+          ),
+        ],
+      ),
+    );
   }
   
   /// Load the default address for display
@@ -212,8 +264,15 @@ class _PaymentScreenState
   }
 
   /// Shown when the customer's address falls outside the area this app
-  /// currently services — blocks them from reaching checkout at all by
-  /// popping back to whichever booking screen sent them here.
+  /// currently services. Used to just leave them stuck with no way
+  /// forward except backing out entirely — now offers changing the
+  /// pickup address right from here, reusing the same
+  /// _navigateToAddressManagement() flow the "no address saved" dialog
+  /// already uses: it pushes AddressManagementScreen and re-runs
+  /// _loadDefaultAddress() on return, which re-checks the new address
+  /// against the service area automatically. Pick one that's in range
+  /// and this dialog simply doesn't reappear — no need to back out and
+  /// restart the booking from scratch.
   void _showOutOfServiceAreaDialog() {
     if (!mounted) return;
     showDialog(
@@ -226,7 +285,7 @@ class _PaymentScreenState
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         content: const Text(
-          'We are not operational in your area yet!',
+          'We are not operational in your area yet! Try a different pickup address, or come back later.',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -235,7 +294,14 @@ class _PaymentScreenState
               Navigator.pop(context); // close dialog
               Navigator.pop(context); // leave PaymentScreen
             },
-            child: const Text('OK', style: TextStyle(color: Color(0xFFD4A017))),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // close dialog only — stay on PaymentScreen
+              _navigateToAddressManagement();
+            },
+            child: const Text('CHANGE ADDRESS', style: TextStyle(color: Color(0xFFD4A017))),
           ),
         ],
       ),

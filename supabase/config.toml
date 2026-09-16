@@ -25,3 +25,8 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/notify-on-db-change/deno.json"
 entrypoint = "./functions/notify-on-db-change/index.ts"
+
+[functions.ask-ai-chat]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/ask-ai-chat/index.ts"

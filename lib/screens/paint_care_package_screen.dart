@@ -159,7 +159,11 @@ const _comparisonRows = [
 class PaintCarePackageScreen extends StatefulWidget {
   final String vehicleId;
 
-  const PaintCarePackageScreen({super.key, required this.vehicleId});
+  /// When set (matches one of the tier names above, case-insensitive),
+  /// that tier is pre-selected and scrolled into view on open.
+  final String? highlightPackage;
+
+  const PaintCarePackageScreen({super.key, required this.vehicleId, this.highlightPackage});
 
   @override
   State<PaintCarePackageScreen> createState() =>
@@ -168,10 +172,29 @@ class PaintCarePackageScreen extends StatefulWidget {
 
 class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
   int _selectedTier = 1; // default to Paint Protection Package (recommended)
+  final List<GlobalKey> _cardKeys = List.generate(_tiers.length, (_) => GlobalKey());
 
   @override
   void initState() {
     super.initState();
+    if (widget.highlightPackage != null) {
+      final target = widget.highlightPackage!.toLowerCase();
+      final match = _tiers.indexWhere((t) => t.name.toLowerCase() == target);
+      if (match != -1) {
+        _selectedTier = match;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final ctx = _cardKeys[match].currentContext;
+          if (ctx != null) {
+            Scrollable.ensureVisible(
+              ctx,
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeInOut,
+              alignment: 0.1,
+            );
+          }
+        });
+      }
+    }
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
@@ -356,6 +379,7 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
                       final tier = _tiers[i];
                       final isSelected = i == _selectedTier;
                       return GestureDetector(
+                        key: _cardKeys[i],
                         onTap: () => setState(() => _selectedTier = i),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),

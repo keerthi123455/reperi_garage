@@ -1,12 +1,37 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/error_handler.dart';
+import '../services/vehicle_change_bus.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/ask_ai_button.dart';
 import '../widgets/bottom_nav_actions.dart';
 import '../widgets/bottom_nav_bar.dart';
 import 'booking_tracking_screen.dart';
+
+// Same brand catalog as profile_screen.dart's "Add/Edit Vehicle" sheet —
+// duplicated here (rather than imported) because it's just plain data with
+// no shared owner, and this screen's edit sheet needs it too.
+const Map<String, List<String>> _kBrandsByType = {
+  'four_wheeler': [
+    'Hyundai', 'Tata', 'Maruti Suzuki', 'Mahindra', 'Honda',
+    'Toyota', 'Kia', 'MG', 'Volkswagen', 'Skoda', 'Renault',
+    'Nissan', 'Ford', 'BMW', 'Mercedes', 'Audi', 'Jeep',
+    'Volvo', 'Lexus', 'Porsche',
+  ],
+  'two_wheeler': [
+    'Honda', 'Hero', 'Bajaj', 'TVS', 'Royal Enfield', 'Yamaha',
+    'Suzuki', 'KTM', 'Ather', 'Ola Electric', 'Vespa', 'Jawa',
+  ],
+};
+
+const Map<String, String> _kVehicleTypeLabels = {
+  'four_wheeler': 'Four Wheeler',
+  'two_wheeler': 'Two Wheeler',
+};
 
 class VehicleBookingsScreen extends StatefulWidget {
   final String vehicleId;
@@ -28,9 +53,18 @@ class VehicleBookingsScreen extends StatefulWidget {
 }
 
 class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
+  // Editable copies of the vehicle's display fields — widget.carModel etc.
+  // are fixed constructor params from whoever navigated here, so an edit
+  // made via the pencil icon below updates these local copies (and the DB)
+  // rather than the immutable widget fields.
+  late String _carModel = widget.carModel;
+  late String _carBrand = widget.carBrand;
+  late String _carNumber = widget.carNumber;
+
   List bookings = [];
   Set<String> unreadBookingIds = {};
   List insuranceUpdates = [];
+  List insuranceClaims = [];
   List washHistory = [];
   List pollutionBookings = [];
   List inspectionBookings = [];
@@ -39,11 +73,57 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   bool _subscriptionExpanded = false;
   Map subscription = {};
 
+  // ── Cancel window ──────────────────────────────────────────────────
+  // Services, pollution, inspection, and insurance claim bookings can all
+  // be cancelled for _cancelWindow after they're placed — cancelling
+  // deletes the record outright (see _showCancelFlow) rather than just
+  // flagging it, so there's no "already cancelled" state to check for
+  // here; once gone, it simply stops appearing in these lists.
+  // Subscriptions deliberately have no cancel option at all.
+  static const Duration _cancelWindow = Duration(minutes: 2);
+  Timer? _cancelTicker;
+
+  bool _isCancellable(Map record) {
+    final createdAt = DateTime.tryParse((record['created_at'] ?? '').toString());
+    if (createdAt == null) return false;
+    return DateTime.now().toUtc().difference(createdAt.toUtc()) < _cancelWindow;
+  }
+
+  Duration _cancelTimeRemaining(Map record) {
+    final createdAt = DateTime.parse(record['created_at'].toString());
+    final elapsed = DateTime.now().toUtc().difference(createdAt.toUtc());
+    final remaining = _cancelWindow - elapsed;
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  bool get _anyCancellable =>
+      bookings.any((b) => _isCancellable(b)) ||
+      pollutionBookings.any((b) => _isCancellable(b)) ||
+      inspectionBookings.any((b) => _isCancellable(b)) ||
+      insuranceClaims.any((b) => _isCancellable(b));
+
+  void _syncCancelTicker() {
+    if (_anyCancellable && _cancelTicker == null) {
+      _cancelTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        if (!_anyCancellable) {
+          _cancelTicker?.cancel();
+          _cancelTicker = null;
+        }
+        setState(() {});
+      });
+    } else if (!_anyCancellable) {
+      _cancelTicker?.cancel();
+      _cancelTicker = null;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     fetchBookings();
     fetchInsuranceUpdates();
+    fetchInsuranceClaims();
     fetchSubscription();
     fetchWashHistory();
     fetchPollutionBookings();
@@ -52,16 +132,770 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
+    // Fired whenever this vehicle is edited from elsewhere (e.g. My Garage)
+    // — re-pulls just this vehicle's row so the header above reflects the
+    // change immediately too.
+    vehicleChangeBus.addListener(_refreshVehicleInfo);
   }
 
   void _onThemeChanged() {
     if (mounted) setState(() {});
   }
 
+  Future<void> _refreshVehicleInfo() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('vehicles')
+          .select()
+          .eq('id', widget.vehicleId)
+          .single();
+      if (!mounted) return;
+      setState(() {
+        _carModel = (response['car_model'] ?? _carModel).toString();
+        _carBrand = (response['car_brand'] ?? _carBrand).toString();
+        _carNumber = (response['car_number'] ?? _carNumber).toString();
+      });
+    } catch (e) {
+      debugPrint('Error refreshing vehicle info: $e');
+    }
+  }
+
   @override
   void dispose() {
     themeController.removeListener(_onThemeChanged);
+    vehicleChangeBus.removeListener(_refreshVehicleInfo);
+    _cancelTicker?.cancel();
     super.dispose();
+  }
+
+  // ── Delete vehicle (bin icon on the header above) ───────────────────
+  // Mirrors profile_screen.dart's delete flow — same block-check across
+  // bookings/pollution/inspection/claims/subscriptions, same "Vehicle has
+  // active service" dialog copy and "I UNDERSTAND" button.
+  Future<bool> _checkActiveService(String vehicleId) async {
+    final supabase = Supabase.instance.client;
+
+    Future<bool> latestRowIsActive({
+      required String table,
+      required String statusColumn,
+      required bool Function(String status) isActive,
+    }) async {
+      try {
+        final rows = await supabase
+            .from(table)
+            .select(statusColumn)
+            .eq('vehicle_id', vehicleId)
+            .order('created_at', ascending: false)
+            .limit(1);
+        if (rows.isEmpty) return false;
+        final value = (rows.first[statusColumn] ?? '').toString().toLowerCase();
+        return isActive(value);
+      } catch (e) {
+        return false;
+      }
+    }
+
+    // General service bookings go through the stages set in
+    // booking_details_screen.dart ('Pending', 'Car Picked Up', 'Inspection
+    // In Progress', 'Inspection Completed', 'Service In Progress', 'Billing
+    // Process', 'Delivered') — 'Delivered' is the only terminal one, so
+    // anything else (including a still-null/'pending' status right after
+    // booking) blocks deletion.
+    if (await latestRowIsActive(
+      table: 'bookings',
+      statusColumn: 'booking_status',
+      isActive: (s) => s != 'delivered',
+    )) {
+      return true;
+    }
+
+    if (await latestRowIsActive(
+      table: 'pollution_booking',
+      statusColumn: 'delivery_stage',
+      isActive: (s) => s != 'delivered',
+    )) {
+      return true;
+    }
+
+    if (await latestRowIsActive(
+      table: 'inspection_booking',
+      statusColumn: 'delivery_stage',
+      isActive: (s) => s != 'delivered',
+    )) {
+      return true;
+    }
+
+    if (await latestRowIsActive(
+      table: 'insurance_claims',
+      statusColumn: 'claim_status',
+      isActive: (s) => s != 'approved' && s != 'rejected',
+    )) {
+      return true;
+    }
+
+    try {
+      final subscriptionRows = await supabase
+          .from('subscriptions')
+          .select('id')
+          .eq('vehicle_id', vehicleId)
+          .limit(1);
+      if (subscriptionRows.isNotEmpty) return true;
+    } catch (e) {
+      // Ignore — treated as no active subscription.
+    }
+
+    return false;
+  }
+
+  Future<void> _confirmDeleteVehicle() async {
+    final hasActiveService = await _checkActiveService(widget.vehicleId);
+
+    if (!mounted) return;
+
+    if (hasActiveService) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surfaceRaised,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Row(
+            children: [
+              Icon(Icons.error_rounded, color: Colors.red, size: 28),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Cannot Delete Vehicle',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.red),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 50),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Vehicle has active service and cannot be deleted',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.txt,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Text(
+                  'I UNDERSTAND',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceRaised,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          'Delete Vehicle?',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.txt),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.delete_outline_rounded,
+                color: Colors.orange, size: 40),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '$_carBrand $_carModel',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.txt,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Are you sure you want to delete this vehicle? All the service history and progress will be lost.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppColors.mut,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'No',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.mut,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Yes, I understand',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _deleteVehicle();
+    }
+  }
+
+  // Unlike profile_screen.dart (which stays put and refreshes its vehicle
+  // list), this screen IS the deleted vehicle's own detail page — once
+  // gone, there's nothing left here to show, so it pops back after
+  // notifying the rest of the app the vehicle list changed.
+  Future<void> _deleteVehicle() async {
+    try {
+      await Supabase.instance.client
+          .from('vehicles')
+          .delete()
+          .eq('id', widget.vehicleId);
+
+      vehicleChangeBus.notifyVehicleUpdated();
+
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vehicle deleted successfully'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete vehicle: ${ErrorHandler.getUserMessage(e)}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  // ── Edit vehicle (pencil icon on the header above) ──────────────────
+  // Mirrors profile_screen.dart's edit sheet, but this screen isn't handed
+  // vehicle_type by its constructor, so it fetches the current row fresh
+  // right before showing the sheet rather than caching a possibly-stale
+  // copy in state.
+  Future<void> _editVehicleSheet() async {
+    Map<String, dynamic> vehicle;
+    try {
+      final response = await Supabase.instance.client
+          .from('vehicles')
+          .select()
+          .eq('id', widget.vehicleId)
+          .single();
+      vehicle = Map<String, dynamic>.from(response);
+    } catch (e) {
+      vehicle = {
+        'vehicle_type': 'four_wheeler',
+        'car_brand': _carBrand,
+        'car_model': _carModel,
+        'car_number': _carNumber,
+      };
+    }
+
+    if (!mounted) return;
+
+    final carModelController =
+        TextEditingController(text: (vehicle['car_model'] ?? _carModel).toString());
+    final carNumberController =
+        TextEditingController(text: (vehicle['car_number'] ?? _carNumber).toString());
+    String selectedVehicleType =
+        (vehicle['vehicle_type'] as String?) ?? 'four_wheeler';
+    String selectedBrand = (vehicle['car_brand'] as String?) ??
+        _kBrandsByType[selectedVehicleType]!.first;
+    final carModelFocus = FocusNode();
+    final carNumberFocus = FocusNode();
+    bool saving = false;
+    bool success = false;
+    String? errorText;
+    bool carModelError = false;
+    bool carNumberError = false;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      // Bounds the sheet so the Column below can give its fields area a
+      // Flexible/scrollable region while pinning the Save button in a
+      // fixed footer that's never pushed off-screen by the keyboard (see
+      // the comment on the outer Padding further down).
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setSheetState) {
+          final isTwoWheeler = selectedVehicleType == 'two_wheeler';
+
+          final fields = <Widget>[
+            _sheetPickerField(
+              label: _kVehicleTypeLabels[selectedVehicleType]!,
+              onTap: () async {
+                final picked = await _showPickerSheet(
+                  title: 'Vehicle Type',
+                  options: _kVehicleTypeLabels.entries
+                      .map((e) => MapEntry(e.key, e.value))
+                      .toList(),
+                  selectedKey: selectedVehicleType,
+                );
+                if (picked != null) {
+                  setSheetState(() {
+                    selectedVehicleType = picked;
+                    if (!_kBrandsByType[selectedVehicleType]!.contains(selectedBrand)) {
+                      selectedBrand = _kBrandsByType[selectedVehicleType]!.first;
+                    }
+                  });
+                }
+              },
+            ),
+            _sheetPickerField(
+              label: selectedBrand,
+              onTap: () async {
+                final picked = await _showPickerSheet(
+                  title: 'Brand',
+                  options: _kBrandsByType[selectedVehicleType]!
+                      .map((b) => MapEntry(b, b))
+                      .toList(),
+                  selectedKey: selectedBrand,
+                );
+                if (picked != null) {
+                  setSheetState(() => selectedBrand = picked);
+                }
+              },
+            ),
+            _sheetField(
+              carModelController,
+              isTwoWheeler ? 'Two Wheeler Model' : 'Car Model',
+              isTwoWheeler ? Icons.two_wheeler_outlined : Icons.directions_car_outlined,
+              focusNode: carModelFocus,
+              hasError: carModelError,
+              onChanged: (_) {
+                if (carModelError) setSheetState(() => carModelError = false);
+              },
+            ),
+            _sheetField(
+              carNumberController,
+              isTwoWheeler ? 'Two Wheeler Number' : 'Car Number',
+              Icons.badge_outlined,
+              focusNode: carNumberFocus,
+              hasError: carNumberError,
+              onChanged: (_) {
+                if (carNumberError) setSheetState(() => carNumberError = false);
+              },
+            ),
+          ];
+
+          final saveButton = GestureDetector(
+            onTap: saving ? null : () async {
+              final modelEmpty = carModelController.text.trim().isEmpty;
+              final numberEmpty = carNumberController.text.trim().isEmpty;
+
+              if (modelEmpty || numberEmpty) {
+                setSheetState(() {
+                  carModelError = modelEmpty;
+                  carNumberError = numberEmpty;
+                });
+                if (modelEmpty) {
+                  carModelFocus.requestFocus();
+                } else {
+                  carNumberFocus.requestFocus();
+                }
+                return;
+              }
+
+              setSheetState(() {
+                saving = true;
+                errorText = null;
+              });
+
+              try {
+                await Supabase.instance.client.from('vehicles').update({
+                  'vehicle_type': selectedVehicleType,
+                  'car_brand': selectedBrand,
+                  'car_model': carModelController.text.trim(),
+                  'car_number': carNumberController.text.trim(),
+                }).eq('id', widget.vehicleId);
+
+                setSheetState(() {
+                  saving = false;
+                  success = true;
+                });
+
+                // Let the checkmark register before the sheet closes.
+                await Future.delayed(const Duration(milliseconds: 550));
+
+                if (!mounted) return;
+                Navigator.pop(ctx);
+                setState(() {
+                  _carModel = carModelController.text.trim();
+                  _carBrand = selectedBrand;
+                  _carNumber = carNumberController.text.trim();
+                });
+                vehicleChangeBus.notifyVehicleUpdated();
+
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Row(
+                      children: [
+                        Icon(Icons.check_circle_outline_rounded, color: Colors.white),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Vehicle updated successfully!',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
+                    ),
+                    backgroundColor: Colors.green.shade700,
+                    elevation: 6,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    margin: const EdgeInsets.all(16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                setSheetState(() {
+                  saving = false;
+                  errorText = 'Could not update vehicle: $e';
+                });
+              }
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              width: double.infinity,
+              height: 60,
+              decoration: BoxDecoration(
+                color: success
+                    ? Colors.green.shade600
+                    : const Color(0xFFD4A017).withOpacity(saving ? 0.6 : 1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Center(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: success
+                      ? const Icon(Icons.check_rounded, key: ValueKey('check'), color: Colors.white, size: 28)
+                      : saving
+                          ? const SizedBox(
+                              key: ValueKey('spinner'),
+                              width: 24, height: 24,
+                              child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5),
+                            )
+                          : const Text(
+                              'SAVE CHANGES',
+                              key: ValueKey('label'),
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black),
+                            ),
+                ),
+              ),
+            ),
+          );
+
+          // The keyboard shrinks the sheet's available height from the
+          // bottom, not the top — pushing this whole Padding up by
+          // viewInsets.bottom (rather than padding *inside* a scroll view)
+          // keeps the fixed footer glued just above the keyboard instead
+          // of being carried off past the bottom of the visible area.
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.surfaceRaised,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Container(
+                      width: 44, height: 5,
+                      decoration: BoxDecoration(
+                        color: AppColors.line,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFD4A017).withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const Icon(Icons.edit_rounded, color: Color(0xFFD4A017), size: 20),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Edit Vehicle',
+                                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.txt),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          for (int i = 0; i < fields.length; i++) ...[
+                            _VehicleEditFadeIn(index: i, child: fields[i]),
+                            const SizedBox(height: 16),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
+                    child: Column(
+                      children: [
+                        // Shown right inside the sheet — a SnackBar tied to
+                        // the page underneath would render behind this
+                        // still-open modal and never actually be seen.
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
+                          child: errorText == null
+                              ? const SizedBox.shrink(key: ValueKey('no-error'))
+                              : Padding(
+                                  key: const ValueKey('error'),
+                                  padding: const EdgeInsets.only(bottom: 14),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: Colors.red.withOpacity(0.35)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.error_outline_rounded, color: Colors.red.shade400, size: 18),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            errorText ?? '',
+                                            style: TextStyle(color: Colors.red.shade400, fontSize: 13, fontWeight: FontWeight.w600),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                        ),
+                        saveButton,
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  Widget _sheetPickerField({required String label, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceSunken,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(label, style: TextStyle(color: AppColors.txt)),
+            ),
+            Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.txt),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _showPickerSheet({
+    required String title,
+    required List<MapEntry<String, String>> options,
+    required String selectedKey,
+  }) {
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surfaceRaised,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      // Brand lists run to 20 entries — without a height cap the sheet just
+      // kept growing past the screen and overflowed instead of scrolling.
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 44, height: 5,
+                decoration: BoxDecoration(
+                  color: AppColors.line,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    title,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.txt),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: options.map((opt) => ListTile(
+                          title: Text(opt.value, style: TextStyle(color: AppColors.txt)),
+                          trailing: opt.key == selectedKey
+                              ? const Icon(Icons.check_rounded, color: Color(0xFFD4A017))
+                              : null,
+                          onTap: () => Navigator.pop(ctx, opt.key),
+                        )).toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _sheetField(
+    TextEditingController ctrl,
+    String hint,
+    IconData icon, {
+    FocusNode? focusNode,
+    bool hasError = false,
+    ValueChanged<String>? onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceSunken,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: hasError ? Colors.red.shade400 : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
+          child: TextField(
+            controller: ctrl,
+            focusNode: focusNode,
+            onChanged: onChanged,
+            style: TextStyle(color: AppColors.txt),
+            decoration: InputDecoration(
+              icon: Icon(icon, size: 22, color: hasError ? Colors.red.shade400 : AppColors.mut),
+              hintText: hint,
+              hintStyle: TextStyle(color: AppColors.mut),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+          ),
+        ),
+        if (hasError)
+          Padding(
+            padding: const EdgeInsets.only(left: 18, top: 6),
+            child: Text(
+              'Please fill this field',
+              style: TextStyle(color: Colors.red.shade400, fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          ),
+      ],
+    );
   }
 
   Future<void> fetchSubscription() async {
@@ -151,6 +985,26 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     }
   }
 
+  /// The claims themselves, shown as their own cards (status + submitted
+  /// date + cancel window) — separate from fetchInsuranceUpdates() above,
+  /// which only pulls the update/comment feed for claims that already
+  /// exist.
+  Future<void> fetchInsuranceClaims() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('insurance_claims')
+          .select('*')
+          .eq('vehicle_id', widget.vehicleId)
+          .order('created_at', ascending: false);
+
+      if (!mounted) return;
+      setState(() => insuranceClaims = response as List);
+      _syncCancelTicker();
+    } catch (e) {
+      debugPrint('Error fetching insurance claims: $e');
+    }
+  }
+
   Future<void> fetchBookings() async {
     final supabase = Supabase.instance.client;
 
@@ -193,6 +1047,220 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       unreadBookingIds = unreadIds;
       loading = false;
     });
+    _syncCancelTicker();
+  }
+
+  /// Opens the "why are you cancelling" dialog, then — only if the
+  /// customer actually submits a reason — records the cancellation (with a
+  /// snapshot of the title/price, since the source row is about to be
+  /// deleted and can't be joined back later) and deletes the record
+  /// outright from [table]. Tapping RETURN (or dismissing) leaves it
+  /// untouched.
+  Future<void> _showCancelFlow({
+    required Map record,
+    required String table,
+    required String bookingType, // 'service' | 'pollution' | 'inspection' | 'insurance'
+    required String title,
+    String? price,
+  }) async {
+    // The reason text field's controller is owned by _CancelReasonDialog's
+    // own State, not created/disposed here — disposing it the instant
+    // showDialog's Future resolves used to race the dialog's closing
+    // animation (the TextField was still alive for that last frame),
+    // throwing "TextEditingController used after being disposed" and
+    // taking the whole screen down with it. Letting the dialog widget
+    // dispose its own controller in its own dispose() means Flutter only
+    // does that once the dialog element is actually gone.
+    final reason = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _CancelReasonDialog(),
+    );
+
+    if (reason == null || reason.isEmpty) {
+      return; // RETURN tapped or dialog dismissed — the booking is untouched.
+    }
+
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      await supabase.from('booking_cancellations').insert({
+        'booking_type': bookingType,
+        'booking_id': record['id'],
+        'user_id': user?.id,
+        'vehicle_id': widget.vehicleId,
+        'title': title,
+        'price': price,
+        'payment_status': record['payment_status'],
+        'reason': reason,
+      });
+
+      await supabase.from(table).delete().eq('id', record['id']);
+
+      if (!mounted) return;
+      switch (bookingType) {
+        case 'pollution':
+          await fetchPollutionBookings();
+          break;
+        case 'inspection':
+          await fetchInspectionBookings();
+          break;
+        case 'insurance':
+          await fetchInsuranceClaims();
+          await fetchInsuranceUpdates();
+          break;
+        default:
+          await fetchBookings();
+      }
+
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (_) => Dialog(
+          backgroundColor: AppColors.surfaceRaised,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 26),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Booking Cancelled',
+                  style: TextStyle(color: AppColors.txt, fontSize: 18, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'If payment was done online, your amount will be returned to your bank account within 5 business days.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.mut, fontSize: 13.5, height: 1.5),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFD4A017),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: Text(
+                      'OK',
+                      style: TextStyle(color: AppColors.onAccentDark, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not cancel: $e')),
+      );
+    }
+  }
+
+  /// The cancel countdown pill + CANCEL button shown on a booking card
+  /// while it's still inside the cancel window.
+  Widget _buildCancelWindow({
+    required Map record,
+    required String table,
+    required String bookingType,
+    required String title,
+    String? price,
+  }) {
+    final remaining = _cancelTimeRemaining(record);
+    final minutes = remaining.inMinutes;
+    final seconds = remaining.inSeconds % 60;
+    final timeStr = '$minutes:${seconds.toString().padLeft(2, '0')}';
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.red.withOpacity(0.25)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.timer_outlined, color: Colors.red, size: 15),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'Can cancel in $timeStr',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: () => _showCancelFlow(
+              record: record,
+              table: table,
+              bookingType: bookingType,
+              title: title,
+              price: price,
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.red.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: const Text(
+                'CANCEL',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12.5,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> fetchPollutionBookings() async {
@@ -205,6 +1273,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
       if (!mounted) return;
       setState(() => pollutionBookings = response as List);
+      _syncCancelTicker();
     } catch (e) {
       debugPrint('Error fetching pollution bookings: $e');
     }
@@ -220,6 +1289,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
       if (!mounted) return;
       setState(() => inspectionBookings = response as List);
+      _syncCancelTicker();
     } catch (e) {
       debugPrint('Error fetching inspection bookings: $e');
     }
@@ -253,7 +1323,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
         backgroundColor: AppColors.surfaceRaised,
         elevation: 0,
         title: Text(
-          widget.carModel,
+          _carModel,
           style: const TextStyle(
             color: Color(0xFFD4A017),
             fontWeight: FontWeight.w900,
@@ -286,17 +1356,65 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'ACTIVE VEHICLE',
-                            style: TextStyle(
-                              color: Color(0xFFD4A017),
-                              fontSize: 11,
-                              letterSpacing: 2,
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'ACTIVE VEHICLE',
+                                style: TextStyle(
+                                  color: Color(0xFFD4A017),
+                                  fontSize: 11,
+                                  letterSpacing: 2,
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: _editVehicleSheet,
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(7),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFD4A017).withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: const Icon(
+                                          Icons.edit_outlined,
+                                          color: Color(0xFFD4A017),
+                                          size: 18,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: _confirmDeleteVehicle,
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(7),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: const Icon(
+                                          Icons.delete_outline_rounded,
+                                          color: Colors.red,
+                                          size: 18,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            widget.carModel,
+                            _carModel,
                             style: TextStyle(
                               color: AppColors.txt,
                               fontSize: 34,
@@ -305,7 +1423,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            widget.carBrand,
+                            _carBrand,
                             style: TextStyle(color: AppColors.mut, fontSize: 16),
                           ),
                           const SizedBox(height: 22),
@@ -322,7 +1440,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                               ),
                             ),
                             child: Text(
-                              widget.carNumber,
+                              _carNumber,
                               style: const TextStyle(
                                 color: Color(0xFFD4A017),
                                 fontWeight: FontWeight.bold,
@@ -889,6 +2007,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
+                              const SizedBox(height: 6),
+                              Text(
+                                formatFullDateTime(booking['created_at']),
+                                style: TextStyle(color: AppColors.mut, fontSize: 13),
+                              ),
 
                               const SizedBox(height: 20),
 
@@ -985,6 +2108,15 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                 ),
                               ),
 
+                              if (_isCancellable(booking))
+                                _buildCancelWindow(
+                                  record: booking,
+                                  table: 'bookings',
+                                  bookingType: 'service',
+                                  title: booking['package_name'] as String,
+                                  price: booking['package_price'] as String?,
+                                ),
+
                               if ((booking['pickupdrop'] ?? '')
                                       .toString()
                                       .toLowerCase() ==
@@ -1038,14 +2170,32 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                         (b) => _buildComplianceCard(
                           title: 'Pollution Check',
                           booking: b,
+                          table: 'pollution_booking',
+                          bookingType: 'pollution',
                         ),
                       ),
                       ...inspectionBookings.map(
                         (b) => _buildComplianceCard(
                           title: 'Vehicle Inspection',
                           booking: b,
+                          table: 'inspection_booking',
+                          bookingType: 'inspection',
                         ),
                       ),
+                    ],
+
+                    if (insuranceClaims.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      Text(
+                        'Insurance Claims',
+                        style: TextStyle(
+                          color: AppColors.txt,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      ...insuranceClaims.map((c) => _buildInsuranceClaimCard(c)),
                     ],
 
                     const SizedBox(height: 40),
@@ -1071,14 +2221,16 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
   Map<String, dynamic> get _activeVehicleMap => {
         'id': widget.vehicleId,
-        'car_brand': widget.carBrand,
-        'car_model': widget.carModel,
-        'car_number': widget.carNumber,
+        'car_brand': _carBrand,
+        'car_model': _carModel,
+        'car_number': _carNumber,
       };
 
   Widget _buildComplianceCard({
     required String title,
     required Map booking,
+    required String table,
+    required String bookingType,
   }) {
     final status = (booking['status'] ?? 'booked').toString();
     final price = booking['price']?.toString();
@@ -1147,6 +2299,84 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
             },
             createdAt: booking['created_at'],
           ),
+          if (_isCancellable(booking))
+            _buildCancelWindow(
+              record: booking,
+              table: table,
+              bookingType: bookingType,
+              title: title,
+              price: price,
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// A claim from `insurance_claims` shown the same way as a compliance
+  /// card — status, submitted date, and (while inside the window) the
+  /// cancel option — but with no price or delivery tracker, since a claim
+  /// is a document submission, not a pickup/drop booking.
+  Widget _buildInsuranceClaimCard(Map claim) {
+    final status = (claim['claim_status'] ?? 'submitted').toString();
+    final dateStr = formatFullDateTime(claim['created_at']);
+    final description = (claim['damage_description'] ?? '').toString();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 22),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Insurance Claim Assistance',
+            style: TextStyle(
+              color: AppColors.txt,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            dateStr,
+            style: TextStyle(color: AppColors.mut, fontSize: 13),
+          ),
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: AppColors.mut, fontSize: 13.5, height: 1.4),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFD4A017),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              status.toUpperCase(),
+              style: TextStyle(
+                color: AppColors.onAccentDark,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
+              ),
+            ),
+          ),
+          if (_isCancellable(claim))
+            _buildCancelWindow(
+              record: claim,
+              table: 'insurance_claims',
+              bookingType: 'insurance',
+              title: 'Insurance Claim Assistance',
+            ),
         ],
       ),
     );
@@ -1206,6 +2436,127 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                   ),
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The "why are you cancelling" dialog used by [_VehicleBookingsScreenState
+/// ._showCancelFlow]. Owns its own TextEditingController and disposes it in
+/// its own State.dispose() — created and disposed by [showDialog] itself
+/// only once the dialog's close animation actually finishes, unlike a
+/// controller created in the caller and disposed the instant the awaited
+/// Future resolves, which raced the dialog's own closing transition and
+/// crashed with "TextEditingController used after being disposed".
+///
+/// Pops with the trimmed reason text on CANCEL (always non-empty, since the
+/// button is disabled otherwise), or `null` on RETURN.
+class _CancelReasonDialog extends StatefulWidget {
+  const _CancelReasonDialog();
+
+  @override
+  State<_CancelReasonDialog> createState() => _CancelReasonDialogState();
+}
+
+class _CancelReasonDialogState extends State<_CancelReasonDialog> {
+  final _reasonController = TextEditingController();
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canSubmit = _reasonController.text.trim().isNotEmpty;
+    return Dialog(
+      backgroundColor: AppColors.surfaceRaised,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.help_outline_rounded, color: Colors.red, size: 26),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'Hey, Can we know why you changed your mind?',
+              style: TextStyle(
+                color: AppColors.txt,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                height: 1.3,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _reasonController,
+              autofocus: true,
+              maxLines: 3,
+              textCapitalization: TextCapitalization.sentences,
+              onChanged: (_) => setState(() {}),
+              style: TextStyle(color: AppColors.txt),
+              decoration: InputDecoration(
+                hintText: 'Type your reason here...',
+                hintStyle: TextStyle(color: AppColors.mut),
+                filled: true,
+                fillColor: AppColors.surfaceSunken,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.all(14),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: AppColors.line),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: Text(
+                      'RETURN',
+                      style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: canSubmit
+                        ? () => Navigator.pop(context, _reasonController.text.trim())
+                        : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      disabledBackgroundColor: Colors.red.withOpacity(0.3),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text(
+                      'CANCEL',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1362,6 +2713,33 @@ class _DeliveryStageTracker extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Fades + rises a field into place, each successive [index] settling
+/// slightly later than the one before — used by the "Edit Vehicle" sheet
+/// above so its fields cascade in rather than popping in all at once.
+class _VehicleEditFadeIn extends StatelessWidget {
+  const _VehicleEditFadeIn({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 320 + index * 70),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) => Opacity(
+        opacity: value,
+        child: Transform.translate(
+          offset: Offset(0, (1 - value) * 16),
+          child: child,
+        ),
+      ),
+      child: child,
     );
   }
 }

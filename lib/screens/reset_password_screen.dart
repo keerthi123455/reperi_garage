@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/ai_chat_session.dart';
 import 'login_screen.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
@@ -77,6 +78,7 @@ class _ResetPasswordScreenState
       );
 
       await Supabase.instance.client.auth.signOut();
+      AiChatSession.clear();
 
 if (!mounted) return;
 

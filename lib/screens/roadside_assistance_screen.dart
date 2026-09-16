@@ -8,7 +8,12 @@ import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 
 class RoadsideAssistanceScreen extends StatefulWidget {
-  const RoadsideAssistanceScreen({super.key});
+  /// This screen represents a single service with no sub-packages to
+  /// select between, so there's nothing further to highlight — accepted
+  /// only so callers that pass it (see buildPackageScreenFor) compile.
+  final String? highlightPackage;
+
+  const RoadsideAssistanceScreen({super.key, this.highlightPackage});
 
   @override
   State<RoadsideAssistanceScreen> createState() =>
@@ -174,6 +179,7 @@ class _RoadsideAssistanceScreenState
                     price: '₹399',
                     duration: 'On-demand',
                     vehicleId: '',
+                    vehicleRequired: false,
                   ),
                 ),
               );
@@ -535,11 +541,16 @@ class _RoadsideAssistanceScreenState
 
           const SizedBox(height: 10),
 
-          Text(
-            title,
-            style: TextStyle(
-              color: AppColors.txt,
-              fontWeight: FontWeight.bold,
+          Flexible(
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.txt,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],

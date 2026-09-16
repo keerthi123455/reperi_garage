@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:reperi_garage/screens/splash_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -17,6 +18,15 @@ bool isPasswordRecoveryInProgress = false;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Every screen in this app is a fixed, hand-tuned portrait layout —
+  // none of it was built to reflow for landscape — so lock rotation
+  // instead of letting an accidental turn drop users into broken layouts
+  // no screen was designed to handle.
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
 
   await Supabase.initialize(
     url: 'https://rmvxqjyoqfinbrpubsvp.supabase.co',
@@ -71,6 +81,24 @@ class GarageApp extends StatelessWidget {
       ),
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
+      // Screens across the app use fixed-height tiles/cards sized for a
+      // roughly 1.0 system text scale (see e.g. ServiceTile). Some
+      // devices ship a larger default font size or a bumped-up
+      // Settings > Display > Font size, which was overflowing those
+      // fixed layouts — most visibly the "Our Services" grid — on
+      // phones like the OnePlus 11 5G where the actual on-screen scale
+      // ended up further from 1.0 than on phones this was tuned against.
+      // Clamping keeps real accessibility scaling (larger text still
+      // works, just capped) without letting it break layouts that were
+      // never designed for arbitrary scale.
+      builder: (context, child) {
+        final clampedScaler =
+            MediaQuery.textScalerOf(context).clamp(minScaleFactor: 0.9, maxScaleFactor: 1.15);
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: clampedScaler),
+          child: child!,
+        );
+      },
       home: const SplashScreen(),
     );
   }

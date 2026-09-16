@@ -7,9 +7,14 @@ import '../theme/theme_controller.dart';
 class DentingTinkeringScreen extends StatefulWidget {
   final Map<String, dynamic> vehicle;
 
+  /// When set (matches one of the package titles below, case-insensitive),
+  /// that package is pre-selected and scrolled into view on open.
+  final String? highlightPackage;
+
   const DentingTinkeringScreen({
     super.key,
     required this.vehicle,
+    this.highlightPackage,
   });
 
   @override
@@ -23,6 +28,7 @@ class _DentingTinkeringScreenState extends State<DentingTinkeringScreen> {
   static Color get _white => AppColors.txt;
   static Color get _grey => AppColors.mut;
   static Color get _cardBorder => AppColors.line;
+  final List<GlobalKey> _cardKeys = [];
 
   int selectedPackage = -1;
 
@@ -137,11 +143,31 @@ class _DentingTinkeringScreenState extends State<DentingTinkeringScreen> {
   @override
   void initState() {
     super.initState();
+    _cardKeys.addAll(List.generate(packages.length, (_) => GlobalKey()));
+    if (widget.highlightPackage != null) {
+      final target = widget.highlightPackage!.toLowerCase();
+      final match = packages.indexWhere(
+          (p) => (p['title'] as String).toLowerCase() == target);
+      if (match != -1) selectedPackage = match;
+    }
     _fetchPackageData();
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
+    if (widget.highlightPackage != null && selectedPackage != -1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _cardKeys[selectedPackage].currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(
+            ctx,
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeInOut,
+            alignment: 0.1,
+          );
+        }
+      });
+    }
   }
 
   void _onThemeChanged() {
@@ -400,6 +426,7 @@ class _DentingTinkeringScreenState extends State<DentingTinkeringScreen> {
             final selected = selectedPackage == index;
 
             return GestureDetector(
+              key: _cardKeys[index],
               onTap: () {
                 setState(() {
                   selectedPackage = index;

@@ -31,8 +31,10 @@ const int _kVirtualSpan = 10000;
 /// A full-width banner strip that shows one slide at a time and auto-
 /// advances every [interval], looping forever in one continuous direction —
 /// the flat "2D" counterpart to the 3D coverflow higher up the Home screen.
-/// Still swipeable by hand, and auto-advance pauses for as long as a finger
-/// is resting on it, resuming the moment it lifts.
+/// Still swipeable by hand — auto-advance pauses on touch and stays paused
+/// for [_AutoBannerStripState._resumeDelay] after the last touch ends, so
+/// it doesn't yank the slide away mid-look or fight a series of quick
+/// manual swipes.
 class AutoBannerStrip extends StatefulWidget {
   const AutoBannerStrip({
     super.key,
@@ -52,6 +54,12 @@ class AutoBannerStrip extends StatefulWidget {
 class _AutoBannerStripState extends State<AutoBannerStrip> {
   late final PageController _controller;
   Timer? _timer;
+  // Auto-advance stays paused for this long after the last touch — not
+  // just while a finger is actually down — so someone dragging through a
+  // couple of slides by hand isn't fighting the auto-advance the moment
+  // they lift off between swipes.
+  static const Duration _resumeDelay = Duration(seconds: 3);
+  Timer? _resumeTimer;
   int _virtualPage = 0;
   double _pageValue = 0;
   bool _paused = false;
@@ -92,9 +100,27 @@ class _AutoBannerStripState extends State<AutoBannerStrip> {
     );
   }
 
+  /// Called on every touch-down — pauses immediately and cancels any
+  /// countdown already running, so a second touch inside the 3-second
+  /// window restarts the wait instead of resuming mid-count.
+  void _onInteractionStart() {
+    _paused = true;
+    _resumeTimer?.cancel();
+  }
+
+  /// Called on touch-up/cancel — starts (or restarts) the 3-second
+  /// countdown before auto-advance is allowed to resume.
+  void _onInteractionEnd() {
+    _resumeTimer?.cancel();
+    _resumeTimer = Timer(_resumeDelay, () {
+      if (mounted) _paused = false;
+    });
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
+    _resumeTimer?.cancel();
     _controller.removeListener(_onScroll);
     _controller.dispose();
     super.dispose();
@@ -106,9 +132,9 @@ class _AutoBannerStripState extends State<AutoBannerStrip> {
       children: [
         Listener(
           behavior: HitTestBehavior.translucent,
-          onPointerDown: (_) => _paused = true,
-          onPointerUp: (_) => _paused = false,
-          onPointerCancel: (_) => _paused = false,
+          onPointerDown: (_) => _onInteractionStart(),
+          onPointerUp: (_) => _onInteractionEnd(),
+          onPointerCancel: (_) => _onInteractionEnd(),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: AspectRatio(

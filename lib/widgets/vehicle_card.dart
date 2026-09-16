@@ -6,13 +6,14 @@ import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
 import 'placeholder_box.dart';
 
-class VehicleCard extends StatelessWidget {
+class VehicleCard extends StatefulWidget {
   const VehicleCard({
     super.key,
     required this.vehicle,
     required this.width,
     required this.onTap,
     required this.onPhotoTap,
+    this.isActive = false,
   });
 
   final Vehicle vehicle;
@@ -25,27 +26,87 @@ class VehicleCard extends StatelessWidget {
   /// Opens the camera/gallery bottom sheet to change the vehicle's photo.
   final VoidCallback onPhotoTap;
 
+  /// True for the vehicle currently centered/settled in the carousel —
+  /// draws a gold glow and, the moment this flips from false to true, a
+  /// quick scale "pop" confirming that this tile is now the active
+  /// vehicle for anything booked elsewhere on the Home screen.
+  final bool isActive;
+
   static const double _photoSize = 76;
 
   @override
-  Widget build(BuildContext context) {
-    final status = _statusFor(vehicle.bookingStatus);
+  State<VehicleCard> createState() => _VehicleCardState();
+}
 
-    return Stack(
+class _VehicleCardState extends State<VehicleCard> with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 420),
+  );
+  late final Animation<double> _scale = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(begin: 1.0, end: 1.06).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 45,
+    ),
+    TweenSequenceItem(
+      tween: Tween(begin: 1.06, end: 1.0).chain(CurveTween(curve: Curves.easeIn)),
+      weight: 55,
+    ),
+  ]).animate(_pulseController);
+
+  @override
+  void didUpdateWidget(VehicleCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only pop on the false→true transition — becoming inactive (or
+    // already being active on the very first build) stays silent, so the
+    // pop reads as "you just landed on this one" rather than firing on
+    // every rebuild.
+    if (!oldWidget.isActive && widget.isActive) {
+      _pulseController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _statusFor(widget.vehicle.bookingStatus);
+
+    return ScaleTransition(
+      scale: _scale,
+      child: Stack(
       clipBehavior: Clip.none,
       children: [
-        Container(
-          width: width,
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOut,
+          width: widget.width,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.line),
+            border: Border.all(
+              color: widget.isActive ? AppColors.accent : AppColors.line,
+              width: widget.isActive ? 1.5 : 1,
+            ),
             color: AppColors.surfaceRaised,
+            boxShadow: widget.isActive
+                ? [
+                    BoxShadow(
+                      color: AppColors.accent.withOpacity(0.28),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : null,
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _VehiclePhoto(url: vehicle.photoUrl, onTap: onPhotoTap),
+              _VehiclePhoto(url: widget.vehicle.photoUrl, onTap: widget.onPhotoTap),
               const SizedBox(width: 14),
               Expanded(
                 // A separate GestureDetector from the photo's — nesting one
@@ -54,13 +115,13 @@ class VehicleCard extends StatelessWidget {
                 // suppress each other in Flutter's gesture arena.
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: onTap,
+                  onTap: widget.onTap,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        vehicle.brand.toUpperCase(),
+                        widget.vehicle.brand.toUpperCase(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.manrope(
@@ -76,7 +137,7 @@ class VehicleCard extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              vehicle.model,
+                              widget.vehicle.model,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.manrope(
@@ -86,7 +147,7 @@ class VehicleCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          if (vehicle.hasActiveSubscription) ...[
+                          if (widget.vehicle.hasActiveSubscription) ...[
                             const SizedBox(width: 8),
                             const _ActiveSubBadge(),
                           ],
@@ -98,7 +159,7 @@ class VehicleCard extends StatelessWidget {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Flexible(child: _LicensePlate(number: vehicle.carNumber)),
+                          Flexible(child: _LicensePlate(number: widget.vehicle.carNumber)),
                           const Spacer(),
                           Icon(Symbols.arrow_forward, size: 18, color: AppColors.accent),
                         ],
@@ -136,6 +197,7 @@ class VehicleCard extends StatelessWidget {
         if (status.showBadge)
           const Positioned(top: -8, right: 8, child: _ServiceBadge()),
       ],
+      ),
     );
   }
 }

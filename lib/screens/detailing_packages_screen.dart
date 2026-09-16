@@ -5,7 +5,13 @@ import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 
 class DetailingPackagesScreen extends StatefulWidget {
-  const DetailingPackagesScreen({super.key});
+  /// When set, opens the matching category tab (PPF / Ceramic / Graphene /
+  /// Sun Film) — this screen only selects at the category level, not a
+  /// specific product within it, so this is the closest fit to "make that
+  /// package visible" its actual UI supports.
+  final String? highlightPackage;
+
+  const DetailingPackagesScreen({super.key, this.highlightPackage});
 
   @override
   State<DetailingPackagesScreen> createState() =>
@@ -21,6 +27,19 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    if (widget.highlightPackage != null) {
+      final target = widget.highlightPackage!.toLowerCase();
+      if (target.contains('ppf')) {
+        _selectedCategory = 0;
+      } else if (target.contains('ceramic')) {
+        _selectedCategory = 1;
+      } else if (target.contains('graphene')) {
+        _selectedCategory = 2;
+      } else if (target.contains('sun film') || target.contains('stek')) {
+        _selectedCategory = 3;
+      }
+      _tabController.index = _selectedCategory;
+    }
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
@@ -1030,6 +1049,9 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                     children: [
                       Text(
                         option['area']!,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: AppColors.txt,
                           fontSize: 14,
@@ -1039,6 +1061,9 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                       const SizedBox(height: 4),
                       Text(
                         option['price']!,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Color(0xFFD4A017),
                           fontSize: 13,

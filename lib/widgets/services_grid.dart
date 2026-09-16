@@ -60,7 +60,7 @@ class ServicesGrid extends StatelessWidget {
         crossAxisCount: 4,
         mainAxisSpacing: 10,
         crossAxisSpacing: 10,
-        childAspectRatio: 1 / 1.22,
+        childAspectRatio: 1 / 1.32,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         children: tiles,

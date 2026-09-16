@@ -28,7 +28,7 @@ class PollutionScreen extends StatefulWidget {
   final String vehicleId;
   final VoidCallback? onAvail;
 
-  static const _heroAsset = 'assets/images/pollution.jpeg';
+  static const _heroAsset = 'assets/images/pollution_hero.jpg';
   static const _price = '₹299';
 
   @override

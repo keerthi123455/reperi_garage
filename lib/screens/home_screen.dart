@@ -11,8 +11,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/banner.dart';
 import '../models/vehicle.dart';
 import '../services/address_service.dart';
+import '../services/ai_chat_session.dart';
+import '../services/vehicle_change_bus.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../utils/premium_page_route.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/app_header.dart';
 import '../widgets/ask_ai_button.dart';
@@ -129,6 +132,11 @@ class _HomeScreenState extends State<HomeScreen> {
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
+    // Fired whenever a vehicle's details are edited from anywhere else in
+    // the app (My Garage, the vehicle dashboard) — re-pulls the fleet so
+    // this screen's carousel reflects the change immediately, without
+    // needing to leave and come back.
+    vehicleChangeBus.addListener(_loadVehicles);
     _loadVehicles();
     _loadProfile();
     _loadServiceAddress();
@@ -151,7 +159,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openAddressManagement() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const AddressManagementScreen()),
+      premiumPageRoute((_) => const AddressManagementScreen()),
     );
     if (!mounted) return;
     _loadServiceAddress();
@@ -270,28 +278,32 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // _bookService/_bookWashing/_openCoverflowPackage/_openServiceBanner used
+  // to block with a "Add a vehicle first" snackbar whenever there was no
+  // active vehicle. That's exactly the browsing these package screens are
+  // meant to allow without a vehicle yet (they only need a real one at the
+  // final "Book Now" step, which now prompts for one via PaymentScreen) —
+  // so they navigate regardless, falling back to an empty vehicle id/map
+  // when there isn't one yet.
+
   void _bookService() {
     final vehicle = _activeVehicle;
-    if (vehicle == null) {
-      _flash('Add a vehicle first');
-      return;
-    }
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => ServicingPackageScreen(vehicleId: vehicle.id)),
-    ).then((_) => _refreshVehicleBookingStatus(vehicle.id));
+      premiumPageRoute((_) => ServicingPackageScreen(vehicleId: vehicle?.id ?? '')),
+    ).then((_) {
+      if (vehicle != null) _refreshVehicleBookingStatus(vehicle.id);
+    });
   }
 
   void _bookWashing() {
     final vehicle = _activeVehicle;
-    if (vehicle == null) {
-      _flash('Add a vehicle first');
-      return;
-    }
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => WashingPackageScreen(vehicleId: vehicle.id)),
-    ).then((_) => _refreshVehicleBookingStatus(vehicle.id));
+      premiumPageRoute((_) => WashingPackageScreen(vehicleId: vehicle?.id ?? '')),
+    ).then((_) {
+      if (vehicle != null) _refreshVehicleBookingStatus(vehicle.id);
+    });
   }
 
   /// Maps a coverflow slide's image filename to the package screen it
@@ -300,24 +312,22 @@ class _HomeScreenState extends State<HomeScreen> {
   /// second, deliberate tap on the slide that's already selected.
   void _openCoverflowPackage(String assetPath) {
     final vehicle = _activeVehicle;
-    if (vehicle == null) {
-      _flash('Add a vehicle first');
-      return;
-    }
+    final vehicleId = vehicle?.id ?? '';
 
     final WidgetBuilder? builder = switch (assetPath) {
-      'assets/images/service.jpg' => (_) => ServicingPackageScreen(vehicleId: vehicle.id),
-      'assets/images/washing.jpg' => (_) => WashingPackageScreen(vehicleId: vehicle.id),
+      'assets/images/service.jpg' => (_) => ServicingPackageScreen(vehicleId: vehicleId),
+      'assets/images/washing.jpg' => (_) => WashingPackageScreen(vehicleId: vehicleId),
       'assets/images/wheelmanagement.jpg' =>
-        (_) => WheelManagementPackageScreen(vehicleId: vehicle.id),
-      'assets/images/paintcare.jpg' => (_) => PaintCarePackageScreen(vehicleId: vehicle.id),
-      'assets/images/ac.jpg' => (_) => AcPackageScreen(vehicleId: vehicle.id),
+        (_) => WheelManagementPackageScreen(vehicleId: vehicleId),
+      'assets/images/paintcare.jpg' => (_) => PaintCarePackageScreen(vehicleId: vehicleId),
+      'assets/images/ac.jpg' => (_) => AcPackageScreen(vehicleId: vehicleId),
       _ => null,
     };
     if (builder == null) return;
 
-    Navigator.push(context, MaterialPageRoute(builder: builder))
-        .then((_) => _refreshVehicleBookingStatus(vehicle.id));
+    Navigator.push(context, premiumPageRoute(builder)).then((_) {
+      if (vehicle != null) _refreshVehicleBookingStatus(vehicle.id);
+    });
   }
 
   /// Maps a "2D" service banner's image filename to the screen it opens.
@@ -331,42 +341,40 @@ class _HomeScreenState extends State<HomeScreen> {
     if (assetPath == 'assets/images/detailing.jpeg') {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const DetailingPackagesScreen()),
+        premiumPageRoute((_) => const DetailingPackagesScreen()),
       );
       return;
     }
 
     final vehicle = _activeVehicle;
-    if (vehicle == null) {
-      _flash('Add a vehicle first');
-      return;
-    }
+    final vehicleMap = {'id': vehicle?.id ?? ''};
 
     final WidgetBuilder? builder = switch (assetPath) {
-      'assets/images/tyres.jpeg' => (_) => TyreCareScreen(vehicle: {'id': vehicle.id}),
-      'assets/images/servicing.jpeg' => (_) => BookServiceScreen(vehicle: {'id': vehicle.id}),
-      'assets/images/painting.jpeg' => (_) => PaintCareScreen(vehicle: {'id': vehicle.id}),
-      'assets/images/dent.jpeg' => (_) => DentingTinkeringScreen(vehicle: {'id': vehicle.id}),
-      'assets/images/carspa.jpeg' => (_) => CarSpaScreen(vehicle: {'id': vehicle.id}),
+      'assets/images/tyres.jpeg' => (_) => TyreCareScreen(vehicle: vehicleMap),
+      'assets/images/servicing.jpeg' => (_) => BookServiceScreen(vehicle: vehicleMap),
+      'assets/images/painting.jpeg' => (_) => PaintCareScreen(vehicle: vehicleMap),
+      'assets/images/dent.jpeg' => (_) => DentingTinkeringScreen(vehicle: vehicleMap),
+      'assets/images/carspa.jpeg' => (_) => CarSpaScreen(vehicle: vehicleMap),
       'assets/images/insurance.jpeg' => (_) => InsuranceClaimScreen(
-          vehicleId: vehicle.id,
-          carModel: vehicle.model,
-          carBrand: vehicle.brand,
-          carNumber: vehicle.carNumber,
+          vehicleId: vehicle?.id ?? '',
+          carModel: vehicle?.model ?? '',
+          carBrand: vehicle?.brand ?? '',
+          carNumber: vehicle?.carNumber ?? '',
         ),
       _ => null,
     };
     if (builder == null) return;
 
-    Navigator.push(context, MaterialPageRoute(builder: builder))
-        .then((_) => _refreshVehicleBookingStatus(vehicle.id));
+    Navigator.push(context, premiumPageRoute(builder)).then((_) {
+      if (vehicle != null) _refreshVehicleBookingStatus(vehicle.id);
+    });
   }
 
   void _openVehicleBookings(Vehicle vehicle) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => VehicleBookingsScreen(
+      premiumPageRoute(
+        (_) => VehicleBookingsScreen(
           vehicleId: vehicle.id,
           carModel: vehicle.model,
           carBrand: vehicle.brand,
@@ -377,7 +385,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openMyVehicles() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()))
+    Navigator.push(context, premiumPageRoute((_) => const ProfileScreen()))
         .then((_) => _loadVehicles());
   }
 
@@ -387,7 +395,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openAddVehicle() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const ProfileScreen(autoOpenAddVehicle: true)),
+      premiumPageRoute((_) => const ProfileScreen(autoOpenAddVehicle: true)),
     ).then((_) => _loadVehicles());
   }
 
@@ -401,26 +409,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openRoadsideAssistance() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const RoadsideAssistanceScreen()));
+    Navigator.push(context, premiumPageRoute((_) => const RoadsideAssistanceScreen()));
   }
 
   void _openSubscriptions() {
-    final vehicle = _activeVehicle;
-    if (vehicle == null) {
-      _flash('Add a vehicle first');
-      return;
-    }
+    // Browsing subscription plans doesn't need a vehicle — only actually
+    // subscribing does, which SubscriptionsScreen's own booking step
+    // gates via PaymentScreen.
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => SubscriptionsScreen(vehicleId: vehicle.id)),
+      premiumPageRoute((_) => SubscriptionsScreen(vehicleId: _activeVehicle?.id ?? '')),
     );
   }
 
   void _openAiAdvisor() {
-    if (_activeVehicleMap == null) {
-      _flash('Add a vehicle first');
-      return;
-    }
+    // The advisor gives advice and shows package recommendations from
+    // plain chat, independent of any vehicle — it only needs one at the
+    // point someone taps a recommended package to book it, which
+    // AiAdvisorSheet's own "add a vehicle" prompt already covers.
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -432,8 +438,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openServices() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => ServicesScreen(activeVehicle: _activeVehicleMap),
+      premiumPageRoute(
+        (_) => ServicesScreen(activeVehicle: _activeVehicleMap),
       ),
     );
   }
@@ -444,8 +450,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openServicesSearch() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => ServicesScreen(
+      premiumPageRoute(
+        (_) => ServicesScreen(
           activeVehicle: _activeVehicleMap,
           autoFocusSearch: true,
         ),
@@ -461,8 +467,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (loggedIn) {
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => FleetDashboardScreen(
+        premiumPageRoute(
+          (_) => FleetDashboardScreen(
             fleetUser: {
               'id': prefs.getString('fleet_user_id'),
               'company_name': prefs.getString('fleet_company'),
@@ -481,33 +487,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openPollutionScreen() {
-    final vehicle = _activeVehicle;
-    if (vehicle == null) {
-      _flash('Add a vehicle first');
-      return;
-    }
+    // Same "browse the offer, gate only the actual booking" pattern as
+    // the rest of these — PollutionScreen only touches vehicleId at its
+    // own PaymentScreen construction.
+    //
+    // Trialing premiumPageRoute here (fade + rise + scale, both directions)
+    // in place of the flat default MaterialPageRoute slide — see
+    // lib/utils/premium_page_route.dart.
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => PollutionScreen(vehicleId: vehicle.id)),
+      premiumPageRoute((_) => PollutionScreen(vehicleId: _activeVehicle?.id ?? '')),
     );
   }
 
   void _openInspectionScreen() {
-    final vehicle = _activeVehicle;
-    if (vehicle == null) {
-      _flash('Add a vehicle first');
-      return;
-    }
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => InspectionScreen(vehicleId: vehicle.id)),
+      premiumPageRoute((_) => InspectionScreen(vehicleId: _activeVehicle?.id ?? '')),
     );
   }
 
   void _openFleetManagement() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const FleetManagementScreen()),
+      premiumPageRoute((_) => const FleetManagementScreen()),
     );
   }
 
@@ -536,6 +539,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.remove('fleet_company');
     await prefs.remove('fleet_username');
     await Supabase.instance.client.auth.signOut();
+    AiChatSession.clear();
 
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
@@ -649,6 +653,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     themeController.removeListener(_onThemeChanged);
+    vehicleChangeBus.removeListener(_loadVehicles);
     _toastTimer?.cancel();
     _coverflowPosition.dispose();
     super.dispose();
@@ -710,15 +715,15 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           )
-                        else if (_vehicles.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 18),
-                            child: Text(
-                              'No vehicles added yet.',
-                              style: GoogleFonts.manrope(fontSize: 13, color: AppColors.mut),
-                            ),
-                          )
                         else
+                          // VehicleCarousel already renders a "+ Add
+                          // Vehicle" tile after the last vehicle card, and
+                          // handles an empty vehicle list on its own
+                          // (itemCount = vehicles.length + 1, so with zero
+                          // vehicles it's just that one tile) — showing a
+                          // plain "No vehicles added yet." text instead,
+                          // as this used to, meant a new user never even
+                          // saw the button to add their first one.
                           VehicleCarousel(
                             vehicles: _vehicles,
                             onTap: _openVehicleBookings,
@@ -863,148 +868,84 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         ServicesGrid(
                           expanded: _servicesOpen,
+                          // Every one of these leads to a browse-tiers
+                          // screen that only needs a real vehicle at its
+                          // own "Book Now" (which now prompts for one via
+                          // PaymentScreen if it's missing) — so tapping a
+                          // service tile always opens it, vehicle or not,
+                          // falling back to an empty id/map when there
+                          // isn't one yet. Detailing and Roadside Help
+                          // never needed a vehicle in the first place.
                           onServiceTap: (service) {
+                            final vehicle = _activeVehicle;
+                            final vehicleMap = {'id': vehicle?.id ?? ''};
+
                             if (service == 'Periodic Service') {
-                              final vehicle = _activeVehicle;
-
-                              if (vehicle == null) {
-                                _flash('Add a vehicle first');
-                                return;
-                              }
-
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => BookServiceScreen(
-                                    vehicle: {'id': vehicle.id},
-                                  ),
+                                premiumPageRoute(
+                                  (_) => BookServiceScreen(vehicle: vehicleMap),
                                 ),
                               );
                             } else if (service == 'Deep Cleaning') {
-                              final vehicle = _activeVehicle;
-
-                              if (vehicle == null) {
-                                _flash('Add a vehicle first');
-                                return;
-                              }
-
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => CarSpaScreen(
-                                    vehicle: {'id': vehicle.id},
-                                  ),
+                                premiumPageRoute(
+                                  (_) => CarSpaScreen(vehicle: vehicleMap),
                                 ),
                               );
                             } else if (service == 'AC Service') {
-                              final vehicle = _activeVehicle;
-
-                              if (vehicle == null) {
-                                _flash('Add a vehicle first');
-                                return;
-                              }
-
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => AcPackageScreen(
-                                    vehicleId: vehicle.id,
-                                  ),
+                                premiumPageRoute(
+                                  (_) => AcPackageScreen(vehicleId: vehicle?.id ?? ''),
                                 ),
                               );
                             } else if (service == 'Tyres & Wheels') {
-                              final vehicle = _activeVehicle;
-
-                              if (vehicle == null) {
-                                _flash('Add a vehicle first');
-                                return;
-                              }
-
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => TyreCareScreen(
-                                    vehicle: {'id': vehicle.id},
-                                  ),
+                                premiumPageRoute(
+                                  (_) => TyreCareScreen(vehicle: vehicleMap),
                                 ),
                               );
                             } else if (service == 'Denting') {
-                              final vehicle = _activeVehicle;
-
-                              if (vehicle == null) {
-                                _flash('Add a vehicle first');
-                                return;
-                              }
-
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => DentingTinkeringScreen(
-                                    vehicle: {'id': vehicle.id},
-                                  ),
+                                premiumPageRoute(
+                                  (_) => DentingTinkeringScreen(vehicle: vehicleMap),
                                 ),
                               );
                             } else if (service == 'Painting') {
-                              final vehicle = _activeVehicle;
-
-                              if (vehicle == null) {
-                                _flash('Add a vehicle first');
-                                return;
-                              }
-
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => PaintCareScreen(
-                                    vehicle: {'id': vehicle.id},
-                                  ),
+                                premiumPageRoute(
+                                  (_) => PaintCareScreen(vehicle: vehicleMap),
                                 ),
                               );
                             } else if (service == 'Insurance Claim') {
-                              final vehicle = _activeVehicle;
-
-                              if (vehicle == null) {
-                                _flash('Add a vehicle first');
-                                return;
-                              }
-
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => InsuranceClaimScreen(
-                                    vehicleId: vehicle.id,
-                                    carModel: vehicle.model,
-                                    carBrand: vehicle.brand,
-                                    carNumber: vehicle.carNumber,
+                                premiumPageRoute(
+                                  (_) => InsuranceClaimScreen(
+                                    vehicleId: vehicle?.id ?? '',
+                                    carModel: vehicle?.model ?? '',
+                                    carBrand: vehicle?.brand ?? '',
+                                    carNumber: vehicle?.carNumber ?? '',
                                   ),
                                 ),
                               );
                             } else if (service == 'Ceramic Coating') {
-                              final vehicle = _activeVehicle;
-
-                              if (vehicle == null) {
-                                _flash('Add a vehicle first');
-                                return;
-                              }
-
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => const DetailingPackagesScreen(),
+                                premiumPageRoute(
+                                  (_) => const DetailingPackagesScreen(),
                                 ),
                               );
                             } else if (service == 'Roadside Help') {
-                              final vehicle = _activeVehicle;
-
-                              if (vehicle == null) {
-                                _flash('Add a vehicle first');
-                                return;
-                              }
-
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => const RoadsideAssistanceScreen(),
+                                premiumPageRoute(
+                                  (_) => const RoadsideAssistanceScreen(),
                                 ),
                               );
                             } else {
@@ -1037,8 +978,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             onTap: () {
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => const DetailingPackagesScreen(),
+                                premiumPageRoute(
+                                  (_) => const DetailingPackagesScreen(),
                                 ),
                               );
                             },

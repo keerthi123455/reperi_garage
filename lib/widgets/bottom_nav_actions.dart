@@ -55,14 +55,12 @@ void handleBottomNavSelect(
 }
 
 /// Opens the Ask AI advisor sheet — shared so the floating button behaves
-/// identically on every screen that shows it.
+/// identically on every screen that shows it. The advisor gives advice
+/// and recommends packages from plain chat, independent of any vehicle —
+/// it only needs one at the point someone taps a recommended package to
+/// book it, which AiAdvisorSheet's own "add a vehicle" prompt covers, so
+/// opening the sheet itself is never blocked.
 void openAiAdvisor(BuildContext context, Map<String, dynamic>? activeVehicle) {
-  if (activeVehicle == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Add a vehicle first')),
-    );
-    return;
-  }
   showModalBottomSheet(
     context: context,
     backgroundColor: Colors.transparent,

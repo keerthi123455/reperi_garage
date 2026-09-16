@@ -12,12 +12,18 @@ class InsuranceClaimScreen extends StatefulWidget {
   final String carBrand;
   final String carNumber;
 
+  /// This screen represents a single service with no sub-packages to
+  /// select between, so there's nothing further to highlight — accepted
+  /// only so callers that pass it (see buildPackageScreenFor) compile.
+  final String? highlightPackage;
+
   const InsuranceClaimScreen({
     super.key,
     required this.vehicleId,
     required this.carModel,
     required this.carBrand,
     required this.carNumber,
+    this.highlightPackage,
   });
 
   @override

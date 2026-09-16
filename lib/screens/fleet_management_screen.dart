@@ -5,7 +5,13 @@ import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 
 class FleetManagementScreen extends StatefulWidget {
-  const FleetManagementScreen({super.key});
+  /// This screen has no per-package selection UI (Fleet Management /
+  /// Battery Management are fixed inline sections, not a tappable list),
+  /// so there's nothing further to highlight — accepted only so callers
+  /// that pass it (see buildPackageScreenFor) compile.
+  final String? highlightPackage;
+
+  const FleetManagementScreen({super.key, this.highlightPackage});
 
   @override
   State<FleetManagementScreen> createState() => _FleetManagementScreenState();
@@ -400,6 +406,9 @@ class _FleetManagementScreenState extends State<FleetManagementScreen> {
             const SizedBox(height: 10),
             Text(
               title,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: titleColor,
                 fontSize: 15,
@@ -409,6 +418,9 @@ class _FleetManagementScreenState extends State<FleetManagementScreen> {
             const SizedBox(height: 4),
             Text(
               '$count checkpoints',
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: subtitleColor,
                 fontSize: 11,

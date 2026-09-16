@@ -1307,6 +1307,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                                       price: '₹${req['total_amount']}',
                                       duration: '',
                                       vehicleId: '',
+                                      vehicleRequired: false,
                                       billItems: List<Map<String, dynamic>>.from(req['bill_items'] ?? []),
                                       onlineOnly: true,
                                       onSuccess: (orderId, paymentId) async {

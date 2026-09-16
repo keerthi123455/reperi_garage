@@ -36,14 +36,27 @@ class ServiceTile extends StatelessWidget {
             children: [
               Icon(icon, size: 29, color: AppColors.accent),
               const SizedBox(height: 10),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.manrope(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.txt,
-                  height: 1.25,
+              // Wrapped in Expanded so this label can only ever take
+              // whatever space is left after the icon — on a device
+              // whose font renders taller/wider than this was tuned
+              // against (different OEM font metrics, a bumped-up system
+              // font size, ...), the label shrinks to fit and truncates
+              // with an ellipsis instead of blowing out the tile's fixed
+              // height with a RenderFlex overflow.
+              Expanded(
+                child: Center(
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.manrope(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.txt,
+                      height: 1.25,
+                    ),
+                  ),
                 ),
               ),
             ],

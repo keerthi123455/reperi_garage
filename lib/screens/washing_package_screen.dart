@@ -125,7 +125,11 @@ const _whyChooseUs = [
 class WashingPackageScreen extends StatefulWidget {
   final String vehicleId;
 
-  const WashingPackageScreen({super.key, required this.vehicleId});
+  /// When set (matches one of the tier names above, case-insensitive),
+  /// that tier is pre-selected and its Details tab opens immediately.
+  final String? highlightPackage;
+
+  const WashingPackageScreen({super.key, required this.vehicleId, this.highlightPackage});
 
   @override
   State<WashingPackageScreen> createState() => _WashingPackageScreenState();
@@ -140,6 +144,16 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    if (widget.highlightPackage != null) {
+      final target = widget.highlightPackage!.toLowerCase();
+      final match = _tiers.indexWhere((t) => t.name.toLowerCase() == target);
+      if (match != -1) {
+        _selectedTier = match;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _tabController.animateTo(2);
+        });
+      }
+    }
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
@@ -820,13 +834,17 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
                         children: [
                           Icon(f.$1, color: const Color(0xFFD4A017), size: 24),
                           const SizedBox(height: 10),
-                          Text(
-                            f.$2,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppColors.txt,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                          Flexible(
+                            child: Text(
+                              f.$2,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: AppColors.txt,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ],

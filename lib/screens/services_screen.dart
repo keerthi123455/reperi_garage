@@ -15,7 +15,6 @@ import 'insurance_claim_screen.dart';
 import 'paint_care_package_screen.dart';
 import 'paint_care_screen.dart';
 import 'payment_screen.dart';
-import 'profile_screen.dart';
 import 'roadside_assistance_screen.dart';
 import 'servicing_package_screen.dart';
 import 'subscriptions_screen.dart';
@@ -27,7 +26,10 @@ const String _expertPhone = '9353094672';
 
 /// Builds the "More Details" / "Book Now" destination screen for a
 /// [_Package], given the account's active vehicle (may be null).
-typedef _ScreenBuilder = Widget Function(Map<String, dynamic>? vehicle);
+/// `highlightPackage`, when set, is that exact package's name — the
+/// destination screen scrolls to it and selects/opens it on load instead
+/// of just landing on the screen generally.
+typedef _ScreenBuilder = Widget Function(Map<String, dynamic>? vehicle, {String? highlightPackage});
 
 /// One bookable line item in the unified catalog — every tier from every
 /// package screen in the app (Servicing, Washing, Wheel Management, Paint
@@ -308,30 +310,46 @@ const Map<String, List<String>> _kSearchSynonyms = {
   'detail': ['detailing'],
 };
 
-Widget _bookService(Map<String, dynamic>? v) => BookServiceScreen(vehicle: v!);
-Widget _servicingPkg(Map<String, dynamic>? v) =>
-    ServicingPackageScreen(vehicleId: v!['id'].toString());
-Widget _washingPkg(Map<String, dynamic>? v) =>
-    WashingPackageScreen(vehicleId: v!['id'].toString());
-Widget _carSpa(Map<String, dynamic>? v) => CarSpaScreen(vehicle: v!);
-Widget _wheelPkg(Map<String, dynamic>? v) =>
-    WheelManagementPackageScreen(vehicleId: v!['id'].toString());
-Widget _tyreCare(Map<String, dynamic>? v) => TyreCareScreen(vehicle: v!);
-Widget _paintPkg(Map<String, dynamic>? v) =>
-    PaintCarePackageScreen(vehicleId: v!['id'].toString());
-Widget _paintCare(Map<String, dynamic>? v) => PaintCareScreen(vehicle: v!);
-Widget _denting(Map<String, dynamic>? v) => DentingTinkeringScreen(vehicle: v!);
-Widget _detailing(Map<String, dynamic>? v) => const DetailingPackagesScreen();
-Widget _insurance(Map<String, dynamic>? v) => InsuranceClaimScreen(
-      vehicleId: v!['id'].toString(),
-      carModel: (v['car_model'] ?? '').toString(),
-      carBrand: (v['car_brand'] ?? '').toString(),
-      carNumber: (v['car_number'] ?? '').toString(),
+// These builders used to force-unwrap the active vehicle (`v!`), which
+// only worked because ServicesScreen refused to call them at all without
+// one. Package tiers and features should be browsable with no vehicle
+// yet — each of these screens only actually reads the vehicle id at the
+// moment its own "Book Now" reaches PaymentScreen, which now prompts to
+// add a vehicle right there if it's missing — so browsing here just
+// falls back to an empty id/map instead of blocking navigation.
+Widget _bookService(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    BookServiceScreen(vehicle: v ?? const {'id': ''}, highlightPackage: highlightPackage);
+Widget _servicingPkg(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    ServicingPackageScreen(vehicleId: v?['id']?.toString() ?? '', highlightPackage: highlightPackage);
+Widget _washingPkg(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    WashingPackageScreen(vehicleId: v?['id']?.toString() ?? '', highlightPackage: highlightPackage);
+Widget _carSpa(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    CarSpaScreen(vehicle: v ?? const {'id': ''}, highlightPackage: highlightPackage);
+Widget _wheelPkg(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    WheelManagementPackageScreen(vehicleId: v?['id']?.toString() ?? '', highlightPackage: highlightPackage);
+Widget _tyreCare(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    TyreCareScreen(vehicle: v ?? const {'id': ''}, highlightPackage: highlightPackage);
+Widget _paintPkg(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    PaintCarePackageScreen(vehicleId: v?['id']?.toString() ?? '', highlightPackage: highlightPackage);
+Widget _paintCare(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    PaintCareScreen(vehicle: v ?? const {'id': ''}, highlightPackage: highlightPackage);
+Widget _denting(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    DentingTinkeringScreen(vehicle: v ?? const {'id': ''}, highlightPackage: highlightPackage);
+Widget _detailing(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    DetailingPackagesScreen(highlightPackage: highlightPackage);
+Widget _insurance(Map<String, dynamic>? v, {String? highlightPackage}) => InsuranceClaimScreen(
+      vehicleId: v?['id']?.toString() ?? '',
+      carModel: (v?['car_model'] ?? '').toString(),
+      carBrand: (v?['car_brand'] ?? '').toString(),
+      carNumber: (v?['car_number'] ?? '').toString(),
+      highlightPackage: highlightPackage,
     );
-Widget _subscriptions(Map<String, dynamic>? v) =>
-    SubscriptionsScreen(vehicleId: v!['id'].toString());
-Widget _roadside(Map<String, dynamic>? v) => const RoadsideAssistanceScreen();
-Widget _fleetMgmt(Map<String, dynamic>? v) => const FleetManagementScreen();
+Widget _subscriptions(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    SubscriptionsScreen(vehicleId: v?['id']?.toString() ?? '', highlightPackage: highlightPackage);
+Widget _roadside(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    RoadsideAssistanceScreen(highlightPackage: highlightPackage);
+Widget _fleetMgmt(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    FleetManagementScreen(highlightPackage: highlightPackage);
 
 /// The full catalog — every tier from every package screen in the app.
 final List<_Package> _kCatalog = [
@@ -462,8 +480,8 @@ final List<_Package> _kCatalog = [
   const _Package(
     category: 'Wheels & Tyres',
     name: 'Precision Alignment',
-    price: '₹999',
-    duration: '1-2 hrs',
+    price: '₹499',
+    duration: '45 mins',
     tagline: 'Better handling, smoother driving, and longer tyre life.',
     features: ['Computerized Wheel Alignment', 'Steering Alignment Check', 'Suspension Geometry Inspection', 'Tyre Pressure Adjustment', 'Front & Rear Tyre Wear Inspection', 'Steering Wheel Centering', 'Road Test After Alignment', 'Digital Alignment Report'],
     screenBuilder: _wheelPkg,
@@ -471,12 +489,22 @@ final List<_Package> _kCatalog = [
   const _Package(
     category: 'Wheels & Tyres',
     name: 'Complete Wheel Care',
-    price: '₹1,999',
-    duration: '1-2 hrs',
+    price: '₹799',
+    duration: '60 mins',
     tagline: 'Maximize tyre life and improve driving comfort.',
     popular: true,
     features: ['Everything in Precision Alignment', 'Computerized Wheel Balancing (All 4 Wheels)', 'Alloy Wheel Inspection', 'Tyre Rotation (if applicable)', 'Valve & Air Leak Check', 'Wheel Nut Torque Check', 'Suspension & Steering Linkage Inspection', 'Brake Disc Visual Inspection', 'Tyre Tread Depth Measurement', 'Tyre Health Report with Replacement Advice', 'Complimentary Tyre Shine'],
     screenBuilder: _wheelPkg,
+  ),
+  const _Package(
+    category: 'Wheels & Tyres',
+    name: 'Wheel Alignment and Balancing',
+    price: '₹799',
+    duration: '60 mins',
+    tagline: 'Our most complete wheel care combo — alignment and balancing together.',
+    popular: true,
+    features: ['Computerized alignment', 'Dynamic balancing', 'Steering correction', 'Wheel weight calibration', 'Road stability testing'],
+    screenBuilder: _tyreCare,
   ),
   const _Package(
     category: 'Wheels & Tyres',
@@ -490,7 +518,7 @@ final List<_Package> _kCatalog = [
   const _Package(
     category: 'Wheels & Tyres',
     name: 'Wheel Alignment',
-    price: '₹799',
+    price: '₹499',
     duration: '45 mins',
     tagline: 'Recommended if your vehicle pulls to one side.',
     features: ['Computerized alignment', 'Steering correction', 'Camber adjustment', 'Wheel angle optimization', 'Road stability testing'],
@@ -498,56 +526,11 @@ final List<_Package> _kCatalog = [
   ),
   const _Package(
     category: 'Wheels & Tyres',
-    name: 'Balancing & Rotation',
-    price: '₹1499',
-    duration: '60 mins',
+    name: 'Wheel Balancing',
+    price: '₹299',
+    duration: '30 mins',
     tagline: 'Improves ride quality and tyre longevity.',
-    features: ['Dynamic balancing', 'Tyre rotation', 'Wheel weight calibration', 'Vibration reduction', 'High-speed balancing'],
-    screenBuilder: _tyreCare,
-  ),
-  const _Package(
-    category: 'Wheels & Tyres',
-    name: 'Road Grip Package',
-    price: '₹2499',
-    duration: '90 mins',
-    tagline: 'Ideal for highway driving.',
-    features: ['Alignment', 'Balancing', 'Rotation', 'Suspension inspection', 'Brake inspection', 'Grip optimization'],
-    screenBuilder: _tyreCare,
-  ),
-  const _Package(
-    category: 'Wheels & Tyres',
-    name: 'Performance Package',
-    price: '₹3499',
-    duration: '120 mins',
-    tagline: 'Designed for enthusiasts.',
-    features: ['Performance alignment', 'Precision balancing', 'Suspension tuning check', 'Cornering optimization', 'Road testing'],
-    screenBuilder: _tyreCare,
-  ),
-  const _Package(
-    category: 'Wheels & Tyres',
-    name: 'Premium Wheel Care',
-    price: '₹4999',
-    duration: '90 mins',
-    tagline: 'Restores and protects premium alloy wheels.',
-    features: ['Alloy detailing', 'Rim protection coating', 'Deep wheel cleaning', 'Brake dust removal', 'Finish restoration'],
-    screenBuilder: _tyreCare,
-  ),
-  const _Package(
-    category: 'Wheels & Tyres',
-    name: 'Alloy Wheel Studio',
-    price: '₹5999',
-    duration: '150 mins',
-    tagline: 'For customers upgrading to premium alloys.',
-    features: ['Alloy installation', 'Fitment inspection', 'Wheel balancing', 'Alignment', 'Styling consultation'],
-    screenBuilder: _tyreCare,
-  ),
-  const _Package(
-    category: 'Wheels & Tyres',
-    name: 'Track Performance+',
-    price: '₹6799',
-    duration: '180 mins',
-    tagline: 'Ultimate performance package for track-ready cars.',
-    features: ['Premium wheel setup', 'High-speed balancing', 'Performance alignment', 'Suspension inspection', 'Brake inspection', 'Grip enhancement', 'Road testing', 'Premium detailing'],
+    features: ['Dynamic balancing', 'Wheel weight calibration', 'Vibration reduction', 'High-speed balancing'],
     screenBuilder: _tyreCare,
   ),
 
@@ -859,6 +842,56 @@ final List<_Package> _kCatalog = [
   ),
 ];
 
+// ── Public catalog access for other screens ─────────────────────────────────
+// `_kCatalog`/`_Package` are file-private, so these two top-level functions
+// are the only way another screen (namely the AI advisor sheet) can see
+// what's actually in it — keeping one single source of truth for "every
+// package in the app" instead of a second, separately maintained list that
+// can drift out of sync with what this screen actually shows and searches.
+
+/// A plain, serializable view of every real, bookable package in the app —
+/// used by the AI advisor to recommend from the exact same catalog this
+/// screen searches over, instead of guessing from a smaller hardcoded list.
+/// Coming-soon packages are excluded since they can't actually be booked.
+List<Map<String, dynamic>> exportPackageCatalogForAi() {
+  return _kCatalog
+      .where((p) => !p.comingSoon && p.price.isNotEmpty)
+      .map((p) => {
+            'category': p.category,
+            'name': p.name,
+            'price': p.price,
+            'duration': p.duration,
+            'tagline': p.tagline,
+            'features': p.features,
+          })
+      .toList();
+}
+
+/// Opens the exact same screen this catalog would send this package to —
+/// looked up by category+name, the same pair returned by
+/// [exportPackageCatalogForAi] — so a package recommended elsewhere in the
+/// app (the AI advisor) always lands on the real screen for it, not a
+/// guess based on matching words in its name. Returns null if no package
+/// matches (e.g. stale data), letting the caller fall back gracefully.
+Widget? buildPackageScreenFor(String category, String name, Map<String, dynamic>? vehicle) {
+  for (final p in _kCatalog) {
+    if (p.category == category && p.name == name) {
+      return p.screenBuilder(vehicle, highlightPackage: name);
+    }
+  }
+  return null;
+}
+
+/// This screen's own category accent color — exposed so anything showing a
+/// package by category (the AI advisor's package cards) can tag it with
+/// the same color used here, instead of picking its own.
+Color categoryAccentColor(String category) =>
+    _kCategoryAccent[category] ?? AppColors.mut;
+
+/// This screen's own category icon, for the same reason.
+IconData categoryIconFor(String category) =>
+    _kCategoryIcon[category] ?? Icons.build_circle_outlined;
+
 // Every distinct word (3+ letters) appearing anywhere in the catalog —
 // built once, lazily, the first time search is used. This is the
 // dictionary fuzzy matching checks a typed word against, so a typo like
@@ -1114,28 +1147,28 @@ class _ServicesScreenState extends State<ServicesScreen> {
     }
   }
 
+  // _openMoreDetails and _bookNow used to refuse to navigate at all
+  // without an active vehicle — but every package screen they lead to is
+  // just tiers/features to browse until its own "Book Now" actually
+  // reaches PaymentScreen, which now prompts to add a vehicle right there
+  // if one's missing (see PaymentScreen.vehicleRequired). So browsing
+  // never needs a vehicle; only that final step does.
   void _openMoreDetails(_Package pkg) {
     if (pkg.comingSoon) {
       _comingSoon(pkg.name);
       return;
     }
-    if (pkg.vehicleRequired && widget.activeVehicle == null) {
-      _showNoVehicleDialog();
-      return;
-    }
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => pkg.screenBuilder(widget.activeVehicle)),
+      MaterialPageRoute(
+        builder: (_) => pkg.screenBuilder(widget.activeVehicle, highlightPackage: pkg.name),
+      ),
     );
   }
 
   void _bookNow(_Package pkg) {
     if (pkg.comingSoon) {
       _comingSoon(pkg.name);
-      return;
-    }
-    if (pkg.vehicleRequired && widget.activeVehicle == null) {
-      _showNoVehicleDialog();
       return;
     }
     if (!pkg.directBook) {
@@ -1152,6 +1185,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
           price: pkg.price,
           duration: pkg.duration,
           vehicleId: widget.activeVehicle?['id']?.toString() ?? '',
+          vehicleRequired: pkg.vehicleRequired,
         ),
       ),
     );
@@ -1164,77 +1198,6 @@ class _ServicesScreenState extends State<ServicesScreen> {
         backgroundColor: AppColors.surfaceRaised,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-
-  void _showNoVehicleDialog() {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: AppColors.surfaceRaised,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 90,
-                height: 90,
-                decoration: BoxDecoration(
-                  color: _gold.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.person_add_alt_1, color: _gold, size: 44),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Please create a profile to book services',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.txt,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'Add your vehicle details to continue with premium garage services.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.mut, height: 1.5),
-              ),
-              const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _gold,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                    );
-                  },
-                  child: Text(
-                    'MAKE PROFILE',
-                    style: TextStyle(
-                      color: AppColors.onAccentDark,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
