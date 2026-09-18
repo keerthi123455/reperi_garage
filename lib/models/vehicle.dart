@@ -9,6 +9,7 @@ class Vehicle {
     this.photoUrl,
     this.bookingStatus,
     this.hasActiveSubscription = false,
+    this.hasUpdate = false,
   });
 
   final String id;
@@ -27,6 +28,12 @@ class Vehicle {
   /// vehicle just because one of them is subscribed.
   final bool hasActiveSubscription;
 
+  /// Whether the garage, a delivery partner, a washer, or an insurance
+  /// claim has an update this vehicle's owner hasn't seen yet — see
+  /// `VehicleUpdateTracker` for what counts as "seen". Drives the
+  /// notification bell badge on its home-screen card.
+  final bool hasUpdate;
+
   Vehicle copyWith({String? photoUrl}) {
     return Vehicle(
       id: id,
@@ -36,6 +43,7 @@ class Vehicle {
       photoUrl: photoUrl ?? this.photoUrl,
       bookingStatus: bookingStatus,
       hasActiveSubscription: hasActiveSubscription,
+      hasUpdate: hasUpdate,
     );
   }
 
@@ -51,6 +59,7 @@ class Vehicle {
       photoUrl: photoUrl,
       bookingStatus: bookingStatus,
       hasActiveSubscription: hasActiveSubscription,
+      hasUpdate: hasUpdate,
     );
   }
 }

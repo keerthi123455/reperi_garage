@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/error_handler.dart';
 import '../services/vehicle_change_bus.dart';
+import '../services/vehicle_update_tracker.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/ask_ai_button.dart';
@@ -128,6 +129,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     fetchWashHistory();
     fetchPollutionBookings();
     fetchInspectionBookings();
+    // Landing here IS "viewing" every update source shown below — snapshot
+    // them all as seen so the home-screen bell for this vehicle clears.
+    // Re-derives straight from Supabase rather than waiting on the fetches
+    // above, so it isn't blocked by (or racing) their own completion.
+    VehicleUpdateTracker.markSeen(widget.vehicleId);
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.

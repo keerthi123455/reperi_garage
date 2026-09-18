@@ -153,20 +153,34 @@ class _VehicleCarouselState extends State<VehicleCarousel> {
               scrollDirection: Axis.horizontal,
               physics: const ClampingScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: _sidePadding),
+              // A horizontal ListView clips its own viewport to its cross-
+              // axis (here: vertical) bounds by default, regardless of any
+              // Clip.none on a card's own Stack — that's what was cutting
+              // off the spanner/notification badges' negative offsets
+              // poking above/below each card.
+              clipBehavior: Clip.none,
               itemCount: itemCount,
               itemBuilder: (context, i) {
                 final isLast = i == itemCount - 1;
                 return Padding(
                   padding: EdgeInsets.only(right: isLast ? 0 : _gap),
-                  child: i == widget.vehicles.length
-                      ? _AddVehicleTile(width: cardWidth, compact: isEmpty, onTap: widget.onAddVehicle)
-                      : VehicleCard(
-                          vehicle: widget.vehicles[i],
-                          width: cardWidth,
-                          isActive: i == _settledPage,
-                          onTap: () => widget.onTap(widget.vehicles[i]),
-                          onPhotoTap: () => widget.onPhotoTap(widget.vehicles[i]),
-                        ),
+                  // Pinning both tile types to the same SizedBox here,
+                  // rather than trusting each one's own `width` prop to be
+                  // respected identically, is what actually guarantees the
+                  // "+" tile lines up flush with a real vehicle card
+                  // instead of reading a hair wider next to it.
+                  child: SizedBox(
+                    width: cardWidth,
+                    child: i == widget.vehicles.length
+                        ? _AddVehicleTile(width: cardWidth, compact: isEmpty, onTap: widget.onAddVehicle)
+                        : VehicleCard(
+                            vehicle: widget.vehicles[i],
+                            width: cardWidth,
+                            isActive: i == _settledPage,
+                            onTap: () => widget.onTap(widget.vehicles[i]),
+                            onPhotoTap: () => widget.onPhotoTap(widget.vehicles[i]),
+                          ),
+                  ),
                 );
               },
             ),

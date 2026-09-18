@@ -196,6 +196,12 @@ class _VehicleCardState extends State<VehicleCard> with SingleTickerProviderStat
         ),
         if (status.showBadge)
           const Positioned(top: -8, right: 8, child: _ServiceBadge()),
+        // Bottom-left — the one corner nothing else reaches into. The
+        // photo (top-left) tops out well above this, and the license
+        // plate/arrow row lives over in the right-hand content column, so
+        // this can't crowd either one the way bottom-right did.
+        if (widget.vehicle.hasUpdate)
+          const Positioned(bottom: -10, left: 8, child: _NotificationBadge()),
       ],
       ),
     );
@@ -302,17 +308,24 @@ class _LicensePlate extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(width: 5, height: 22, color: const Color(0xFF1E3A8A)),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              child: Text(
-                number.toUpperCase(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.4,
-                  color: Colors.black,
+            // Flexible is what actually makes `overflow: ellipsis` below
+            // do anything — a bare Text as a Row child reports its own
+            // full intrinsic width upward instead of shrinking, so on a
+            // phone with a bumped-up system text scale the plate could
+            // overflow its Row instead of truncating.
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                child: Text(
+                  number.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                    color: Colors.black,
+                  ),
                 ),
               ),
             ),
@@ -447,6 +460,39 @@ class _ServiceBadgeState extends State<_ServiceBadge> with SingleTickerProviderS
           );
         },
       ),
+    );
+  }
+}
+
+/// The red "update from garage/washer/delivery/insurance" bell badge,
+/// overlaid on the card's bottom-right corner — deliberately bigger than
+/// [_ServiceBadge]'s spanner (34px core vs. 28px) since a new update needs
+/// to be the first thing that catches your eye on the tile. Goes off (see
+/// `VehicleUpdateTracker.markSeen`) once the vehicle's bookings screen —
+/// where every one of those sources is actually shown — has been opened.
+class _NotificationBadge extends StatelessWidget {
+  const _NotificationBadge();
+
+  static const Color _red = Color(0xFFE5484D);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: _red,
+        border: Border.all(color: AppColors.surfaceRaised, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: _red.withOpacity(0.45),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: const Icon(Icons.notifications_rounded, size: 19, color: Colors.white),
     );
   }
 }

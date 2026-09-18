@@ -13,6 +13,7 @@ import '../models/vehicle.dart';
 import '../services/address_service.dart';
 import '../services/ai_chat_session.dart';
 import '../services/vehicle_change_bus.dart';
+import '../services/vehicle_update_tracker.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../utils/premium_page_route.dart';
@@ -214,6 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
           photoUrl: row['photo_url'] as String?,
           bookingStatus: await _fetchLatestBookingStatus(id),
           hasActiveSubscription: await _fetchHasActiveSubscription(id),
+          hasUpdate: await VehicleUpdateTracker.hasUpdate(id),
         );
       }));
 
@@ -381,7 +383,10 @@ class _HomeScreenState extends State<HomeScreen> {
           carNumber: vehicle.carNumber,
         ),
       ),
-    );
+      // That screen marks every update source seen as soon as it loads —
+      // reload so this vehicle's notification bell clears instead of
+      // staying lit until some unrelated refresh happens to notice.
+    ).then((_) => _loadVehicles());
   }
 
   void _openMyVehicles() {
