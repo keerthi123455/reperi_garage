@@ -30,10 +30,24 @@ class AdminAssignmentService {
   /// aren't tied to one vehicle type, which rotates among every admin as
   /// before.
   ///
+  /// When [forcedAdminUsername] is given, it overrides all of the above —
+  /// the booking always goes straight to that one admin (e.g. Roadside
+  /// Assistance bookings always go to 'emergency_service'), no rotation,
+  /// no vehicle-type filtering. Returns null (leaving the booking
+  /// unassigned rather than silently handing it to some other admin) if no
+  /// admin with that username exists.
+  ///
   /// Returns:
   ///   - String ID of the assigned admin if successful
   ///   - null if no matching admins exist or on error
-  static Future<String?> getNextAdminId({String? vehicleId}) async {
+  static Future<String?> getNextAdminId({
+    String? vehicleId,
+    String? forcedAdminUsername,
+  }) async {
+    if (forcedAdminUsername != null) {
+      return _resolveAdminIdByUsername(forcedAdminUsername);
+    }
+
     try {
       final vehicleLabel = await _resolveAdminVehicleLabel(vehicleId);
 
@@ -65,6 +79,21 @@ class AdminAssignmentService {
 
       return assignedAdminId;
 
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Looks up an admin's id by their exact `admin.username` — used for
+  /// [forcedAdminUsername] assignment, bypassing rotation entirely.
+  static Future<String?> _resolveAdminIdByUsername(String username) async {
+    try {
+      final row = await _supabase
+          .from('admin')
+          .select('id')
+          .eq('username', username)
+          .maybeSingle();
+      return row?['id'] as String?;
     } catch (e) {
       return null;
     }

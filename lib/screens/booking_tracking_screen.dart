@@ -24,6 +24,9 @@ class BookingTrackingScreen extends StatefulWidget {
 class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   List updates = [];
   bool loading = true;
+  // Set when fetchUpdates() fails — drives a retry screen instead of
+  // leaving the loading spinner stuck forever on a bad network moment.
+  bool _loadError = false;
   bool hasUnreadMessages = false;
 
   @override
@@ -51,18 +54,29 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   Future<void> fetchUpdates() async {
     final supabase = Supabase.instance.client;
 
-    final response = await supabase
-        .from('booking_updates')
-        .select()
-        .eq('booking_id', widget.booking['id'])
-        .order('created_at', ascending: true);
+    try {
+      final response = await supabase
+          .from('booking_updates')
+          .select()
+          .eq('booking_id', widget.booking['id'])
+          .order('created_at', ascending: true);
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      updates = response;
-      loading = false;
-    });
+      setState(() {
+        updates = response;
+        loading = false;
+        _loadError = false;
+      });
+    } catch (e) {
+      // Without this, a failed fetch left `loading` stuck true forever —
+      // an unrecoverable spinner with no way out but force-quitting.
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        _loadError = true;
+      });
+    }
   }
 
   Future<void> checkUnreadMessages() async {
@@ -112,7 +126,44 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
           ? const Center(
               child: CircularProgressIndicator(color: Color(0xFFD4A017)),
             )
-          : Center(
+          : _loadError
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.cloud_off_rounded, color: Colors.white38, size: 40),
+                        const SizedBox(height: 16),
+                        const Text(
+                          "Couldn't load this booking's updates",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Check your connection and try again.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white38, fontSize: 13),
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: () {
+                            setState(() => loading = true);
+                            fetchUpdates();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFD4A017),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: const Text('RETRY',
+                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800)),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 600),
                 child: ListView(

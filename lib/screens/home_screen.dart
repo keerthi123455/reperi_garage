@@ -53,6 +53,7 @@ import 'profile_screen.dart';
 import 'roadside_assistance_screen.dart';
 import 'services_screen.dart';
 import 'servicing_package_screen.dart';
+import 'spares_screen.dart';
 import 'two_wheeler_servicing_screen.dart';
 import 'two_wheeler_washing_screen.dart';
 import 'subscriptions_screen.dart';
@@ -367,16 +368,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Maps a "2D" service banner's image filename to the screen it opens.
   void _openServiceBanner(String assetPath) {
-    if (assetPath == 'assets/images/spares.jpeg') {
-      _flash('Will be available soon');
-      return;
-    }
-
-    // The only one of these that isn't tied to a specific vehicle.
+    // Neither of these is tied to a specific vehicle.
     if (assetPath == 'assets/images/detailing.jpeg') {
       Navigator.push(
         context,
         premiumPageRoute((_) => const DetailingPackagesScreen()),
+      );
+      return;
+    }
+    if (assetPath == 'assets/images/spares.jpeg') {
+      Navigator.push(
+        context,
+        premiumPageRoute((_) => const SparesScreen()),
       );
       return;
     }
@@ -584,6 +587,15 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
+    );
+  }
+
+  void _showBatteryEnquirySheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _BatteryEnquirySheet(),
     );
   }
 
@@ -1034,6 +1046,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   (_) => const RoadsideAssistanceScreen(),
                                 ),
                               );
+                            } else if (service == 'Pre-buy Inspection') {
+                              _openInspectionScreen();
                             } else {
                               _flash('Slot picker opens here');
                             }
@@ -1115,7 +1129,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             items: [
                               AutoBannerItem(
                                 assetPath: kBatteryBanner,
-                                onTap: () => _flash('Coming soon'),
+                                onTap: _showBatteryEnquirySheet,
                               ),
                               AutoBannerItem(
                                 assetPath: kFleetBanner,
@@ -1175,6 +1189,187 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: ToastBanner(message: _toastMessage!),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The "Battery Management" enquiry popup — reached from the "More from
+/// Reperi" banner strip. Just two fields since this is a lead-capture form
+/// (a human follows up), not a full booking — the actual work order/quote
+/// happens outside the app once the garage reaches out.
+class _BatteryEnquirySheet extends StatefulWidget {
+  const _BatteryEnquirySheet();
+
+  @override
+  State<_BatteryEnquirySheet> createState() => _BatteryEnquirySheetState();
+}
+
+class _BatteryEnquirySheetState extends State<_BatteryEnquirySheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _companyController = TextEditingController();
+  final _requirementController = TextEditingController();
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _companyController.dispose();
+    _requirementController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    setState(() => _submitting = true);
+
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      await Supabase.instance.client.from('battery_enquiries').insert({
+        'user_id': userId,
+        'company': _companyController.text.trim(),
+        'requirement': _requirementController.text.trim(),
+      });
+
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enquiry submitted — our team will reach out shortly.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not submit: $e')),
+      );
+    }
+  }
+
+  InputDecoration _fieldDecoration(String label, {String? hint}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      labelStyle: TextStyle(color: AppColors.mut, fontSize: 14),
+      hintStyle: TextStyle(color: AppColors.mut.withOpacity(0.7), fontSize: 14),
+      filled: true,
+      fillColor: AppColors.ink,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: AppColors.line),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: AppColors.line),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Color(0xFFD4A017), width: 1.5),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 14, 24, 24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 5,
+                      margin: const EdgeInsets.only(bottom: 18),
+                      decoration: BoxDecoration(
+                        color: AppColors.line,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD4A017).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.battery_charging_full_rounded,
+                            color: Color(0xFFD4A017), size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Battery Management Enquiry',
+                          style: TextStyle(color: AppColors.txt, fontSize: 19, fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Tell us a bit about your requirement and our team will reach out.',
+                    style: TextStyle(color: AppColors.mut, fontSize: 13.5, height: 1.4),
+                  ),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _companyController,
+                    style: TextStyle(color: AppColors.txt, fontSize: 16),
+                    decoration: _fieldDecoration('Company'),
+                    textCapitalization: TextCapitalization.words,
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter your company name' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _requirementController,
+                    style: TextStyle(color: AppColors.txt, fontSize: 16),
+                    decoration: _fieldDecoration(
+                      'Requirement',
+                      hint: 'e.g. EV fleet battery servicing, 20 units',
+                    ),
+                    maxLines: 3,
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter your requirement' : null,
+                  ),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _submitting ? null : _submit,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFD4A017),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: _submitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                            )
+                          : const Text(
+                              'SUBMIT ENQUIRY',
+                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 15),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

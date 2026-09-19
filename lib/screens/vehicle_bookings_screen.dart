@@ -72,6 +72,10 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   List pollutionBookings = [];
   List inspectionBookings = [];
   bool loading = true;
+  // Set when fetchBookings() itself fails (not the secondary fetches below
+  // it, which already degrade silently) — drives a retry screen instead of
+  // leaving the loading spinner stuck forever.
+  bool _loadError = false;
   bool _insuranceExpanded = false;
   bool _subscriptionExpanded = false;
   Map subscription = {};
@@ -1016,48 +1020,60 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   Future<void> fetchBookings() async {
     final supabase = Supabase.instance.client;
 
-    // ── UPDATED QUERY: Now includes admin table data (garage name & address) ──
-    final response = await supabase
-        .from('bookings')
-        .select('''
-          *,
-          admin:assigned_to_admin_id (
-            username,
-            address,
-            latitude,
-            longitude
-          )
-        ''')
-        .eq('vehicle_id', widget.vehicleId)
-        .order('created_at', ascending: false);
+    try {
+      // ── UPDATED QUERY: Now includes admin table data (garage name & address) ──
+      final response = await supabase
+          .from('bookings')
+          .select('''
+            *,
+            admin:assigned_to_admin_id (
+              username,
+              address,
+              latitude,
+              longitude
+            )
+          ''')
+          .eq('vehicle_id', widget.vehicleId)
+          .order('created_at', ascending: false);
 
-    // fetch all unread admin messages in one query
-    final bookingIds =
-        (response as List).map((b) => b['id'].toString()).toList();
+      // fetch all unread admin messages in one query
+      final bookingIds =
+          (response as List).map((b) => b['id'].toString()).toList();
 
-    Set<String> unreadIds = {};
+      Set<String> unreadIds = {};
 
-    if (bookingIds.isNotEmpty) {
-      final unreadChats = await supabase
-          .from('booking_chats')
-          .select('booking_id')
-          .inFilter('booking_id', bookingIds)
-          .eq('sender', 'admin')
-          .eq('is_read_by_consumer', false);
+      if (bookingIds.isNotEmpty) {
+        final unreadChats = await supabase
+            .from('booking_chats')
+            .select('booking_id')
+            .inFilter('booking_id', bookingIds)
+            .eq('sender', 'admin')
+            .eq('is_read_by_consumer', false);
 
-      unreadIds = (unreadChats as List)
-          .map((c) => c['booking_id'].toString())
-          .toSet();
+        unreadIds = (unreadChats as List)
+            .map((c) => c['booking_id'].toString())
+            .toSet();
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        bookings = response;
+        unreadBookingIds = unreadIds;
+        loading = false;
+        _loadError = false;
+      });
+      _syncCancelTicker();
+    } catch (e) {
+      // Without this, a failed fetch (no network, RLS hiccup, timeout) left
+      // `loading` stuck true forever — an unrecoverable spinner with no
+      // way out but force-quitting the app.
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        _loadError = true;
+      });
     }
-
-    if (!mounted) return;
-
-    setState(() {
-      bookings = response;
-      unreadBookingIds = unreadIds;
-      loading = false;
-    });
-    _syncCancelTicker();
   }
 
   /// Opens Google Maps directions to the assigned garage — shown only for
@@ -1356,7 +1372,44 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
               child:
                   CircularProgressIndicator(color: Color(0xFFD4A017)),
             )
-          : Center(
+          : _loadError
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.cloud_off_rounded, color: AppColors.mut, size: 40),
+                        const SizedBox(height: 16),
+                        Text(
+                          "Couldn't load this vehicle's bookings",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w700, fontSize: 15),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Check your connection and try again.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.mut, fontSize: 13),
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: () {
+                            setState(() => loading = true);
+                            fetchBookings();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFD4A017),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: const Text('RETRY',
+                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800)),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 600),
                 child: ListView(

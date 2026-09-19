@@ -826,7 +826,6 @@ final List<_Package> _kCatalog = [
     screenBuilder: _fleetMgmt,
     vehicleRequired: false,
     directBook: false,
-    comingSoon: true,
   ),
   const _Package(
     category: 'Business Solutions',
@@ -838,7 +837,6 @@ final List<_Package> _kCatalog = [
     screenBuilder: _fleetMgmt,
     vehicleRequired: false,
     directBook: false,
-    comingSoon: true,
   ),
 ];
 

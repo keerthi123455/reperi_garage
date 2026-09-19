@@ -180,6 +180,7 @@ class _RoadsideAssistanceScreenState
                     duration: 'On-demand',
                     vehicleId: '',
                     vehicleRequired: false,
+                    forcedAdminUsername: 'emergency_service',
                   ),
                 ),
               );

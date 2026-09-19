@@ -55,6 +55,11 @@ class PaymentScreen extends StatefulWidget {
   /// needs it.
   final bool vehicleRequired;
 
+  /// When set, this booking always goes to this exact admin username
+  /// (e.g. 'emergency_service' for Roadside Assistance) instead of the
+  /// usual vehicle-type rotation — see AdminAssignmentService.getNextAdminId.
+  final String? forcedAdminUsername;
+
   const PaymentScreen({
     super.key,
     required this.title,
@@ -67,6 +72,7 @@ class PaymentScreen extends StatefulWidget {
     this.showPickupDropOption = true,
     this.forcePickupDropYes = false,
     this.vehicleRequired = true,
+    this.forcedAdminUsername,
   });
 
   @override
@@ -504,11 +510,14 @@ class _PaymentScreenState
           // Profile might not exist, continue with null values
         }
         
-        // ✅ NEW: Get admin ID for load-balanced assignment, scoped to
-        // this vehicle's type (two-wheeler bookings only rotate among
+        // ✅ NEW: Get admin ID — forcedAdminUsername (e.g. Roadside
+        // Assistance -> 'emergency_service') always wins; otherwise scoped
+        // to this vehicle's type (two-wheeler bookings only rotate among
         // two-wheeler admins, four-wheeler among four-wheeler admins).
-        final assignedAdminId =
-            await AdminAssignmentService.getNextAdminId(vehicleId: widget.vehicleId);
+        final assignedAdminId = await AdminAssignmentService.getNextAdminId(
+          vehicleId: widget.vehicleId,
+          forcedAdminUsername: widget.forcedAdminUsername,
+        );
         // Only assign a delivery partner when there's actually a
         // pickup/drop for one to handle.
         final deliveryPartnerId = _pickupDropYes
@@ -601,11 +610,14 @@ class _PaymentScreenState
           // Profile might not exist, continue with null values
         }
 
-        // ✅ NEW: Get admin ID for load-balanced assignment, scoped to
-        // this vehicle's type (two-wheeler bookings only rotate among
+        // ✅ NEW: Get admin ID — forcedAdminUsername (e.g. Roadside
+        // Assistance -> 'emergency_service') always wins; otherwise scoped
+        // to this vehicle's type (two-wheeler bookings only rotate among
         // two-wheeler admins, four-wheeler among four-wheeler admins).
-        final assignedAdminId =
-            await AdminAssignmentService.getNextAdminId(vehicleId: widget.vehicleId);
+        final assignedAdminId = await AdminAssignmentService.getNextAdminId(
+          vehicleId: widget.vehicleId,
+          forcedAdminUsername: widget.forcedAdminUsername,
+        );
         // Only assign a delivery partner when there's actually a
         // pickup/drop for one to handle.
         final deliveryPartnerId = _pickupDropYes
