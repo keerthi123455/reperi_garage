@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../widgets/custom_textfield.dart';
+import '../widgets/error_display.dart';
 import 'home_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -52,8 +53,10 @@ class _SignupScreenState extends State<SignupScreen>
     final password = passwordController.text.trim();
 
     if (email.isEmpty || phone.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all fields')),
+      ErrorDisplay.showPremiumToast(
+        context,
+        message: 'Fill in your email, phone, and password to create an account.',
+        icon: Icons.info_outline_rounded,
       );
       return;
     }
@@ -93,9 +96,7 @@ class _SignupScreenState extends State<SignupScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ErrorDisplay.showPremiumError(context, error: e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

@@ -249,12 +249,25 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                     ),
                     Padding(
                       padding: const EdgeInsets.only(left: 20, right: 20),
-                      child: Text(
-                        'All prices are per month',
-                        style: TextStyle(
-                          color: AppColors.mut,
-                          fontSize: 16,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'All prices are per month',
+                            style: TextStyle(
+                              color: AppColors.mut,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'One-time payment, valid for 30 days — renew manually, no auto-billing.',
+                            style: TextStyle(
+                              color: AppColors.mut,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 20),

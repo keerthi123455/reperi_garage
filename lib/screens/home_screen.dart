@@ -1048,8 +1048,6 @@ class _HomeScreenState extends State<HomeScreen> {
                               );
                             } else if (service == 'Pre-buy Inspection') {
                               _openInspectionScreen();
-                            } else {
-                              _flash('Slot picker opens here');
                             }
                           },
                           onToggle: () =>

@@ -26,6 +26,18 @@ class ErrorHandler {
     if (errorString.contains('email already in use')) {
       return 'This email is already registered. Please log in or use a different email.';
     }
+    if (errorString.contains('user already registered')) {
+      return 'An account already exists with this email — try logging in instead.';
+    }
+    if (errorString.contains('password should be at least')) {
+      return 'Password must be at least 6 characters long.';
+    }
+    if (errorString.contains('unable to validate email')) {
+      return 'Please enter a valid email address.';
+    }
+    if (errorString.contains('signups not allowed') || errorString.contains('signup is disabled')) {
+      return 'New sign-ups are temporarily unavailable. Please try again shortly.';
+    }
     if (errorString.contains('password_confirmation_mismatch')) {
       return 'Passwords do not match. Please try again.';
     }

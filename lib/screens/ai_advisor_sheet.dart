@@ -208,6 +208,52 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
     );
   }
 
+  /// Lets a user flag an AI reply they think is wrong or inappropriate —
+  /// logged into the `AIReport` table (with the reporting customer's id)
+  /// so the team has a real moderation queue for free-text AI output,
+  /// instead of relying on WhatsApp messages.
+  Future<void> _reportAiMessage(String text) async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      await Supabase.instance.client.from('AIReport').insert({
+        'user_id': userId,
+        'reported_text': text,
+      });
+
+      if (!mounted) return;
+      _showPremiumToast('Reported — thanks for flagging this.');
+    } catch (e) {
+      if (!mounted) return;
+      _showPremiumToast(
+        'Could not submit report: $e',
+        icon: Icons.error_outline_rounded,
+        accent: const Color(0xFFE5484D),
+      );
+    }
+  }
+
+  /// A slim, self-dismissing toast shown via the root overlay instead of
+  /// ScaffoldMessenger — a SnackBar here would attach to the page's
+  /// Scaffold *behind* this sheet and render underneath it, invisible
+  /// until the sheet closed. This renders above everything, including the
+  /// sheet, and matches the app's other premium toast/dialog styling.
+  void _showPremiumToast(String message, {IconData icon = Icons.check_circle_rounded, Color? accent}) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (_, __, ___) => _PremiumToast(message: message, icon: icon, accent: accent),
+      transitionBuilder: (_, animation, __, child) {
+        final t = Curves.easeOutCubic.transform(animation.value.clamp(0.0, 1.0));
+        return Opacity(
+          opacity: animation.value.clamp(0.0, 1.0),
+          child: Transform.translate(offset: Offset(0, (1 - t) * 24), child: child),
+        );
+      },
+    );
+  }
+
   /// Opens the native phone dialer with the expert number.
   Future<void> _callExpert() async {
     final uri = Uri(scheme: 'tel', path: _expertPhone);
@@ -872,6 +918,24 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
                       fontSize: 14, height: 1.5),
                 ),
               ),
+            if (!isUser && (msg['text'] as String?)?.isNotEmpty == true)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, left: 2),
+                child: GestureDetector(
+                  onTap: () => _reportAiMessage(msg['text'] as String),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.flag_outlined, size: 13, color: AppColors.mut),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Report',
+                        style: TextStyle(color: AppColors.mut, fontSize: 11.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             if ((msg['text'] as String?)?.isNotEmpty == true && msg['recommendation'] != null)
               const SizedBox(height: 10),
             if (msg['recommendation'] != null)
@@ -1387,6 +1451,90 @@ class _NewChatToastState extends State<_NewChatToast> {
                 style: TextStyle(color: AppColors.mut, fontSize: 12.5, height: 1.4),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A slim bottom toast (e.g. "Reported — thanks for flagging this.") —
+// pops itself off after a short hold, no tap needed. Shown via
+// _AiAdvisorSheetState._showPremiumToast, which pushes it through the
+// root overlay rather than a Scaffold's SnackBar so it renders in front
+// of this sheet instead of underneath it.
+// ─────────────────────────────────────────────────────────────────────────────
+class _PremiumToast extends StatefulWidget {
+  const _PremiumToast({required this.message, required this.icon, this.accent});
+
+  final String message;
+  final IconData icon;
+  final Color? accent;
+
+  @override
+  State<_PremiumToast> createState() => _PremiumToastState();
+}
+
+class _PremiumToastState extends State<_PremiumToast> {
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 2000), () {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.accent ?? const Color(0xFFD4A017);
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 20, left: 24, right: 24),
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceRaised,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: accent.withOpacity(0.32)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.35),
+                    blurRadius: 26,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: accent.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(widget.icon, color: accent, size: 16),
+                  ),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      widget.message,
+                      style: TextStyle(
+                        color: AppColors.txt,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

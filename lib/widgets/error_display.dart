@@ -232,6 +232,62 @@ class ErrorDisplay {
     );
   }
 
+  /// A slim, self-dismissing premium toast — rendered through the root
+  /// overlay via showGeneralDialog rather than ScaffoldMessenger's
+  /// showSnackBar. A SnackBar attaches to whichever Scaffold is highest in
+  /// the widget tree, so one triggered while a dialog/bottom sheet is open
+  /// renders *underneath* it — invisible until the dialog closes. This
+  /// renders above everything, including an open dialog, and looks the
+  /// same everywhere it's used instead of every screen hand-rolling its
+  /// own SnackBar styling.
+  static void showPremiumToast(
+    BuildContext context, {
+    required String message,
+    IconData icon = Icons.check_circle_rounded,
+    Color accent = const Color(0xFFD4A017),
+    VoidCallback? onRetry,
+    Duration duration = const Duration(milliseconds: 2400),
+  }) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (_, __, ___) => _PremiumToast(
+        message: message,
+        icon: icon,
+        accent: accent,
+        duration: duration,
+        onRetry: onRetry,
+      ),
+      transitionBuilder: (_, animation, __, child) {
+        final t = Curves.easeOutCubic.transform(animation.value.clamp(0.0, 1.0));
+        return Opacity(
+          opacity: animation.value.clamp(0.0, 1.0),
+          child: Transform.translate(offset: Offset(0, (1 - t) * 24), child: child),
+        );
+      },
+    );
+  }
+
+  /// Convenience wrapper around [showPremiumToast] for error copy —
+  /// resolves [error] through [ErrorHandler.getUserMessage] first so
+  /// screens never have to show a raw exception string.
+  static void showPremiumError(
+    BuildContext context, {
+    required dynamic error,
+    String? customMessage,
+    VoidCallback? onRetry,
+  }) {
+    showPremiumToast(
+      context,
+      message: customMessage ?? ErrorHandler.getUserMessage(error),
+      icon: Icons.error_outline_rounded,
+      accent: const Color(0xFFE5484D),
+      onRetry: onRetry,
+    );
+  }
+
   /// Parse error and show appropriate error message
   /// Handles the entire error-to-UI pipeline in one call
   static void showError(
@@ -456,6 +512,113 @@ class SuccessState extends StatelessWidget {
               ),
             ]
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The toast body for ErrorDisplay.showPremiumToast — a slim rounded card,
+// icon badge, and optional "RETRY" tap target, self-dismissing after
+// [duration] unless tapped first.
+// ─────────────────────────────────────────────────────────────────────────────
+class _PremiumToast extends StatefulWidget {
+  const _PremiumToast({
+    required this.message,
+    required this.icon,
+    required this.accent,
+    required this.duration,
+    this.onRetry,
+  });
+
+  final String message;
+  final IconData icon;
+  final Color accent;
+  final Duration duration;
+  final VoidCallback? onRetry;
+
+  @override
+  State<_PremiumToast> createState() => _PremiumToastState();
+}
+
+class _PremiumToastState extends State<_PremiumToast> {
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(widget.duration, () {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 20, left: 24, right: 24),
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C1C),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: widget.accent.withOpacity(0.32)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.45),
+                    blurRadius: 26,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: widget.accent.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(widget.icon, color: widget.accent, size: 16),
+                  ),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      widget.message,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                  if (widget.onRetry != null) ...[
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        widget.onRetry!();
+                      },
+                      child: Text(
+                        'RETRY',
+                        style: TextStyle(
+                          color: widget.accent,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

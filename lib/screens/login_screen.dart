@@ -4,8 +4,15 @@ import 'package:flutter/foundation.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
 import 'admin_dashboard_screen.dart';
-import 'package:reperi_garage/services/error_handler.dart';
 import 'package:reperi_garage/widgets/error_display.dart';
+
+// Same project URL/anon key as Supabase.initialize() in main.dart — used
+// to spin up a throwaway SupabaseClient for the admin OTP reset flow below
+// (see the comment on _forgotPasswordAdmin for why it can't reuse the
+// app-wide Supabase.instance.client).
+const String _supabaseUrl = 'https://rmvxqjyoqfinbrpubsvp.supabase.co';
+const String _supabaseAnonKey =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,18 +32,198 @@ class _LoginScreenState extends State<LoginScreen>
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+  // Garage/admin "forgot password" — a two-step, email-verified reset.
+  // Step 0 confirms the email+username pair is a real admin account (via
+  // the admin-verify-identity edge function, which never exposes the
+  // password column) then sends a one-time code to that email through
+  // Supabase Auth's own email-OTP delivery. Step 1 verifies that code —
+  // proving the requester actually owns the inbox — and only then calls
+  // admin-reset-password, which hashes the new password server-side.
+  // Nothing here can reset a garage's password from just an email+username
+  // guess anymore, unlike the old direct-table-update version.
   Future<void> _forgotPasswordAdmin() async {
     final emailController = TextEditingController();
     final usernameController = TextEditingController();
+    final otpController = TextEditingController();
     final passwordController = TextEditingController();
+
+    // A throwaway client, isolated from Supabase.instance.client. The OTP
+    // dance below (signInWithOtp/verifyOTP) sets whatever client runs it
+    // as "logged in" — running it on the app-wide client would silently
+    // replace/destroy a real customer's session if one was active on this
+    // device, which is exactly what broke `user_id` on AI-chat reports
+    // after someone reset a garage password. This client's session lives
+    // only in memory and is disposed with the dialog, so it can never
+    // touch the customer-facing auth state.
+    final otpClient = SupabaseClient(
+      _supabaseUrl,
+      _supabaseAnonKey,
+      // PKCE (the default flow) needs a persistent storage backend to hold
+      // a code verifier across steps — this client never persists
+      // anything and never survives a redirect, so implicit flow (which
+      // doesn't need that storage) is the right fit here.
+      authOptions: const AuthClientOptions(authFlowType: AuthFlowType.implicit),
+    );
+
+    InputDecoration fieldDecoration(String hint) => InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: Colors.white54),
+          filled: true,
+          fillColor: const Color(0xFF3A3A3A),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFF333333)),
+          ),
+        );
+
+    Widget fieldLabel(String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
 
     await showDialog(
       context: context,
       builder: (context) {
         bool isLoading = false;
-        
+        int step = 0; // 0 = enter email/username, 1 = enter code + new password
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            Future<void> sendCode() async {
+              final email = emailController.text.trim();
+              final username = usernameController.text.trim();
+
+              if (email.isEmpty || username.isEmpty) {
+                ErrorDisplay.showPremiumToast(
+                  context,
+                  message: 'Enter both the registered email and username.',
+                  icon: Icons.info_outline_rounded,
+                );
+                return;
+              }
+
+              setDialogState(() => isLoading = true);
+              try {
+                final verify = await Supabase.instance.client.functions.invoke(
+                  'admin-verify-identity',
+                  body: {'email': email, 'username': username},
+                );
+                final verifyData = verify.data as Map<String, dynamic>?;
+
+                if (verifyData?['valid'] != true) {
+                  if (!mounted) return;
+                  ErrorDisplay.showPremiumToast(
+                    context,
+                    message: 'That email and username don\'t match a garage account.',
+                    icon: Icons.error_outline_rounded,
+                    accent: const Color(0xFFE5484D),
+                  );
+                  setDialogState(() => isLoading = false);
+                  return;
+                }
+
+                await otpClient.auth.signInWithOtp(
+                  email: email,
+                  shouldCreateUser: true,
+                );
+
+                if (!mounted) return;
+                setDialogState(() {
+                  isLoading = false;
+                  step = 1;
+                });
+              } catch (e) {
+                if (!mounted) return;
+                ErrorDisplay.showPremiumError(context, error: e);
+                setDialogState(() => isLoading = false);
+              }
+            }
+
+            Future<void> confirmReset() async {
+              final email = emailController.text.trim();
+              final username = usernameController.text.trim();
+              final code = otpController.text.trim();
+              final newPassword = passwordController.text.trim();
+
+              if (code.isEmpty || newPassword.isEmpty) {
+                ErrorDisplay.showPremiumToast(
+                  context,
+                  message: 'Enter the code and your new password.',
+                  icon: Icons.info_outline_rounded,
+                );
+                return;
+              }
+              if (newPassword.length < 6) {
+                ErrorDisplay.showPremiumToast(
+                  context,
+                  message: 'Passwords are at least 6 characters — double-check yours.',
+                  icon: Icons.lock_outline_rounded,
+                );
+                return;
+              }
+
+              setDialogState(() => isLoading = true);
+              try {
+                final verifyResponse = await otpClient.auth.verifyOTP(
+                  email: email,
+                  token: code,
+                  type: OtpType.email,
+                );
+
+                final accessToken = verifyResponse.session?.accessToken;
+                if (accessToken == null) {
+                  throw Exception('No session returned for that code');
+                }
+
+                // Passed explicitly rather than relying on the app-wide
+                // client's current session — that session was never
+                // touched by this flow in the first place (see otpClient
+                // above), so it wouldn't have this OTP session anyway.
+                final reset = await Supabase.instance.client.functions.invoke(
+                  'admin-reset-password',
+                  body: {'username': username, 'newPassword': newPassword},
+                  headers: {'Authorization': 'Bearer $accessToken'},
+                );
+
+                final resetData = reset.data as Map<String, dynamic>?;
+                if (!mounted) return;
+
+                if (resetData?['success'] == true) {
+                  Navigator.pop(context);
+                  ErrorDisplay.showPremiumToast(
+                    context,
+                    message: 'Password reset — sign in with your new one.',
+                    icon: Icons.check_circle_rounded,
+                    accent: const Color(0xFF3DD68C),
+                  );
+                } else {
+                  ErrorDisplay.showPremiumToast(
+                    context,
+                    message: '${resetData?['error'] ?? 'Could not reset password — please try again.'}',
+                    icon: Icons.error_outline_rounded,
+                    accent: const Color(0xFFE5484D),
+                  );
+                  setDialogState(() => isLoading = false);
+                }
+              } catch (e) {
+                if (!mounted) return;
+                ErrorDisplay.showPremiumToast(
+                  context,
+                  message: 'That code is invalid or expired — request a new one.',
+                  icon: Icons.error_outline_rounded,
+                  accent: const Color(0xFFE5484D),
+                );
+                setDialogState(() => isLoading = false);
+              }
+            }
+
             return AlertDialog(
               title: const Text('Reset Password'),
               backgroundColor: const Color(0xFF262626),
@@ -49,89 +236,49 @@ class _LoginScreenState extends State<LoginScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Email field
-                    const Text(
-                      'Email registered with Reperi',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(color: Colors.white),
-                      enabled: !isLoading,
-                      decoration: InputDecoration(
-                        hintText: 'your@email.com',
-                        hintStyle: const TextStyle(color: Colors.white54),
-                        filled: true,
-                        fillColor: const Color(0xFF3A3A3A),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: Color(0xFF333333)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Username field
-                    const Text(
-                      'Username registered with Reperi',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: usernameController,
-                      style: const TextStyle(color: Colors.white),
-                      enabled: !isLoading,
-                      decoration: InputDecoration(
-                        hintText: 'your_username',
-                        hintStyle: const TextStyle(color: Colors.white54),
-                        filled: true,
-                        fillColor: const Color(0xFF3A3A3A),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: Color(0xFF333333)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // New password field
-                    const Text(
-                      'New Password',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: passwordController,
-                      obscureText: true,
-                      style: const TextStyle(color: Colors.white),
-                      enabled: !isLoading,
-                      decoration: InputDecoration(
-                        hintText: 'Enter new password',
-                        hintStyle: const TextStyle(color: Colors.white54),
-                        filled: true,
-                        fillColor: const Color(0xFF3A3A3A),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: Color(0xFF333333)),
-                        ),
-                      ),
-                    ),
-                  ],
+                  children: step == 0
+                      ? [
+                          fieldLabel('Email registered with Reperi'),
+                          TextField(
+                            controller: emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            style: const TextStyle(color: Colors.white),
+                            enabled: !isLoading,
+                            decoration: fieldDecoration('your@email.com'),
+                          ),
+                          const SizedBox(height: 16),
+                          fieldLabel('Username registered with Reperi'),
+                          TextField(
+                            controller: usernameController,
+                            style: const TextStyle(color: Colors.white),
+                            enabled: !isLoading,
+                            decoration: fieldDecoration('your_username'),
+                          ),
+                        ]
+                      : [
+                          Text(
+                            'We sent a 6-digit code to ${emailController.text.trim()}',
+                            style: const TextStyle(color: Colors.white70, fontSize: 13),
+                          ),
+                          const SizedBox(height: 16),
+                          fieldLabel('Verification Code'),
+                          TextField(
+                            controller: otpController,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white),
+                            enabled: !isLoading,
+                            decoration: fieldDecoration('123456'),
+                          ),
+                          const SizedBox(height: 16),
+                          fieldLabel('New Password'),
+                          TextField(
+                            controller: passwordController,
+                            obscureText: true,
+                            style: const TextStyle(color: Colors.white),
+                            enabled: !isLoading,
+                            decoration: fieldDecoration('Enter new password'),
+                          ),
+                        ],
                 ),
               ),
               actions: [
@@ -146,90 +293,7 @@ class _LoginScreenState extends State<LoginScreen>
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFD4A017),
                   ),
-                  onPressed: isLoading
-                      ? null
-                      : () async {
-                          setDialogState(() => isLoading = true);
-
-                          try {
-                            final email = emailController.text.trim();
-                            final username = usernameController.text.trim();
-                            final newPassword = passwordController.text.trim();
-
-                            // Validate inputs
-                            if (email.isEmpty || username.isEmpty || newPassword.isEmpty) {
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('All fields are required'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                              setDialogState(() => isLoading = false);
-                              return;
-                            }
-
-                            // Find admin with matching email AND username
-                            final response = await Supabase.instance.client
-                                .from('admin')
-                                .select()
-                                .eq('email', email)
-                                .eq('username', username)
-                                .maybeSingle();
-
-                            if (!mounted) return;
-
-                            if (response == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Email and Username do not match. Please check and try again.',
-                                  ),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                              setDialogState(() => isLoading = false);
-                              return;
-                            }
-
-                            // Update password
-                            await Supabase.instance.client
-                                .from('admin')
-                                .update({'password': newPassword})
-                                .eq('id', response['id']);
-
-                            if (!mounted) return;
-
-                            Navigator.pop(context);
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Row(
-                                  children: [
-                                    Icon(Icons.check_circle, color: Colors.green),
-                                    SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        'Password reset successfully! Please login with your new password.',
-                                        style: TextStyle(color: Colors.white),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                backgroundColor: Colors.green.shade700,
-                              ),
-                            );
-                          } catch (e) {
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Error: $e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                            setDialogState(() => isLoading = false);
-                          }
-                        },
+                  onPressed: isLoading ? null : (step == 0 ? sendCode : confirmReset),
                   child: isLoading
                       ? const SizedBox(
                           height: 16,
@@ -239,9 +303,9 @@ class _LoginScreenState extends State<LoginScreen>
                             valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
                           ),
                         )
-                      : const Text(
-                          'Reset Password',
-                          style: TextStyle(color: Colors.black),
+                      : Text(
+                          step == 0 ? 'Send Code' : 'Reset Password',
+                          style: const TextStyle(color: Colors.black),
                         ),
                 ),
               ],
@@ -253,7 +317,9 @@ class _LoginScreenState extends State<LoginScreen>
 
     emailController.dispose();
     usernameController.dispose();
+    otpController.dispose();
     passwordController.dispose();
+    otpClient.dispose();
   }
 
   Future<void> _forgotPassword() async {
@@ -284,17 +350,19 @@ class _LoginScreenState extends State<LoginScreen>
 
                 // Validate email
                 if (email.isEmpty) {
-                  ErrorDisplay.showErrorSnackBar(
+                  ErrorDisplay.showPremiumToast(
                     context,
-                    message: 'Please enter your email address.',
+                    message: 'Enter the email you signed up with.',
+                    icon: Icons.alternate_email_rounded,
                   );
                   return;
                 }
 
                 if (!email.contains('@')) {
-                  ErrorDisplay.showErrorSnackBar(
+                  ErrorDisplay.showPremiumToast(
                     context,
-                    message: 'Please enter a valid email address.',
+                    message: 'That doesn\'t look like a valid email address.',
+                    icon: Icons.alternate_email_rounded,
                   );
                   return;
                 }
@@ -313,37 +381,17 @@ class _LoginScreenState extends State<LoginScreen>
 
                 Navigator.pop(context);
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Row(
-                      children: [
-                        Icon(Icons.check_circle_outline_rounded, color: Colors.green),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Password reset email sent to your inbox. Please check and follow the link to reset your password.',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                      ],
-                    ),
-                    backgroundColor: Colors.green.shade700,
-                    elevation: 6,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    margin: const EdgeInsets.all(16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 5),
-                  ),
+                ErrorDisplay.showPremiumToast(
+                  context,
+                  message: 'Reset link sent — check your inbox to pick a new password.',
+                  icon: Icons.mark_email_read_rounded,
+                  accent: const Color(0xFF3DD68C),
+                  duration: const Duration(milliseconds: 3200),
                 );
               } catch (e) {
                 if (!context.mounted) return;
-                
-                final errorMessage = ErrorHandler.getUserMessage(e);
-                ErrorDisplay.showErrorSnackBar(
-                  context,
-                  message: errorMessage,
-                );
+
+                ErrorDisplay.showPremiumError(context, error: e);
               }
             },
           )
@@ -381,33 +429,39 @@ class _LoginScreenState extends State<LoginScreen>
 
     // ── Client-side validation ──
     if (email.isEmpty) {
-      ErrorDisplay.showErrorSnackBar(
+      ErrorDisplay.showPremiumToast(
         context,
-        message: isClient ? 'Please enter your email address.' : 'Please enter your username.',
+        message: isClient
+            ? 'Enter your email to continue signing in.'
+            : 'Enter your garage username to continue.',
+        icon: Icons.alternate_email_rounded,
       );
       return;
     }
 
     if (isClient && (!email.contains('@') || !email.contains('.'))) {
-      ErrorDisplay.showErrorSnackBar(
+      ErrorDisplay.showPremiumToast(
         context,
-        message: 'Please enter a valid email address.',
+        message: 'That doesn\'t look like a valid email address.',
+        icon: Icons.alternate_email_rounded,
       );
       return;
     }
 
     if (password.isEmpty) {
-      ErrorDisplay.showErrorSnackBar(
+      ErrorDisplay.showPremiumToast(
         context,
-        message: 'Please enter your password.',
+        message: 'Enter your password to continue.',
+        icon: Icons.lock_outline_rounded,
       );
       return;
     }
 
     if (password.length < 6) {
-      ErrorDisplay.showErrorSnackBar(
+      ErrorDisplay.showPremiumToast(
         context,
-        message: 'Password must be at least 6 characters long.',
+        message: 'Passwords are at least 6 characters — double-check yours.',
+        icon: Icons.lock_outline_rounded,
       );
       return;
     }
@@ -440,17 +494,19 @@ class _LoginScreenState extends State<LoginScreen>
           (route) => false,
         );
       } else {
-        // Admin login via local database
-        final response = await supabase
-            .from('admin')
-            .select()
-            .eq('username', email)
-            .eq('password', password);
+        // Admin login — verified server-side against a bcrypt hash so the
+        // password never travels as a plain-text table filter.
+        final result = await supabase.functions.invoke(
+          'admin-login',
+          body: {'username': email, 'password': password},
+        );
 
         if (!mounted) return;
 
-        if (response.isNotEmpty) {
-          final adminId = response[0]['id'];
+        final data = result.data as Map<String, dynamic>?;
+
+        if (data != null && data['success'] == true) {
+          final adminId = data['adminId'];
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
@@ -459,9 +515,10 @@ class _LoginScreenState extends State<LoginScreen>
             (route) => false,
           );
         } else {
-          ErrorDisplay.showErrorSnackBar(
+          ErrorDisplay.showPremiumError(
             context,
-            message: 'Garage username or password is incorrect. Please try again.',
+            error: 'invalid credentials',
+            customMessage: 'That garage username or password isn\'t right — give it another try.',
           );
           setState(() => _isLoading = false);
         }
@@ -469,12 +526,9 @@ class _LoginScreenState extends State<LoginScreen>
     } catch (e) {
       if (!context.mounted) return;
 
-      // Map technical error to user-friendly message
-      final errorMessage = ErrorHandler.getUserMessage(e);
-
-      ErrorDisplay.showErrorSnackBar(
+      ErrorDisplay.showPremiumError(
         context,
-        message: errorMessage,
+        error: e,
         onRetry: _handleLogin,
       );
 

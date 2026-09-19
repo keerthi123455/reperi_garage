@@ -4,6 +4,14 @@ import 'fleet_order_sheet.dart';
 import 'fleet_dashboard_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// Same project URL/anon key as Supabase.initialize() in main.dart — used
+// to spin up a throwaway SupabaseClient for the fleet OTP reset flow
+// below (see the comment on _showForgotPasswordDialog for why it can't
+// reuse the app-wide Supabase.instance.client).
+const String _supabaseUrl = 'https://rmvxqjyoqfinbrpubsvp.supabase.co';
+const String _supabaseAnonKey =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E';
+
 class FleetLoginSheet extends StatefulWidget {
   const FleetLoginSheet({super.key});
 
@@ -117,6 +125,266 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
         ],
       ),
     );
+  }
+
+  // Fleet "forgot password" — same two-step, email-verified reset as the
+  // garage/admin login (login_screen.dart). Step 0 confirms the
+  // email+username pair is a real fleet account (fleet-verify-identity,
+  // which never exposes the password column) and sends a one-time code to
+  // that email via Supabase Auth's email-OTP delivery. Step 1 verifies
+  // that code — proving the requester owns the inbox — and only then
+  // calls fleet-reset-password, which hashes the new password
+  // server-side.
+  void _showForgotPasswordDialog() {
+    final emailController = TextEditingController();
+    final usernameController = TextEditingController();
+    final otpController = TextEditingController();
+    final passwordController = TextEditingController();
+
+    // A throwaway client, isolated from Supabase.instance.client. The OTP
+    // dance below (signInWithOtp/verifyOTP) sets whatever client runs it
+    // as "logged in" — running it on the app-wide client would silently
+    // replace/destroy a real customer's session if one was active on this
+    // device. This client's session lives only in memory and is disposed
+    // when the dialog closes, so it can never touch the customer-facing
+    // auth state.
+    final otpClient = SupabaseClient(
+      _supabaseUrl,
+      _supabaseAnonKey,
+      // PKCE (the default flow) needs a persistent storage backend to hold
+      // a code verifier across steps — this client never persists
+      // anything and never survives a redirect, so implicit flow (which
+      // doesn't need that storage) is the right fit here.
+      authOptions: const AuthClientOptions(authFlowType: AuthFlowType.implicit),
+    );
+
+    InputDecoration fieldDecoration(String hint) => InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: Colors.white54),
+          filled: true,
+          fillColor: const Color(0xFF3A3A3A),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFF333333)),
+          ),
+        );
+
+    Widget fieldLabel(String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        bool isLoading = false;
+        int step = 0; // 0 = enter email/username, 1 = enter code + new password
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> sendCode() async {
+              final email = emailController.text.trim();
+              final username = usernameController.text.trim();
+
+              if (email.isEmpty || username.isEmpty) {
+                _showErrorDialog('Missing Fields', 'Email and username are required.');
+                return;
+              }
+
+              setDialogState(() => isLoading = true);
+              try {
+                final verify = await Supabase.instance.client.functions.invoke(
+                  'fleet-verify-identity',
+                  body: {'email': email, 'username': username},
+                );
+                final verifyData = verify.data as Map<String, dynamic>?;
+
+                if (verifyData?['valid'] != true) {
+                  if (!context.mounted) return;
+                  setDialogState(() => isLoading = false);
+                  _showErrorDialog(
+                    'No Match Found',
+                    'Email and username do not match our records. Please verify and try again.',
+                  );
+                  return;
+                }
+
+                await otpClient.auth.signInWithOtp(
+                  email: email,
+                  shouldCreateUser: true,
+                );
+
+                if (!context.mounted) return;
+                setDialogState(() {
+                  isLoading = false;
+                  step = 1;
+                });
+              } catch (e) {
+                if (!context.mounted) return;
+                setDialogState(() => isLoading = false);
+                _showErrorDialog('Error', 'Could not send verification code: $e');
+              }
+            }
+
+            Future<void> confirmReset() async {
+              final email = emailController.text.trim();
+              final username = usernameController.text.trim();
+              final code = otpController.text.trim();
+              final newPassword = passwordController.text.trim();
+
+              if (code.isEmpty || newPassword.isEmpty) {
+                _showErrorDialog('Missing Fields', 'Enter the code and a new password.');
+                return;
+              }
+              if (newPassword.length < 6) {
+                _showErrorDialog('Weak Password', 'Password must be at least 6 characters long.');
+                return;
+              }
+
+              setDialogState(() => isLoading = true);
+              try {
+                final verifyResponse = await otpClient.auth.verifyOTP(
+                  email: email,
+                  token: code,
+                  type: OtpType.email,
+                );
+
+                final accessToken = verifyResponse.session?.accessToken;
+                if (accessToken == null) {
+                  throw Exception('No session returned for that code');
+                }
+
+                // Passed explicitly rather than relying on the app-wide
+                // client's current session — that session was never
+                // touched by this flow in the first place (see otpClient
+                // above), so it wouldn't have this OTP session anyway.
+                final reset = await Supabase.instance.client.functions.invoke(
+                  'fleet-reset-password',
+                  body: {'username': username, 'newPassword': newPassword},
+                  headers: {'Authorization': 'Bearer $accessToken'},
+                );
+
+                final resetData = reset.data as Map<String, dynamic>?;
+                if (!context.mounted) return;
+
+                if (resetData?['success'] == true) {
+                  Navigator.pop(context);
+                  _showSuccessDialog(
+                    'Password Reset',
+                    'Password reset successfully! Please login with your new password.',
+                    () {},
+                  );
+                } else {
+                  setDialogState(() => isLoading = false);
+                  _showErrorDialog(
+                    'Reset Failed',
+                    '${resetData?['error'] ?? 'Could not reset password'}',
+                  );
+                }
+              } catch (e) {
+                if (!context.mounted) return;
+                setDialogState(() => isLoading = false);
+                _showErrorDialog('Invalid Code', 'Invalid or expired code: $e');
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Reset Password'),
+              backgroundColor: const Color(0xFF262626),
+              titleTextStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: step == 0
+                      ? [
+                          fieldLabel('Email registered with Reperi'),
+                          TextField(
+                            controller: emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            style: const TextStyle(color: Colors.white),
+                            enabled: !isLoading,
+                            decoration: fieldDecoration('your@email.com'),
+                          ),
+                          const SizedBox(height: 16),
+                          fieldLabel('Username registered with Reperi'),
+                          TextField(
+                            controller: usernameController,
+                            style: const TextStyle(color: Colors.white),
+                            enabled: !isLoading,
+                            decoration: fieldDecoration('your_username'),
+                          ),
+                        ]
+                      : [
+                          Text(
+                            'We sent a 6-digit code to ${emailController.text.trim()}',
+                            style: const TextStyle(color: Colors.white70, fontSize: 13),
+                          ),
+                          const SizedBox(height: 16),
+                          fieldLabel('Verification Code'),
+                          TextField(
+                            controller: otpController,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white),
+                            enabled: !isLoading,
+                            decoration: fieldDecoration('123456'),
+                          ),
+                          const SizedBox(height: 16),
+                          fieldLabel('New Password'),
+                          TextField(
+                            controller: passwordController,
+                            obscureText: true,
+                            style: const TextStyle(color: Colors.white),
+                            enabled: !isLoading,
+                            decoration: fieldDecoration('Enter new password'),
+                          ),
+                        ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLoading ? null : () => Navigator.pop(context),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Color(0xFFD4A017)),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD4A017),
+                  ),
+                  onPressed: isLoading ? null : (step == 0 ? sendCode : confirmReset),
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                          ),
+                        )
+                      : Text(
+                          step == 0 ? 'Send Code' : 'Reset Password',
+                          style: const TextStyle(color: Colors.black),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).then((_) => otpClient.dispose());
   }
 
   @override
@@ -243,246 +511,7 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {
-                      final emailController = TextEditingController();
-                      final usernameController = TextEditingController();
-                      final passwordController = TextEditingController();
-
-                      showDialog(
-                        context: context,
-                        builder: (context) {
-                          bool isLoading = false;
-
-                          return StatefulBuilder(
-                            builder: (context, setDialogState) {
-                              return AlertDialog(
-                                title: const Text('Reset Password'),
-                                backgroundColor: const Color(0xFF262626),
-                                titleTextStyle: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                content: SingleChildScrollView(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      // Email field
-                                      const Text(
-                                        'Email registered with Reperi',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      TextField(
-                                        controller: emailController,
-                                        keyboardType: TextInputType.emailAddress,
-                                        style: const TextStyle(color: Colors.white),
-                                        enabled: !isLoading,
-                                        decoration: InputDecoration(
-                                          hintText: 'your@email.com',
-                                          hintStyle: const TextStyle(color: Colors.white54),
-                                          filled: true,
-                                          fillColor: const Color(0xFF3A3A3A),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8),
-                                            borderSide: const BorderSide(color: Color(0xFF333333)),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 16),
-
-                                      // Username field
-                                      const Text(
-                                        'Username registered with Reperi',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      TextField(
-                                        controller: usernameController,
-                                        style: const TextStyle(color: Colors.white),
-                                        enabled: !isLoading,
-                                        decoration: InputDecoration(
-                                          hintText: 'your_username',
-                                          hintStyle: const TextStyle(color: Colors.white54),
-                                          filled: true,
-                                          fillColor: const Color(0xFF3A3A3A),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8),
-                                            borderSide: const BorderSide(color: Color(0xFF333333)),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 16),
-
-                                      // New password field
-                                      const Text(
-                                        'New Password',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      TextField(
-                                        controller: passwordController,
-                                        obscureText: true,
-                                        style: const TextStyle(color: Colors.white),
-                                        enabled: !isLoading,
-                                        decoration: InputDecoration(
-                                          hintText: 'Enter new password',
-                                          hintStyle: const TextStyle(color: Colors.white54),
-                                          filled: true,
-                                          fillColor: const Color(0xFF3A3A3A),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8),
-                                            borderSide: const BorderSide(color: Color(0xFF333333)),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: isLoading ? null : () => Navigator.pop(context),
-                                    child: const Text(
-                                      'Cancel',
-                                      style: TextStyle(color: Color(0xFFD4A017)),
-                                    ),
-                                  ),
-                                  ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFFD4A017),
-                                    ),
-                                    onPressed: isLoading
-                                        ? null
-                                        : () async {
-                                            setDialogState(() => isLoading = true);
-
-                                            try {
-                                              final email = emailController.text.trim();
-                                              final username = usernameController.text.trim();
-                                              final newPassword = passwordController.text.trim();
-
-                                              // Validate email
-                                              if (email.isEmpty) {
-                                                if (!context.mounted) return;
-                                                Navigator.pop(context);
-                                                _showErrorDialog(
-                                                  'Empty Email',
-                                                  'Please enter your registered email address.',
-                                                );
-                                                return;
-                                              }
-
-                                              // Validate username
-                                              if (username.isEmpty) {
-                                                if (!context.mounted) return;
-                                                Navigator.pop(context);
-                                                _showErrorDialog(
-                                                  'Empty Username',
-                                                  'Please enter your registered username.',
-                                                );
-                                                return;
-                                              }
-
-                                              // Validate password
-                                              if (newPassword.isEmpty) {
-                                                if (!context.mounted) return;
-                                                Navigator.pop(context);
-                                                _showErrorDialog(
-                                                  'Empty Password',
-                                                  'Please enter a new password.',
-                                                );
-                                                return;
-                                              }
-
-                                              if (newPassword.length < 6) {
-                                                if (!context.mounted) return;
-                                                Navigator.pop(context);
-                                                _showErrorDialog(
-                                                  'Weak Password',
-                                                  'Password must be at least 6 characters long.',
-                                                );
-                                                return;
-                                              }
-
-                                              // Find fleet user with matching email AND username
-                                              final response = await Supabase.instance.client
-                                                  .from('fleet_users')
-                                                  .select()
-                                                  .eq('email', email)
-                                                  .eq('username', username)
-                                                  .maybeSingle();
-
-                                              if (!context.mounted) return;
-
-                                              if (response == null) {
-                                                // Email and username don't match
-                                                Navigator.pop(context);
-                                                _showErrorDialog(
-                                                  'No Match Found',
-                                                  'Email and username do not match our records. Please verify and try again.',
-                                                );
-                                                return;
-                                              }
-
-                                              // Update password
-                                              await Supabase.instance.client
-                                                  .from('fleet_users')
-                                                  .update({'password': newPassword})
-                                                  .eq('id', response['id']);
-
-                                              if (!context.mounted) return;
-
-                                              Navigator.pop(context);
-
-                                              _showSuccessDialog(
-                                                'Password Reset',
-                                                'Password reset successfully! Please login with your new password.',
-                                                () {},
-                                              );
-                                            } catch (e) {
-                                              if (!context.mounted) return;
-                                              Navigator.pop(context);
-                                              _showErrorDialog(
-                                                'Reset Failed',
-                                                'Error resetting password: $e',
-                                              );
-                                            }
-                                          },
-                                    child: isLoading
-                                        ? const SizedBox(
-                                            height: 16,
-                                            width: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              valueColor:
-                                                  AlwaysStoppedAnimation<Color>(Colors.black),
-                                            ),
-                                          )
-                                        : const Text(
-                                            'Reset Password',
-                                            style: TextStyle(color: Colors.black),
-                                          ),
-                                  ),
-                                ],
-                              );
-                            },
-                          );
-                        },
-                      );
-                    },
+                    onPressed: _showForgotPasswordDialog,
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                       minimumSize: Size.zero,
@@ -535,20 +564,25 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                                 return;
                               }
 
-                              final fleetUser = await Supabase.instance.client
-                                  .from('fleet_users')
-                                  .select()
-                                  .ilike(
-                                    'username',
-                                    username,
-                                  )
-                                  .eq(
-                                    'password',
-                                    password,
-                                  )
-                                  .maybeSingle();
+                              // Verified server-side against a bcrypt hash so
+                              // the password never travels as a plain-text
+                              // table filter.
+                              final result = await Supabase.instance.client
+                                  .functions
+                                  .invoke(
+                                'fleet-login',
+                                body: {
+                                  'username': username,
+                                  'password': password,
+                                },
+                              );
 
                               if (!mounted) return;
+
+                              final data = result.data as Map<String, dynamic>?;
+                              final fleetUser = data?['success'] == true
+                                  ? data!['fleetUser'] as Map<String, dynamic>
+                                  : null;
 
                               if (fleetUser != null) {
                                 // Success - Login successful
