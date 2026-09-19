@@ -12,6 +12,7 @@ import '../models/banner.dart';
 import '../models/vehicle.dart';
 import '../services/address_service.dart';
 import '../services/ai_chat_session.dart';
+import '../services/push_notification_service.dart';
 import '../services/vehicle_change_bus.dart';
 import '../services/vehicle_update_tracker.dart';
 import '../theme/app_colors.dart';
@@ -25,6 +26,7 @@ import '../widgets/banner_coverflow.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/dot_indicator_row.dart';
 import '../widgets/location_row.dart';
+import '../widgets/notification_permission_dialog.dart';
 import '../widgets/packages_side_heading.dart';
 import '../widgets/promo_banner.dart';
 import '../widgets/quick_action_row.dart';
@@ -153,6 +155,32 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadVehicles();
     _loadProfile();
     _loadServiceAddress();
+    _maybeShowNotificationPrimer();
+  }
+
+  /// Shows the notification "soft ask" on Home, not at cold launch, so
+  /// the user has context (booking updates, not marketing) before either
+  /// this or the native OS prompt shows up. See
+  /// push_notification_service_mobile.dart's init() for the other half
+  /// of this — it no longer requests the permission itself.
+  ///
+  /// Gated on whether the OS has ACTUALLY granted permission yet — not a
+  /// one-time "have we shown it" flag. Gating on "shown" meant tapping
+  /// "Not Now" even once (or the dialog just not registering a tap in
+  /// time) permanently stopped OneSignal from ever being asked again for
+  /// the life of the install, silently killing every push notification
+  /// from then on with no way to retry short of reinstalling. Checking
+  /// real permission status means it keeps politely re-asking each time
+  /// Home loads until the user actually grants it — and stops
+  /// immediately once they do, since hasPermission() then returns true.
+  Future<void> _maybeShowNotificationPrimer() async {
+    if (!mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (PushNotificationService.hasPermission()) return;
+      showNotificationPermissionPrimer(context);
+    });
   }
 
   void _onThemeChanged() {

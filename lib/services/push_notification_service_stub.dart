@@ -8,6 +8,10 @@ class PushNotificationService {
 
   static Future<void> requestPermission() async {}
 
+  // Reports permission already granted so the "soft ask" primer never
+  // tries to show on a platform with no real push integration.
+  static bool hasPermission() => true;
+
   static void loginAsCustomer(String supabaseUserId) {}
 
   static void loginAsFleet(String fleetUserId) {}

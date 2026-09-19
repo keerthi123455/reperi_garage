@@ -29,23 +29,42 @@ class PushNotificationService {
     (deferred as JSObject).callMethod('push'.toJS, callback.toJS);
   }
 
+  /// OneSignal.init() itself runs directly from web/index.html,
+  /// immediately on page load — not delayed until Flutter boots and this
+  /// Dart code runs. That matches OneSignal's own Custom Code integration
+  /// snippet and avoids double-initializing the SDK. This just marks
+  /// that init has happened; the permission prompt is a separate,
+  /// explicit step (requestPermission below).
   static Future<void> init() async {
-    if (_initStarted) return;
     _initStarted = true;
+  }
 
-    // OneSignal.init() itself now runs directly from web/index.html,
-    // immediately on page load — not delayed until Flutter boots and
-    // this Dart code runs. That matches OneSignal's own Custom Code
-    // integration snippet and avoids double-initializing the SDK.
-    //
-    // This just handles the one remaining step: explicitly asking for
-    // notification permission, which init() does not do by itself.
+  /// Explicitly asks for notification permission — fired later from a
+  /// "soft ask" screen rather than automatically here, so the user sees
+  /// why the app wants to notify them before the native browser prompt
+  /// appears.
+  static Future<void> requestPermission() async {
     _runWhenReady((oneSignal) {
       final notifications = oneSignal.getProperty('Notifications'.toJS);
       if (notifications != null && !notifications.isUndefinedOrNull) {
         (notifications as JSObject).callMethod('requestPermission'.toJS);
       }
     });
+  }
+
+  /// Whether the browser has actually granted notification permission
+  /// right now, read straight from the standard `Notification.permission`
+  /// API rather than anything OneSignal-specific. The "soft ask" primer
+  /// checks this — not a one-time "have we shown it" flag — so declining
+  /// once doesn't permanently block every future notification.
+  static bool hasPermission() {
+    final notificationCtor = globalContext.getProperty('Notification'.toJS);
+    if (notificationCtor == null || notificationCtor.isUndefinedOrNull) {
+      return false;
+    }
+    final permission =
+        (notificationCtor as JSObject).getProperty('permission'.toJS) as JSString?;
+    return permission?.toDart == 'granted';
   }
 
   static void loginAsCustomer(String supabaseUserId) {

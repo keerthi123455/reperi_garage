@@ -225,9 +225,9 @@ class _Hero extends StatelessWidget {
                 color: AppColors.txt,
               ),
               children: [
-                const TextSpan(text: 'Get the pollution certificate\nto avoid a '),
+                const TextSpan(text: 'Get your pollution certificate\nbefore it '),
                 TextSpan(
-                  text: '₹2000 fine',
+                  text: 'expires',
                   style: TextStyle(color: AppColors.accent),
                 ),
                 const TextSpan(text: '.'),

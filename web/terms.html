@@ -3,20 +3,68 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Terms & Conditions — Reperi Garage</title>
+<title>Terms &amp; Conditions — Reperi Garage</title>
 <style>
-  body { background:#080808; color:#eee; font-family: -apple-system, Segoe UI, Roboto, sans-serif; line-height:1.7; margin:0; padding:0; }
-  .wrap { max-width:720px; margin:0 auto; padding:48px 24px 80px; }
-  h1 { color:#D4A017; font-size:28px; margin-bottom:4px; }
-  .updated { color:#888; font-size:13px; margin-bottom:36px; }
-  h2 { color:#F5C842; font-size:18px; margin-top:36px; }
-  p, li { color:#ccc; font-size:15px; }
-  a { color:#D4A017; }
-  ul { padding-left:20px; }
+  :root {
+    --accent: #B8860B;
+    --text: #1a1a1a;
+    --muted: #555;
+    --bg: #ffffff;
+    --line: #e5e5e5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.65;
+  }
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 800;
+    margin: 0 0 4px;
+  }
+  .updated {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0 0 32px;
+  }
+  h2 {
+    font-size: 17px;
+    font-weight: 700;
+    margin: 32px 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--accent);
+  }
+  p { margin: 0 0 14px; color: var(--text); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .contact {
+    margin-top: 8px;
+    padding: 16px 20px;
+    background: #faf6ec;
+    border-radius: 10px;
+    border: 1px solid #eee0c0;
+  }
+  .contact p { margin: 4px 0; }
+  footer {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
+
   <h1>Terms &amp; Conditions</h1>
   <p class="updated">Last updated: July 2026</p>
 
@@ -53,8 +101,13 @@
   <p>These Terms are governed by the laws of India, and any disputes shall be subject to the jurisdiction of the courts of Bengaluru, Karnataka.</p>
 
   <h2>Contact Us</h2>
-  <p>For questions regarding these Terms, contact us at:<br>
-  Phone: +91 93530 94672</p>
+  <div class="contact">
+    <p>For questions regarding these Terms, contact us at:</p>
+    <p>Phone: +91 93530 94672</p>
+  </div>
+
+  <footer>&copy; 2026 Reperi Garage. All rights reserved.</footer>
+
 </div>
 </body>
 </html>
