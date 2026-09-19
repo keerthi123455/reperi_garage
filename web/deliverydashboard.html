@@ -509,33 +509,61 @@
         // The fixed pickup/drop stage sequence a delivery partner drives a
         // booking through. null (not in this list) means "booked, nothing
         // done yet" — shown to the customer as "Initiating Pickup".
-        const STAGE_ORDER = ['pickup_started', 'picked_up', 'to_garage', 'delivered'];
+        //
+        // 'bookings' rows get the full round trip: customer -> garage ->
+        // customer, with an extra 'out_for_delivery' leg pollution_booking/
+        // inspection_booking don't have — those have no garage-wait step
+        // of their own, so they keep the original, shorter sequence
+        // unchanged (still ending 'to_garage' -> 'delivered' directly).
+        // Keeping two separate orders (rather than one shared one) is
+        // what stops that extra leg from silently applying to them too.
+        const STAGE_ORDER_BOOKINGS = ['pickup_started', 'picked_up', 'to_garage', 'out_for_delivery', 'delivered'];
+        const STAGE_ORDER_SIMPLE = ['pickup_started', 'picked_up', 'to_garage', 'delivered'];
+        const stageOrderFor = (b) => b.sourceTable === 'bookings' ? STAGE_ORDER_BOOKINGS : STAGE_ORDER_SIMPLE;
+
         const STAGE_COLUMN = {
             pickup_started: 'stage_pickup_started_at',
             picked_up: 'stage_picked_up_at',
             to_garage: 'stage_to_garage_at',
+            out_for_delivery: 'stage_out_for_delivery_at',
             delivered: 'stage_delivered_at',
         };
         const STAGE_LABEL = {
             null: 'Initiating Pickup',
             pickup_started: 'Pickup Started',
             picked_up: 'Vehicle Picked Up',
-            to_garage: 'Vehicle To Garage',
+            to_garage: 'Vehicle At Garage',
+            out_for_delivery: 'Out For Delivery',
             delivered: 'Vehicle Delivered',
         };
-        // What the button says to move OUT of the given current stage.
-        const NEXT_BUTTON_LABEL = {
+        // What the button says to move OUT of the given current stage —
+        // 'to_garage' differs by sourceTable (bookings' own version of
+        // this text is never actually read; renderGarageWaitBlock always
+        // renders its own explicit "Picked Up" button instead once
+        // unlocked, but this stays defined for consistency/fallback).
+        const NEXT_BUTTON_LABEL_BOOKINGS = {
+            null: 'Start Pickup',
+            pickup_started: 'Vehicle Picked Up',
+            picked_up: 'Vehicle To Garage',
+            to_garage: 'Picked Up',
+            out_for_delivery: 'Vehicle Delivered',
+        };
+        const NEXT_BUTTON_LABEL_SIMPLE = {
             null: 'Start Pickup',
             pickup_started: 'Vehicle Picked Up',
             picked_up: 'Vehicle To Garage',
             to_garage: 'Vehicle Delivered',
         };
+        const nextButtonLabelFor = (b) =>
+            (b.sourceTable === 'bookings' ? NEXT_BUTTON_LABEL_BOOKINGS : NEXT_BUTTON_LABEL_SIMPLE)[b.deliveryStage];
 
-        function nextStage(current) {
-            if (current == null) return STAGE_ORDER[0];
-            const idx = STAGE_ORDER.indexOf(current);
-            if (idx === -1 || idx === STAGE_ORDER.length - 1) return null;
-            return STAGE_ORDER[idx + 1];
+        function nextStage(b) {
+            const order = stageOrderFor(b);
+            const current = b.deliveryStage;
+            if (current == null) return order[0];
+            const idx = order.indexOf(current);
+            if (idx === -1 || idx === order.length - 1) return null;
+            return order[idx + 1];
         }
 
         let currentPartnerId = null;
@@ -621,7 +649,14 @@
 
             try {
                 const [bookingsRes, pollutionRes, inspectionRes] = await Promise.all([
-                    sbClient.from('bookings').select('*').eq('delivery_partner_id', partnerId),
+                    // Only 'bookings' joins the assigned garage's own
+                    // location — that's what the return trip (picking
+                    // the finished car back up FROM the garage) navigates
+                    // to. pollution_booking/inspection_booking don't
+                    // carry assigned_to_admin_id, so they're left as-is.
+                    sbClient.from('bookings')
+                        .select('*, admin:assigned_to_admin_id(username, latitude, longitude)')
+                        .eq('delivery_partner_id', partnerId),
                     sbClient.from('pollution_booking').select('*').eq('delivery_partner_id', partnerId),
                     sbClient.from('inspection_booking').select('*').eq('delivery_partner_id', partnerId),
                 ]);
@@ -641,6 +676,8 @@
                     pickupAddressName: r.pickup_address_name,
                     pickupLat: r.pickup_latitude,
                     pickupLng: r.pickup_longitude,
+                    dropoffLat: r.dropoff_latitude,
+                    dropoffLng: r.dropoff_longitude,
                     pickupDrop: r.pickupdrop,
                     createdAt: r.created_at,
                     deliveryStage: r.delivery_stage || null,
@@ -648,10 +685,18 @@
                         pickup_started: r.stage_pickup_started_at,
                         picked_up: r.stage_picked_up_at,
                         to_garage: r.stage_to_garage_at,
+                        out_for_delivery: r.stage_out_for_delivery_at,
                         delivered: r.stage_delivered_at,
                     },
                     pickupOtpCode: r.pickup_otp_code || null,
                     pickupOtpVerifiedAt: r.pickup_otp_verified_at || null,
+                    // Only ever set on 'bookings' — see booking_details_screen.dart's
+                    // MARK AS DONE button, which is what flips this to
+                    // 'Ready for Pickup' once the garage finishes the service.
+                    bookingStatus: r.booking_status || null,
+                    garageName: r.admin?.username || null,
+                    garageLat: r.admin?.latitude ?? null,
+                    garageLng: r.admin?.longitude ?? null,
                 }));
 
                 const all = [
@@ -719,7 +764,7 @@
             const stage = b.deliveryStage;
             const label = STAGE_LABEL[stage];
             const updatedAt = stage ? b.stageTimestamps[stage] : b.createdAt;
-            const nextLabel = NEXT_BUTTON_LABEL[stage];
+            const nextLabel = nextButtonLabelFor(b);
 
             const updatedHtml = updatedAt
                 ? `<div class="stage-updated">Updated: ${escapeHtml(formatFullDateTime(updatedAt))}</div>`
@@ -734,6 +779,10 @@
                 // OTP block below, and _PickupOtpVerification in
                 // vehicle_bookings_screen.dart on the customer side.
                 actionHtml = renderPickupOtpBlock(b);
+            } else if (b.sourceTable === 'bookings' && stage === 'to_garage') {
+                // Gate "Picked Up" (from the garage) on the garage's own
+                // MARK AS DONE — see renderGarageWaitBlock below.
+                actionHtml = renderGarageWaitBlock(b);
             } else {
                 actionHtml = `<button class="advance-btn" onclick="advanceStageByKey('${keyFor(b)}')">${escapeHtml(nextLabel)}</button>`;
             }
@@ -778,10 +827,57 @@
             `;
         }
 
+        // Shown only for 'bookings' rows sitting at stage === 'to_garage' —
+        // the partner already dropped the vehicle off; this is the wait
+        // for the garage itself to finish the service (booking_status
+        // becomes 'Ready for Pickup' via booking_details_screen.dart's
+        // MARK AS DONE) before "Picked Up" (from the garage) unlocks.
+        function renderGarageWaitBlock(b) {
+            if (b.bookingStatus === 'Ready for Pickup') {
+                return `
+                    <div class="otp-verified">✅ Ready for pickup from ${escapeHtml(b.garageName || 'the garage')}.</div>
+                    <button class="advance-btn" onclick="advanceStageByKey('${keyFor(b)}')">Picked Up</button>
+                `;
+            }
+            return `
+                <div class="otp-box">
+                    <div class="otp-box-hint">Vehicle dropped at ${escapeHtml(b.garageName || 'the garage')} — waiting for them to finish the service.</div>
+                    <button class="advance-btn secondary" onclick="fetchAssignedBookings(currentPartnerId)">Check Again</button>
+                </div>
+            `;
+        }
+
+        // The Navigate button's destination changes with the trip leg:
+        // heading to collect the vehicle from the customer, from the
+        // garage (once dropped off there), or back out to the customer
+        // for the final drop-off. Only 'bookings' rows have a garage leg
+        // at all — pollution_booking/inspection_booking just navigate to
+        // the pickup address throughout, same as before this feature.
+        function navigateTargetFor(b) {
+            if (b.sourceTable === 'bookings') {
+                const stage = b.deliveryStage;
+                if (stage === 'picked_up' || stage === 'to_garage') {
+                    return (b.garageLat != null && b.garageLng != null)
+                        ? { lat: b.garageLat, lng: b.garageLng, label: 'Navigate to Garage' }
+                        : null;
+                }
+                if (stage === 'out_for_delivery' || stage === 'delivered') {
+                    const lat = b.dropoffLat ?? b.pickupLat;
+                    const lng = b.dropoffLng ?? b.pickupLng;
+                    return (lat != null && lng != null)
+                        ? { lat, lng, label: 'Navigate to Customer' }
+                        : null;
+                }
+            }
+            return (b.pickupLat != null && b.pickupLng != null)
+                ? { lat: b.pickupLat, lng: b.pickupLng, label: 'Navigate to Customer' }
+                : null;
+        }
+
         function renderBookingCard(b) {
-            const hasCoords = b.pickupLat != null && b.pickupLng != null;
-            const navigateHtml = hasCoords
-                ? `<a class="navigate-btn" href="${navigateUrl(b.pickupLat, b.pickupLng)}" target="_blank" rel="noopener">🧭 Navigate</a>`
+            const target = navigateTargetFor(b);
+            const navigateHtml = target
+                ? `<a class="navigate-btn" href="${navigateUrl(target.lat, target.lng)}" target="_blank" rel="noopener">🧭 ${escapeHtml(target.label)}</a>`
                 : `<span class="navigate-btn disabled">🧭 No location</span>`;
 
             return `
@@ -840,7 +936,7 @@
         }
 
         async function advanceStage(booking) {
-            const next = nextStage(booking.deliveryStage);
+            const next = nextStage(booking);
             if (!next) return; // already delivered — trip is closed
 
             // Defense in depth — the button to reach here shouldn't even
@@ -849,6 +945,16 @@
             // case of a stale render/double-click.
             if (booking.deliveryStage === 'pickup_started' && !booking.pickupOtpVerifiedAt) {
                 alert('Ask the customer to verify your pickup OTP in their app first.');
+                return;
+            }
+
+            // Same idea for the return leg — "Picked Up" (from the
+            // garage) shouldn't render until the garage has marked the
+            // service done, but guard the write too.
+            if (booking.sourceTable === 'bookings' &&
+                booking.deliveryStage === 'to_garage' &&
+                booking.bookingStatus !== 'Ready for Pickup') {
+                alert('Waiting for the garage to mark this service as done first.');
                 return;
             }
 

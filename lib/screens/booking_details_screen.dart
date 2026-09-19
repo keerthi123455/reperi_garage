@@ -28,6 +28,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   Uint8List? selectedImageBytes;
   bool loading = false;
   bool hasUnreadMessages = false;
+  bool markingDone = false;
 
   final stages = [
     'Car Picked Up',
@@ -146,6 +147,46 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     }
 
     setState(() => loading = false);
+  }
+
+  /// One-tap "service work is physically finished" signal — separate from
+  /// the stage dropdown above (which requires a photo) since this just
+  /// needs to fire notifications, not document progress. Setting
+  /// `booking_status` here is what the notify-on-db-change Edge Function
+  /// watches for (on `bookings` UPDATE) to notify the customer always, and
+  /// the assigned delivery partner too when this booking actually has a
+  /// pickup/drop trip for them to make.
+  Future<void> _markAsDone() async {
+    setState(() => markingDone = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final nowIso = DateTime.now().toIso8601String();
+
+      await supabase.from('bookings').update({
+        'booking_status': 'Ready for Pickup',
+        'marked_done_at': nowIso,
+      }).eq('id', widget.booking['id']);
+
+      if (!mounted) return;
+
+      // Mutating the passed-in booking map in place is what flips the
+      // button below into its "already marked" pill without needing to
+      // leave this screen and re-fetch.
+      widget.booking['booking_status'] = 'Ready for Pickup';
+      widget.booking['marked_done_at'] = nowIso;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Marked done — customer notified')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not mark as done: $e')),
+      );
+    }
+
+    if (mounted) setState(() => markingDone = false);
   }
 
   @override
@@ -679,6 +720,61 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                     ),
                   ),
                 ),
+
+                const SizedBox(height: 18),
+
+                // ── MARK AS DONE BUTTON ──
+                // Notifies the customer either way; also notifies the
+                // assigned delivery partner, but only when this booking
+                // actually has a pickup/drop trip for them to make.
+                if (widget.booking['marked_done_at'] != null)
+                  Container(
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: Colors.green.withOpacity(0.4)),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
+                        SizedBox(width: 10),
+                        Text(
+                          'MARKED DONE',
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  GestureDetector(
+                    onTap: markingDone ? null : _markAsDone,
+                    child: Container(
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade600.withOpacity(markingDone ? 0.6 : 1),
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      child: Center(
+                        child: markingDone
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Text(
+                                'MARK AS DONE',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
 
                 const SizedBox(height: 18),
 

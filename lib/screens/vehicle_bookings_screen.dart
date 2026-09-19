@@ -2182,9 +2182,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                     'pickup_started': booking['stage_pickup_started_at'],
                                     'picked_up': booking['stage_picked_up_at'],
                                     'to_garage': booking['stage_to_garage_at'],
+                                    'out_for_delivery': booking['stage_out_for_delivery_at'],
                                     'delivered': booking['stage_delivered_at'],
                                   },
                                   createdAt: booking['created_at'],
+                                  hasGarageLeg: true,
                                 ),
                                 if (booking['delivery_stage'] == 'pickup_started')
                                   _PickupOtpVerification(
@@ -2664,29 +2666,46 @@ String formatFullDateTime(dynamic iso) {
 /// pickup/drop currently stands, driven by the delivery partner from
 /// web/deliverydashboard.html. `stage` is null until the partner taps
 /// "Start Pickup" there — shown here as "Initiating Pickup" — then moves
-/// through pickup_started -> picked_up -> to_garage -> delivered.
+/// through pickup_started -> picked_up -> to_garage -> delivered (or, for
+/// the main service-booking card, the extra out_for_delivery leg once the
+/// garage marks the service done — see [hasGarageLeg]).
 class _DeliveryStageTracker extends StatelessWidget {
   const _DeliveryStageTracker({
     required this.stage,
     required this.stageTimestamps,
     required this.createdAt,
+    this.hasGarageLeg = false,
   });
 
   final String? stage;
 
-  /// Keyed by stage name (pickup_started/picked_up/to_garage/delivered) —
-  /// when each stage was reached, or null if not reached yet.
+  /// Keyed by stage name (pickup_started/picked_up/to_garage/
+  /// out_for_delivery/delivered) — when each stage was reached, or null
+  /// if not reached yet.
   final Map<String, dynamic> stageTimestamps;
 
   final dynamic createdAt;
 
-  static const _stageKeys = ['booked', 'pickup_started', 'picked_up', 'to_garage', 'delivered'];
+  /// True only for the main service-booking card ('bookings' table) —
+  /// that's the only one with a garage-wait step of its own (see
+  /// web/deliverydashboard.html's STAGE_ORDER_BOOKINGS), so it's the only
+  /// one that ever actually reaches 'out_for_delivery'. Pollution/
+  /// inspection bookings keep the original 4-node tracker since they
+  /// never produce that stage value at all.
+  final bool hasGarageLeg;
+
+  static const _stageKeysWithGarageLeg = [
+    'booked', 'pickup_started', 'picked_up', 'to_garage', 'out_for_delivery', 'delivered',
+  ];
+  static const _stageKeysSimple = ['booked', 'pickup_started', 'picked_up', 'to_garage', 'delivered'];
+  List<String> get _stageKeys => hasGarageLeg ? _stageKeysWithGarageLeg : _stageKeysSimple;
 
   static const _nodeLabels = {
     'booked': 'Initiating\nPickup',
     'pickup_started': 'Pickup\nStarted',
     'picked_up': 'Picked\nUp',
-    'to_garage': 'To\nGarage',
+    'to_garage': 'At\nGarage',
+    'out_for_delivery': 'Out For\nDelivery',
     'delivered': 'Delivered',
   };
 
@@ -2694,7 +2713,8 @@ class _DeliveryStageTracker extends StatelessWidget {
     'booked': 'Initiating Pickup',
     'pickup_started': 'Pickup Started',
     'picked_up': 'Vehicle Picked Up',
-    'to_garage': 'On The Way To Garage',
+    'to_garage': 'Vehicle At Garage',
+    'out_for_delivery': 'Out For Delivery',
     'delivered': 'Vehicle Delivered',
   };
 
