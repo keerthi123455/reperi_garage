@@ -28,23 +28,29 @@ class AutoBannerItem {
 /// manual swipe in either direction too.
 const int _kVirtualSpan = 10000;
 
-/// A full-width banner strip that shows one slide at a time and auto-
-/// advances every [interval], looping forever in one continuous direction —
-/// the flat "2D" counterpart to the 3D coverflow higher up the Home screen.
-/// Still swipeable by hand — auto-advance pauses on touch and stays paused
-/// for [_AutoBannerStripState._resumeDelay] after the last touch ends, so
-/// it doesn't yank the slide away mid-look or fight a series of quick
-/// manual swipes.
+/// A banner strip that keeps the centered slide large while its neighbours
+/// peek in from either side, and auto-advances every [interval], looping
+/// forever in one continuous direction — the flat "2D" counterpart to the
+/// 3D coverflow higher up the Home screen. Still swipeable by hand — auto-
+/// advance pauses on touch and stays paused for
+/// [_AutoBannerStripState._resumeDelay] after the last touch ends, so it
+/// doesn't yank the slide away mid-look or fight a series of quick manual
+/// swipes.
 class AutoBannerStrip extends StatefulWidget {
   const AutoBannerStrip({
     super.key,
     required this.items,
     this.aspectRatio = 1280 / 720,
+    this.viewportFraction = 0.823,
     this.interval = const Duration(milliseconds: 1500),
   });
 
   final List<AutoBannerItem> items;
   final double aspectRatio;
+
+  /// How much of the strip's width the centered slide occupies — the rest
+  /// is split between the previous/next slides peeking in from the sides.
+  final double viewportFraction;
   final Duration interval;
 
   @override
@@ -71,7 +77,10 @@ class _AutoBannerStripState extends State<AutoBannerStrip> {
     super.initState();
     _virtualPage = (_kVirtualSpan * _realCount) ~/ 2;
     _pageValue = _virtualPage.toDouble();
-    _controller = PageController(initialPage: _virtualPage)..addListener(_onScroll);
+    _controller = PageController(
+      initialPage: _virtualPage,
+      viewportFraction: widget.viewportFraction,
+    )..addListener(_onScroll);
     _startTimer();
   }
 
@@ -128,94 +137,107 @@ class _AutoBannerStripState extends State<AutoBannerStrip> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerDown: (_) => _onInteractionStart(),
-          onPointerUp: (_) => _onInteractionEnd(),
-          onPointerCancel: (_) => _onInteractionEnd(),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: AspectRatio(
-              aspectRatio: widget.aspectRatio,
-              child: PageView.builder(
-                controller: _controller,
-                onPageChanged: (i) => _virtualPage = i,
-                itemBuilder: (context, index) {
-                  final item = widget.items[index % _realCount];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // The centered slide's own box — everything narrower than the full
+        // strip width is what lets the previous/next slides peek in at the
+        // sides instead of the current slide filling edge to edge.
+        final slideWidth = constraints.maxWidth * widget.viewportFraction;
+        final slideHeight = slideWidth / widget.aspectRatio;
 
-                  // Distance from the currently-settled page — 0 when this
-                  // slide is centered, growing toward 1 as it slides off.
-                  // Driving a subtle scale + fade off that (rather than a
-                  // hard cut) is what gives the transition its glide.
-                  final distance = (_pageValue - index).abs().clamp(0.0, 1.0);
-                  final scale = 1.0 - (distance * 0.06);
-                  final opacity = (1.0 - (distance * 0.35)).clamp(0.0, 1.0);
+        return Column(
+          children: [
+            Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (_) => _onInteractionStart(),
+              onPointerUp: (_) => _onInteractionEnd(),
+              onPointerCancel: (_) => _onInteractionEnd(),
+              child: SizedBox(
+                height: slideHeight,
+                child: PageView.builder(
+                  controller: _controller,
+                  clipBehavior: Clip.none,
+                  onPageChanged: (i) => _virtualPage = i,
+                  itemBuilder: (context, index) {
+                    final item = widget.items[index % _realCount];
 
-                  final slide = Transform.scale(
-                    scale: scale,
-                    child: Opacity(
-                      opacity: opacity,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.25),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              Image.asset(
-                                item.assetPath,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => PlaceholderBox(
-                                  label: item.assetPath.split('/').last,
-                                  borderRadius: 0,
-                                ),
+                    // Distance from the currently-settled page — 0 when this
+                    // slide is centered, growing toward 1 as it slides off.
+                    // Driving a subtle scale + fade off that (rather than a
+                    // hard cut) is what gives the transition its glide.
+                    final distance = (_pageValue - index).abs().clamp(0.0, 1.0);
+                    final scale = 1.0 - (distance * 0.12);
+                    final opacity = (1.0 - (distance * 0.45)).clamp(0.0, 1.0);
+
+                    final slide = Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Transform.scale(
+                          scale: scale,
+                          child: Opacity(
+                            opacity: opacity,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.25),
+                                    blurRadius: 20,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
                               ),
-                              if (item.badgeLabel != null)
-                                Positioned.fill(
-                                  child: Container(
-                                    color: Colors.black.withOpacity(0.45),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      item.badgeLabel!,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 1.5,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    Image.asset(
+                                      item.assetPath,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => PlaceholderBox(
+                                        label: item.assetPath.split('/').last,
+                                        borderRadius: 0,
                                       ),
                                     ),
-                                  ),
+                                    if (item.badgeLabel != null)
+                                      Positioned.fill(
+                                        child: Container(
+                                          color: Colors.black.withOpacity(0.45),
+                                          alignment: Alignment.center,
+                                          child: Text(
+                                            item.badgeLabel!,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.w800,
+                                              letterSpacing: 1.5,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                            ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
+                    );
 
-                  if (item.onTap == null) return slide;
-                  return GestureDetector(onTap: item.onTap, child: slide);
-                },
+                    if (item.onTap == null) return slide;
+                    return GestureDetector(onTap: item.onTap, child: slide);
+                  },
+                ),
               ),
             ),
-          ),
-        ),
-        if (_realCount > 1) ...[
-          const SizedBox(height: 10),
-          DotIndicatorRow(count: _realCount, activeIndex: _virtualPage % _realCount),
-        ],
-      ],
+            if (_realCount > 1) ...[
+              const SizedBox(height: 10),
+              DotIndicatorRow(count: _realCount, activeIndex: _virtualPage % _realCount),
+            ],
+          ],
+        );
+      },
     );
   }
 }

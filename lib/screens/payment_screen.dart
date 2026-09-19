@@ -504,8 +504,11 @@ class _PaymentScreenState
           // Profile might not exist, continue with null values
         }
         
-        // ✅ NEW: Get admin ID for load-balanced assignment
-        final assignedAdminId = await AdminAssignmentService.getNextAdminId();
+        // ✅ NEW: Get admin ID for load-balanced assignment, scoped to
+        // this vehicle's type (two-wheeler bookings only rotate among
+        // two-wheeler admins, four-wheeler among four-wheeler admins).
+        final assignedAdminId =
+            await AdminAssignmentService.getNextAdminId(vehicleId: widget.vehicleId);
         // Only assign a delivery partner when there's actually a
         // pickup/drop for one to handle.
         final deliveryPartnerId = _pickupDropYes
@@ -598,8 +601,11 @@ class _PaymentScreenState
           // Profile might not exist, continue with null values
         }
 
-        // ✅ NEW: Get admin ID for load-balanced assignment
-        final assignedAdminId = await AdminAssignmentService.getNextAdminId();
+        // ✅ NEW: Get admin ID for load-balanced assignment, scoped to
+        // this vehicle's type (two-wheeler bookings only rotate among
+        // two-wheeler admins, four-wheeler among four-wheeler admins).
+        final assignedAdminId =
+            await AdminAssignmentService.getNextAdminId(vehicleId: widget.vehicleId);
         // Only assign a delivery partner when there's actually a
         // pickup/drop for one to handle.
         final deliveryPartnerId = _pickupDropYes

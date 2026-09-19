@@ -17,55 +17,91 @@ class AdminAssignmentService {
   static const int bookingsPerAdmin = 3;
   
   /// Gets the next admin ID using load-balanced distribution.
-  /// 
+  ///
   /// Distributes bookings equally among all available admins,
   /// giving each admin exactly [bookingsPerAdmin] bookings before
   /// rotating to the next admin.
-  /// 
+  ///
+  /// When [vehicleId] is given, only admins whose `admin.vehicle` matches
+  /// that vehicle's type ("two wheeler"/"four wheeler") are eligible — a
+  /// two-wheeler booking only ever rotates among two-wheeler admins, and
+  /// likewise for four-wheeler. Left null (or the vehicle can't be looked
+  /// up, e.g. Roadside Assistance has no single vehicle) for bookings that
+  /// aren't tied to one vehicle type, which rotates among every admin as
+  /// before.
+  ///
   /// Returns:
   ///   - String ID of the assigned admin if successful
-  ///   - null if no admins exist or on error
-  static Future<String?> getNextAdminId() async {
+  ///   - null if no matching admins exist or on error
+  static Future<String?> getNextAdminId({String? vehicleId}) async {
     try {
-      // STEP 1: Fetch all admins ordered by ID
-      final adminsResponse = await _supabase
-          .from('admin')
-          .select('id')
-          .order('id', ascending: true);
-      
+      final vehicleLabel = await _resolveAdminVehicleLabel(vehicleId);
+
+      // STEP 1: Fetch eligible admins ordered by ID
+      var query = _supabase.from('admin').select('id');
+      if (vehicleLabel != null) {
+        query = query.eq('vehicle', vehicleLabel);
+      }
+      final adminsResponse = await query.order('id', ascending: true);
+
       if (adminsResponse.isEmpty) {
         return null;
       }
-      
+
       final adminIds = (adminsResponse as List)
           .map((admin) => admin['id'] as String)
           .toList();
-      
-      // STEP 2: Count total bookings in the system
-      final totalBookings = await _countTotalBookings();
-      
+
+      // STEP 2: Count bookings already assigned within this same admin
+      // pool — scoping the counter this way keeps the "3 bookings then
+      // rotate" rule correct within each vehicle type, regardless of how
+      // much booking volume the other type has.
+      final poolBookings = await _countBookingsForAdmins(adminIds);
+
       // STEP 3: Calculate which admin should get this booking
       // Each admin gets [bookingsPerAdmin] bookings before rotating
-      final adminIndex = (totalBookings ~/ bookingsPerAdmin) % adminIds.length;
+      final adminIndex = (poolBookings ~/ bookingsPerAdmin) % adminIds.length;
       final assignedAdminId = adminIds[adminIndex];
-      
+
       return assignedAdminId;
-      
+
     } catch (e) {
       return null;
     }
   }
-  
-  /// Counts total number of bookings in the system
-  /// Uses simple, reliable select('id') approach
-  static Future<int> _countTotalBookings() async {
+
+  /// Looks up the `admin.vehicle` label ("two wheeler"/"four wheeler") that
+  /// matches [vehicleId]'s `vehicles.vehicle_type` ('two_wheeler'/
+  /// 'four_wheeler'). Null when there's no vehicle to key off of, or it
+  /// can't be found — callers then fall back to every admin.
+  static Future<String?> _resolveAdminVehicleLabel(String? vehicleId) async {
+    if (vehicleId == null || vehicleId.isEmpty) return null;
     try {
-      // Fetch all booking IDs - most reliable method
-      final allBookings = await _supabase
+      final row = await _supabase
+          .from('vehicles')
+          .select('vehicle_type')
+          .eq('id', vehicleId)
+          .maybeSingle();
+      return switch (row?['vehicle_type'] as String?) {
+        'two_wheeler' => 'two wheeler',
+        'four_wheeler' => 'four wheeler',
+        _ => null,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Counts bookings already assigned to any admin in [adminIds].
+  static Future<int> _countBookingsForAdmins(List<String> adminIds) async {
+    if (adminIds.isEmpty) return 0;
+    try {
+      final bookings = await _supabase
           .from('bookings')
-          .select('id');
-      
-      return (allBookings as List).length;
+          .select('id')
+          .inFilter('assigned_to_admin_id', adminIds);
+
+      return (bookings as List).length;
     } catch (e) {
       // If query fails, default to 0 (will assign to first admin)
       return 0;

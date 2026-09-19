@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/error_handler.dart';
 import '../services/vehicle_change_bus.dart';
@@ -1021,7 +1023,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
           *,
           admin:assigned_to_admin_id (
             username,
-            address
+            address,
+            latitude,
+            longitude
           )
         ''')
         .eq('vehicle_id', widget.vehicleId)
@@ -1054,6 +1058,17 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       loading = false;
     });
     _syncCancelTicker();
+  }
+
+  /// Opens Google Maps directions to the assigned garage — shown only for
+  /// Cash on Pickup bookings, since that's the one payment path where the
+  /// customer (rather than a delivery partner) is the one actually going
+  /// there in person.
+  Future<void> _openGarageNavigation(double latitude, double longitude) async {
+    final uri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude',
+    );
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   /// Opens the "why are you cancelling" dialog, then — only if the
@@ -1874,6 +1889,16 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       final adminData = booking['admin'] as Map<String, dynamic>?;
                       final garageName = adminData?['username'] ?? 'Garage';
                       final garageAddress = adminData?['address'] ?? '';
+                      final garageLat = (adminData?['latitude'] as num?)?.toDouble();
+                      final garageLong = (adminData?['longitude'] as num?)?.toDouble();
+                      // Cash on Pickup is the one payment path where the
+                      // customer themselves is the one going to the garage
+                      // in person, so that's the only case worth a
+                      // navigate button — everything else is either
+                      // doorstep pickup/drop (a delivery partner's job) or
+                      // already paid online with no pickup implied.
+                      final isCashOnPickup =
+                          (booking['payment_status'] ?? '').toString().toLowerCase() == 'cod';
 
                       return GestureDetector(
                         onTap: () {
@@ -2083,6 +2108,30 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                         ),
                                       ],
                                     ),
+                                    if (isCashOnPickup &&
+                                        garageLat != null &&
+                                        garageLong != null) ...[
+                                      const SizedBox(height: 12),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: OutlinedButton.icon(
+                                          onPressed: () =>
+                                              _openGarageNavigation(garageLat, garageLong),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: const Color(0xFFD4A017),
+                                            side: const BorderSide(color: Color(0xFFD4A017)),
+                                            padding: const EdgeInsets.symmetric(vertical: 10),
+                                            shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(12)),
+                                          ),
+                                          icon: const Icon(Icons.directions_rounded, size: 18),
+                                          label: const Text(
+                                            'NAVIGATE TO GARAGE',
+                                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, letterSpacing: 0.4),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -2126,7 +2175,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                               if ((booking['pickupdrop'] ?? '')
                                       .toString()
                                       .toLowerCase() ==
-                                  'yes')
+                                  'yes') ...[
                                 _DeliveryStageTracker(
                                   stage: booking['delivery_stage'],
                                   stageTimestamps: {
@@ -2137,6 +2186,15 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                   },
                                   createdAt: booking['created_at'],
                                 ),
+                                if (booking['delivery_stage'] == 'pickup_started')
+                                  _PickupOtpVerification(
+                                    table: 'bookings',
+                                    bookingId: booking['id'],
+                                    otpCode: booking['pickup_otp_code'] as String?,
+                                    verifiedAt: booking['pickup_otp_verified_at'],
+                                    onVerified: fetchBookings,
+                                  ),
+                              ],
 
                               const SizedBox(height: 22),
 
@@ -2305,6 +2363,16 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
             },
             createdAt: booking['created_at'],
           ),
+          if (booking['delivery_stage'] == 'pickup_started')
+            _PickupOtpVerification(
+              table: table,
+              bookingId: booking['id'],
+              otpCode: booking['pickup_otp_code'] as String?,
+              verifiedAt: booking['pickup_otp_verified_at'],
+              onVerified: table == 'pollution_booking'
+                  ? fetchPollutionBookings
+                  : fetchInspectionBookings,
+            ),
           if (_isCancellable(booking))
             _buildCancelWindow(
               record: booking,
@@ -2718,6 +2786,378 @@ class _DeliveryStageTracker extends StatelessWidget {
             }),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown only while `delivery_stage == 'pickup_started'` — the delivery
+/// partner has arrived and generated a code on their dashboard
+/// (web/deliverydashboard.html's renderPickupOtpBlock); this is where the
+/// customer enters it before handing over the keys. Matching against
+/// [otpCode] happens server-side via the `.eq('pickup_otp_code', ...)`
+/// filter on the update itself, rather than comparing [otpCode] locally,
+/// so a zero-row result is the only source of truth for "wrong code."
+class _PickupOtpVerification extends StatefulWidget {
+  const _PickupOtpVerification({
+    required this.table,
+    required this.bookingId,
+    required this.otpCode,
+    required this.verifiedAt,
+    required this.onVerified,
+  });
+
+  /// 'bookings' | 'pollution_booking' | 'inspection_booking'.
+  final String table;
+  final dynamic bookingId;
+
+  /// The code the delivery partner generated — null until they do.
+  final String? otpCode;
+
+  /// Set once the customer has already verified successfully — shows a
+  /// "waiting for pickup" state instead of the entry field again.
+  final dynamic verifiedAt;
+
+  /// Re-fetches this card's booking list so the tracker/verification state
+  /// above picks up the fresh `pickup_otp_verified_at`.
+  final VoidCallback onVerified;
+
+  @override
+  State<_PickupOtpVerification> createState() => _PickupOtpVerificationState();
+}
+
+class _PickupOtpVerificationState extends State<_PickupOtpVerification> {
+  final _controller = TextEditingController();
+  bool _submitting = false;
+  bool _justVerified = false;
+  String? _error;
+  // Bumped on every failed attempt — giving the shake TweenAnimationBuilder
+  // below a fresh ValueKey each time is what makes it replay instead of
+  // just sitting at its already-settled end value.
+  int _shakeToken = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _verify() async {
+    final entered = _controller.text.trim();
+    if (entered.isEmpty) {
+      setState(() {
+        _error = 'Enter the code your delivery partner told you.';
+        _shakeToken++;
+      });
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    try {
+      final rows = await Supabase.instance.client
+          .from(widget.table)
+          .update({'pickup_otp_verified_at': DateTime.now().toIso8601String()})
+          .eq('id', widget.bookingId)
+          .eq('pickup_otp_code', entered)
+          .select('id');
+
+      if (!mounted) return;
+
+      if ((rows as List).isEmpty) {
+        setState(() {
+          _error = "That code doesn't match — check with your delivery partner and try again.";
+          _submitting = false;
+          _shakeToken++;
+        });
+        return;
+      }
+
+      // Flips the button itself to the same green-check "success" beat the
+      // Edit Vehicle sheet's SAVE CHANGES button uses, just ahead of the
+      // fuller-screen confirmation below.
+      setState(() {
+        _submitting = false;
+        _justVerified = true;
+      });
+      widget.onVerified();
+
+      await Future.delayed(const Duration(milliseconds: 260));
+      if (!mounted) return;
+      await _showVerifiedDialog();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Something went wrong verifying that code — please try again.';
+        _submitting = false;
+        _shakeToken++;
+      });
+    }
+  }
+
+  Future<void> _showVerifiedDialog() {
+    return showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Verified delivery partner',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (context, animation, secondaryAnimation) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 40),
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceRaised,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 500),
+                  curve: Curves.elasticOut,
+                  builder: (context, value, child) => Transform.scale(scale: value, child: child),
+                  child: const Icon(Icons.verified_rounded, color: Colors.green, size: 56),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Verified delivery partner',
+                  style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w900, fontSize: 17),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'You can hand over the keys now.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.mut, fontSize: 13),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.green.withOpacity(0.12),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('OK', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      transitionBuilder: (context, animation, secondaryAnimation, child) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget content;
+    final Key contentKey;
+
+    if (widget.verifiedAt != null || _justVerified) {
+      contentKey = const ValueKey('verified');
+      content = Container(
+        key: contentKey,
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.green.withOpacity(0.35)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.verified_rounded, color: Colors.green, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Verified delivery partner — waiting for them to take the vehicle.',
+                style: TextStyle(color: AppColors.txt.withOpacity(0.85), fontSize: 12.5, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (widget.otpCode == null) {
+      contentKey = const ValueKey('waiting-for-code');
+      content = Container(
+        key: contentKey,
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceSunken,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.pending_outlined, color: AppColors.mut, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Your delivery partner will share a pickup code when they arrive — enter it here before handing over the keys.',
+                style: TextStyle(color: AppColors.mut, fontSize: 12.5, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      contentKey = const ValueKey('entry');
+      content = Container(
+        key: contentKey,
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(
+              const Color(0xFFD4A017).withOpacity(0.08), AppColors.surfaceSunken),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Verify your delivery partner',
+              style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w800, fontSize: 13.5),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Ask them for the pickup code and enter it below before handing over the keys.',
+              style: TextStyle(color: AppColors.mut, fontSize: 11.5, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TweenAnimationBuilder<double>(
+                    key: ValueKey(_shakeToken),
+                    tween: Tween(begin: 0, end: 1),
+                    duration: const Duration(milliseconds: 420),
+                    // A decaying wobble — sin() for the back-and-forth,
+                    // (1 - value) as the envelope so it settles to dead
+                    // still by the time the animation ends.
+                    builder: (context, value, child) => Transform.translate(
+                      offset: Offset(math.sin(value * math.pi * 3) * 8 * (1 - value), 0),
+                      child: child,
+                    ),
+                    child: TextField(
+                      controller: _controller,
+                      keyboardType: TextInputType.number,
+                      maxLength: 4,
+                      style: TextStyle(
+                        color: AppColors.txt,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                        letterSpacing: 6,
+                      ),
+                      decoration: InputDecoration(
+                        counterText: '',
+                        hintText: '••••',
+                        hintStyle: TextStyle(color: AppColors.mut, letterSpacing: 6),
+                        filled: true,
+                        fillColor: AppColors.surfaceRaised,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: _error != null ? Colors.redAccent : AppColors.line,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: _error != null ? Colors.redAccent : AppColors.line,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD4A017).withOpacity(_submitting ? 0.6 : 1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: _submitting ? null : _verify,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
+                          child: _submitting
+                              ? const SizedBox(
+                                  key: ValueKey('spinner'),
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                                )
+                              : const Text(
+                                  'Verify',
+                                  key: ValueKey('label'),
+                                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: _error == null
+                  ? const SizedBox.shrink(key: ValueKey('no-error'))
+                  : Padding(
+                      key: const ValueKey('error'),
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(color: Colors.redAccent, fontSize: 11.5),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _VehicleEditFadeIn(
+      index: 0,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SizeTransition(
+            sizeFactor: animation,
+            axisAlignment: -1,
+            child: child,
+          ),
+        ),
+        child: content,
       ),
     );
   }

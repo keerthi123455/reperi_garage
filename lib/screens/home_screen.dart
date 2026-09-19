@@ -53,6 +53,8 @@ import 'profile_screen.dart';
 import 'roadside_assistance_screen.dart';
 import 'services_screen.dart';
 import 'servicing_package_screen.dart';
+import 'two_wheeler_servicing_screen.dart';
+import 'two_wheeler_washing_screen.dart';
 import 'subscriptions_screen.dart';
 import 'tyre_care_screen.dart';
 import 'vehicle_bookings_screen.dart';
@@ -106,6 +108,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return _vehicles[_activeVehicleIndex.clamp(0, _vehicles.length - 1)];
   }
 
+  bool get _isActiveVehicleTwoWheeler => _activeVehicle?.isTwoWheeler ?? false;
+
+  // Settled slide + continuous drag/settle position for the two-wheeler
+  // coverflow (servicing/washing) — mirrors _selectedBanner/_coverflowPosition
+  // above exactly, including driving its own "OUR PACKAGES" side heading.
+  int _selectedTwoWheelerBanner = 0;
+  late final ValueNotifier<double> _twoWheelerCoverflowPosition;
+
   /// The active vehicle as the plain map shape ServicesScreen, the bottom
   /// nav bar's peer screens, and AiAdvisorSheet all expect.
   Map<String, dynamic>? get _activeVehicleMap {
@@ -128,6 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final defaultBanner = kCoverflowBanners.indexOf(kDefaultCoverflowBanner);
     if (defaultBanner >= 0) _selectedBanner = defaultBanner;
     _coverflowPosition = ValueNotifier(_selectedBanner.toDouble());
+    _twoWheelerCoverflowPosition = ValueNotifier(_selectedTwoWheelerBanner.toDouble());
     _servicesOpen = widget.servicesExpandedByDefault;
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
@@ -216,6 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
           bookingStatus: await _fetchLatestBookingStatus(id),
           hasActiveSubscription: await _fetchHasActiveSubscription(id),
           hasUpdate: await VehicleUpdateTracker.hasUpdate(id),
+          vehicleType: (row['vehicle_type'] as String?) ?? 'four_wheeler',
         );
       }));
 
@@ -323,6 +335,27 @@ class _HomeScreenState extends State<HomeScreen> {
         (_) => WheelManagementPackageScreen(vehicleId: vehicleId),
       'assets/images/paintcare.jpg' => (_) => PaintCarePackageScreen(vehicleId: vehicleId),
       'assets/images/ac.jpg' => (_) => AcPackageScreen(vehicleId: vehicleId),
+      _ => null,
+    };
+    if (builder == null) return;
+
+    Navigator.push(context, premiumPageRoute(builder)).then((_) {
+      if (vehicle != null) _refreshVehicleBookingStatus(vehicle.id);
+    });
+  }
+
+  /// Same idea as [_openCoverflowPackage], for the two-slide two-wheeler
+  /// coverflow — both slides now get their own bike-specific pricing/
+  /// checklist screens instead of reusing the four-wheeler package screens.
+  void _openTwoWheelerCoverflowPackage(String assetPath) {
+    final vehicle = _activeVehicle;
+    final vehicleId = vehicle?.id ?? '';
+
+    final WidgetBuilder? builder = switch (assetPath) {
+      'assets/images/servicing_twowheeler.jpeg' =>
+        (_) => TwoWheelerServicingScreen(vehicleId: vehicleId),
+      'assets/images/washing_twowheeler.jpeg' =>
+        (_) => TwoWheelerWashingScreen(vehicleId: vehicleId),
       _ => null,
     };
     if (builder == null) return;
@@ -661,6 +694,7 @@ class _HomeScreenState extends State<HomeScreen> {
     vehicleChangeBus.removeListener(_loadVehicles);
     _toastTimer?.cancel();
     _coverflowPosition.dispose();
+    _twoWheelerCoverflowPosition.dispose();
     super.dispose();
   }
 
@@ -737,75 +771,122 @@ class _HomeScreenState extends State<HomeScreen> {
                             onPageChanged: (page) => setState(() => _activeVehicleIndex = page),
                           ),
                         const SizedBox(height: 6),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 18),
-                          child: QuickActionRow(
-                            onBookService: _bookService,
-                            onBookWashing: _bookWashing,
+                        // Book Service/Book Washing don't apply to a
+                        // two-wheeler — its own servicing/washing packages
+                        // are booked straight from the coverflow below.
+                        if (!_isActiveVehicleTwoWheeler)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 18),
+                            child: QuickActionRow(
+                              onBookService: _bookService,
+                              onBookWashing: _bookWashing,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 22),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 18),
-                          child: ValueListenableBuilder<double>(
+                        if (_isActiveVehicleTwoWheeler) ...[
+                          const SizedBox(height: 22),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 18),
+                            child: ValueListenableBuilder<double>(
+                              valueListenable: _twoWheelerCoverflowPosition,
+                              builder: (context, position, coverflow) {
+                                return Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    PackagesSideHeading(
+                                      opacity: (1 - position.abs()).clamp(0.0, 1.0),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(child: coverflow!),
+                                  ],
+                                );
+                              },
+                              child: BannerCoverflow(
+                                imagePaths: kTwoWheelerCoverflowBanners,
+                                selectedIndex: _selectedTwoWheelerBanner,
+                                onSelect: (i) =>
+                                    setState(() => _selectedTwoWheelerBanner = i),
+                                onPositionChanged: (p) =>
+                                    _twoWheelerCoverflowPosition.value = p,
+                                onTapSelected: (i) => _openTwoWheelerCoverflowPackage(
+                                    kTwoWheelerCoverflowBanners[i]),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          ValueListenableBuilder<double>(
+                            valueListenable: _twoWheelerCoverflowPosition,
+                            builder: (context, position, _) => DotIndicatorRow(
+                              count: kTwoWheelerCoverflowBanners.length,
+                              activeIndex: position
+                                  .round()
+                                  .clamp(0, kTwoWheelerCoverflowBanners.length - 1)
+                                  .toInt(),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ] else ...[
+                          const SizedBox(height: 22),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 18),
+                            child: ValueListenableBuilder<double>(
+                              valueListenable: _coverflowPosition,
+                              builder: (context, position, coverflow) {
+                                return Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    PackagesSideHeading(
+                                      // Fully visible only at the first banner
+                                      // (index 0), fading out as soon as the
+                                      // coverflow moves away from it.
+                                      opacity: (1 - position.abs()).clamp(0.0, 1.0),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(child: coverflow!),
+                                  ],
+                                );
+                              },
+                              // Passed as `child` rather than built inline, so
+                              // the coverflow itself (with all its own image
+                              // decoding/painting) isn't rebuilt every time
+                              // `position` changes — only the heading is.
+                              child: BannerCoverflow(
+                                imagePaths: kCoverflowBanners,
+                                selectedIndex: _selectedBanner,
+                                onSelect: (i) => setState(() => _selectedBanner = i),
+                                onPositionChanged: (p) => _coverflowPosition.value = p,
+                                onTapSelected: (i) =>
+                                    _openCoverflowPackage(kCoverflowBanners[i]),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          ValueListenableBuilder<double>(
                             valueListenable: _coverflowPosition,
-                            builder: (context, position, coverflow) {
-                              return Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  PackagesSideHeading(
-                                    // Fully visible only at the first banner
-                                    // (index 0), fading out as soon as the
-                                    // coverflow moves away from it.
-                                    opacity: (1 - position.abs()).clamp(0.0, 1.0),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(child: coverflow!),
-                                ],
-                              );
-                            },
-                            // Passed as `child` rather than built inline, so
-                            // the coverflow itself (with all its own image
-                            // decoding/painting) isn't rebuilt every time
-                            // `position` changes — only the heading is.
-                            child: BannerCoverflow(
-                              imagePaths: kCoverflowBanners,
-                              selectedIndex: _selectedBanner,
-                              onSelect: (i) => setState(() => _selectedBanner = i),
-                              onPositionChanged: (p) => _coverflowPosition.value = p,
-                              onTapSelected: (i) =>
-                                  _openCoverflowPackage(kCoverflowBanners[i]),
+                            builder: (context, position, _) => DotIndicatorRow(
+                              count: kCoverflowBanners.length,
+                              activeIndex: position
+                                  .round()
+                                  .clamp(0, kCoverflowBanners.length - 1)
+                                  .toInt(),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        ValueListenableBuilder<double>(
-                          valueListenable: _coverflowPosition,
-                          builder: (context, position, _) => DotIndicatorRow(
-                            count: kCoverflowBanners.length,
-                            activeIndex: position
-                                .round()
-                                .clamp(0, kCoverflowBanners.length - 1)
-                                .toInt(),
-                          ),
-                        ),
-                        const SizedBox(height: 22),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
-                          child: Text(
-                            'What does your car need today?',
-                            style: GoogleFonts.manrope(
-                              fontSize: 18.5,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.txt,
+                          const SizedBox(height: 22),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
+                            child: Text(
+                              'What does your car need today?',
+                              style: GoogleFonts.manrope(
+                                fontSize: 18.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.txt,
+                              ),
                             ),
                           ),
-                        ),
-                        ServiceBannerRow(
-                          imagePaths: kServiceBanners,
-                          onTap: (i) => _openServiceBanner(kServiceBanners[i]),
-                        ),
-                        const SizedBox(height: 16),
+                          ServiceBannerRow(
+                            imagePaths: kServiceBanners,
+                            onTap: (i) => _openServiceBanner(kServiceBanners[i]),
+                          ),
+                          const SizedBox(height: 16),
                         // Not `const` — its build() reads AppColors
                         // directly, so it must rebuild on a theme toggle.
                         Padding(
@@ -1014,6 +1095,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        ],
                         // Not `const` — its build() reads AppColors
                         // directly, so it must rebuild on a theme toggle.
                         Padding(

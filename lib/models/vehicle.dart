@@ -10,6 +10,7 @@ class Vehicle {
     this.bookingStatus,
     this.hasActiveSubscription = false,
     this.hasUpdate = false,
+    this.vehicleType = 'four_wheeler',
   });
 
   final String id;
@@ -17,6 +18,14 @@ class Vehicle {
   final String model;
   final String carNumber;
   final String? photoUrl;
+
+  /// `'four_wheeler'` or `'two_wheeler'` — matches the `vehicles.vehicle_type`
+  /// column (see profile_screen.dart's add/edit vehicle form). Drives which
+  /// content the home screen shows below the Book Service/Book Washing
+  /// buttons for the active vehicle.
+  final String vehicleType;
+
+  bool get isTwoWheeler => vehicleType == 'two_wheeler';
 
   /// Latest booking's `booking_status`, or `null` if the vehicle has no
   /// bookings yet.
@@ -44,6 +53,7 @@ class Vehicle {
       bookingStatus: bookingStatus,
       hasActiveSubscription: hasActiveSubscription,
       hasUpdate: hasUpdate,
+      vehicleType: vehicleType,
     );
   }
 
@@ -60,6 +70,7 @@ class Vehicle {
       bookingStatus: bookingStatus,
       hasActiveSubscription: hasActiveSubscription,
       hasUpdate: hasUpdate,
+      vehicleType: vehicleType,
     );
   }
 }

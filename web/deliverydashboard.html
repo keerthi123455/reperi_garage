@@ -384,6 +384,53 @@
             letter-spacing: 0.5px;
         }
 
+        .otp-box {
+            background: rgba(212, 160, 23, 0.08);
+            border: 1px dashed rgba(212, 160, 23, 0.4);
+            border-radius: 10px;
+            padding: 14px;
+            text-align: center;
+        }
+
+        .otp-box-label {
+            color: #999;
+            font-size: 12px;
+            margin-bottom: 6px;
+        }
+
+        .otp-code {
+            color: #D4A017;
+            font-size: 32px;
+            font-weight: 900;
+            letter-spacing: 8px;
+            margin-bottom: 10px;
+        }
+
+        .otp-box-hint {
+            color: #777;
+            font-size: 11.5px;
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+
+        .advance-btn.secondary {
+            background: transparent;
+            border: 1px solid #444;
+            color: #ccc;
+        }
+
+        .advance-btn.secondary:hover {
+            background: #222;
+        }
+
+        .otp-verified {
+            color: #51cf66;
+            font-weight: 700;
+            font-size: 12.5px;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+
         .no-bookings {
             text-align: center;
             padding: 40px 20px;
@@ -603,6 +650,8 @@
                         to_garage: r.stage_to_garage_at,
                         delivered: r.stage_delivered_at,
                     },
+                    pickupOtpCode: r.pickup_otp_code || null,
+                    pickupOtpVerifiedAt: r.pickup_otp_verified_at || null,
                 }));
 
                 const all = [
@@ -676,15 +725,55 @@
                 ? `<div class="stage-updated">Updated: ${escapeHtml(formatFullDateTime(updatedAt))}</div>`
                 : '';
 
-            const actionHtml = stage === 'delivered'
-                ? `<span class="delivered-pill">✅ Trip Completed</span>`
-                : `<button class="advance-btn" onclick="advanceStageByKey('${keyFor(b)}')">${escapeHtml(nextLabel)}</button>`;
+            let actionHtml;
+            if (stage === 'delivered') {
+                actionHtml = `<span class="delivered-pill">✅ Trip Completed</span>`;
+            } else if (stage === 'pickup_started') {
+                // Gate "Vehicle Picked Up" on the customer verifying this
+                // partner by OTP first — see generateOtpByKey/renderStageBlock's
+                // OTP block below, and _PickupOtpVerification in
+                // vehicle_bookings_screen.dart on the customer side.
+                actionHtml = renderPickupOtpBlock(b);
+            } else {
+                actionHtml = `<button class="advance-btn" onclick="advanceStageByKey('${keyFor(b)}')">${escapeHtml(nextLabel)}</button>`;
+            }
 
             return `
                 <div class="stage-block">
                     <div class="stage-current">${escapeHtml(label)}</div>
                     ${updatedHtml}
                     ${actionHtml}
+                </div>
+            `;
+        }
+
+        // Shown only while stage === 'pickup_started' — walks the partner
+        // through generating a code, reading it to the customer, and
+        // waiting for the customer to key it into the app before the
+        // "Vehicle Picked Up" button becomes available at all.
+        function renderPickupOtpBlock(b) {
+            if (b.pickupOtpVerifiedAt) {
+                return `
+                    <div class="otp-verified">✅ Customer verified you — go ahead and take the vehicle.</div>
+                    <button class="advance-btn" onclick="advanceStageByKey('${keyFor(b)}')">Vehicle Picked Up</button>
+                `;
+            }
+
+            if (b.pickupOtpCode) {
+                return `
+                    <div class="otp-box">
+                        <div class="otp-box-label">Tell the customer this code:</div>
+                        <div class="otp-code">${escapeHtml(b.pickupOtpCode)}</div>
+                        <div class="otp-box-hint">Waiting for the customer to enter it in their app…</div>
+                        <button class="advance-btn secondary" onclick="fetchAssignedBookings(currentPartnerId)">Check Again</button>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="otp-box">
+                    <div class="otp-box-hint">At the pickup location? Generate a code and read it to the customer before taking the vehicle.</div>
+                    <button class="advance-btn" onclick="generateOtpByKey('${keyFor(b)}')">Generate Pickup OTP</button>
                 </div>
             `;
         }
@@ -727,9 +816,41 @@
             if (booking) await advanceStage(booking);
         }
 
+        // Generates a fresh 4-digit pickup code and saves it — the render
+        // above then shows it big for the partner to read to the customer,
+        // and switches to "waiting for verification" until the customer
+        // enters it correctly in the app (which sets pickup_otp_verified_at).
+        async function generateOtpByKey(key) {
+            const booking = bookingsIndex[key];
+            if (!booking) return;
+
+            const code = String(Math.floor(1000 + Math.random() * 9000));
+
+            const { error } = await sbClient
+                .from(booking.sourceTable)
+                .update({ pickup_otp_code: code, pickup_otp_generated_at: new Date().toISOString() })
+                .eq('id', booking.id);
+
+            if (error) {
+                alert('Failed to generate OTP: ' + error.message);
+                return;
+            }
+
+            await fetchAssignedBookings(currentPartnerId);
+        }
+
         async function advanceStage(booking) {
             const next = nextStage(booking.deliveryStage);
             if (!next) return; // already delivered — trip is closed
+
+            // Defense in depth — the button to reach here shouldn't even
+            // render until the customer has verified the OTP (see
+            // renderPickupOtpBlock), but guard the actual write too in
+            // case of a stale render/double-click.
+            if (booking.deliveryStage === 'pickup_started' && !booking.pickupOtpVerifiedAt) {
+                alert('Ask the customer to verify your pickup OTP in their app first.');
+                return;
+            }
 
             const column = STAGE_COLUMN[next];
             const nowIso = new Date().toISOString();

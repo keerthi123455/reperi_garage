@@ -52,3 +52,12 @@ const String kPartnerBanner = 'assets/images/partner.jpeg';
 /// striped placeholder box.
 const String kPollutionBanner = 'assets/images/pollution.jpeg';
 const String kInspectionBanner = 'assets/images/inspection.jpeg';
+
+
+/// Shown in the 3D coverflow below "What does your two wheeler need
+/// today?", in place of [kCoverflowBanners], when the active vehicle on the
+/// Home screen is a two-wheeler.
+const List<String> kTwoWheelerCoverflowBanners = [
+  'assets/images/servicing_twowheeler.jpeg',
+  'assets/images/washing_twowheeler.jpeg',
+];
