@@ -139,7 +139,7 @@ class _FleetManagementScreenState extends State<FleetManagementScreen> {
                         children: [
                           _statCard('21', 'STEP CHECK'),
                           const SizedBox(width: 10),
-                          _statCard('<1hr', 'REPORT TIME'),
+                          _statCard('Fast', 'REPORT TIME'),
                           const SizedBox(width: 10),
                           _statCard('6', 'CATEGORIES'),
                         ],
@@ -171,7 +171,7 @@ class _FleetManagementScreenState extends State<FleetManagementScreen> {
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              'Every vehicle undergoes the same 21-step inspection regardless of location, garage, or mechanic. Digital findings shared within 1 hour of pickup.',
+                              'Every vehicle undergoes the same 21-step inspection regardless of location, garage, or mechanic. Digital findings shared shortly after pickup.',
                               style: TextStyle(
                                 color: AppColors.mut,
                                 height: 1.6,
@@ -270,7 +270,7 @@ class _FleetManagementScreenState extends State<FleetManagementScreen> {
                             _workflowStep('2', '21-Step Inspection',
                                 'With photo documentation'),
                             _workflowStep('3', 'Digital Report',
-                                'Delivered within 1 hour'),
+                                'Delivered promptly'),
                             _workflowStep('4', 'Repair Estimate',
                                 'Transparent pricing'),
                             _workflowStep('5', 'Approval & Execution',

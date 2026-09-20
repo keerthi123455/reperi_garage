@@ -544,8 +544,8 @@ class _PaintCareScreenState extends State<PaintCareScreen> {
     final items = [
       (Icons.verified_outlined, 'Paint-safe\nProducts'),
       (Icons.shield_outlined, 'Imported\nCoatings'),
-      (Icons.diamond_outlined, 'OEM\nFinish'),
-      (Icons.engineering_outlined, 'Certified\nDetailers'),
+      (Icons.diamond_outlined, 'Factory-grade\nFinish'),
+      (Icons.engineering_outlined, 'Skilled\nDetailers'),
     ];
 
     return Padding(

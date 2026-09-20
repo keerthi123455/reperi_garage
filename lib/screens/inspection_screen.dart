@@ -273,7 +273,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
         builder: (_) => PaymentScreen(
           title: 'Vehicle Health Check',
           price: 'Get Quote',
-          duration: 'Report in 30 min',
+          duration: 'Quick turnaround',
           vehicleId: widget.vehicleId,
           showPickupDropOption: false,
           onSuccess: _saveInspectionBooking,
@@ -354,7 +354,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
                               onTap: () => _showBenefitSheet(
                                 title: 'Your Digital Report',
                                 description:
-                                    'Within 30 minutes of the inspection, you get a '
+                                    'Shortly after the inspection, you get a '
                                     'digital report with your REPERI Score, a score '
                                     'for every category, diagnostic and paint '
                                     'readings, photos, and our recommendations.',
@@ -553,7 +553,7 @@ class _Hero extends StatelessWidget {
                       Icon(Icons.bolt, color: AppColors.onAccentDark, size: 16),
                       const SizedBox(width: 6),
                       Text(
-                        'DIGITAL REPORT READY IN 30 MINUTES',
+                        'DIGITAL REPORT DELIVERED QUICKLY',
                         style: GoogleFonts.manrope(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
@@ -639,6 +639,16 @@ class _ReperiScoreCard extends StatelessWidget {
       ),
       child: Column(
         children: [
+          Text(
+            'SAMPLE SCORE — ILLUSTRATIVE',
+            style: GoogleFonts.manrope(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+              color: AppColors.mut,
+            ),
+          ),
+          const SizedBox(height: 6),
           Text(
             'REPERI SCORE',
             style: GoogleFonts.manrope(
@@ -1038,7 +1048,7 @@ class _DigitalReportCard extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'READY IN 30 MINUTES',
+                'DELIVERED QUICKLY',
                 style: GoogleFonts.manrope(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,

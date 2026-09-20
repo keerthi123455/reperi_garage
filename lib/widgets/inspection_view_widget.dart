@@ -22,6 +22,7 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
   List<Map> pickupPhotos = [];
   List<Map> deliveryPhotos = [];
   bool loading = true;
+  bool hasError = false;
 
   // Collapse/expand states
   bool mainSectionExpanded = false;
@@ -36,6 +37,10 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
 
   Future<void> fetchInspections() async {
     final supabase = Supabase.instance.client;
+    setState(() {
+      loading = true;
+      hasError = false;
+    });
 
     try {
       // Fetch pickup inspection
@@ -88,7 +93,10 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => loading = false);
+      setState(() {
+        loading = false;
+        hasError = true;
+      });
     }
   }
 
@@ -121,14 +129,40 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
           color: const Color(0xFF111111),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: const Center(
-          child: Text(
-            'No inspection reports yet',
-            style: TextStyle(
-              color: Colors.white54,
-              fontSize: 14,
-            ),
-          ),
+        child: Center(
+          child: hasError
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Could not load inspection reports',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: fetchInspections,
+                      child: const Text(
+                        'RETRY',
+                        style: TextStyle(
+                          color: Color(0xFFD4A017),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : const Text(
+                  'No inspection reports yet',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 14,
+                  ),
+                ),
         ),
       );
     }

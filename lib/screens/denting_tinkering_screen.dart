@@ -583,8 +583,8 @@ class _DentingTinkeringScreenState extends State<DentingTinkeringScreen> {
     final items = [
       (Icons.construction_outlined, 'Paint-safe\nTools'),
       (Icons.verified_user_outlined, 'Insurance\nSupport'),
-      (Icons.diamond_outlined, 'OEM\nFinish'),
-      (Icons.engineering_outlined, 'Expert\nTechnicians'),
+      (Icons.diamond_outlined, 'Factory-grade\nFinish'),
+      (Icons.engineering_outlined, 'Skilled\nTechnicians'),
     ];
 
     return Padding(

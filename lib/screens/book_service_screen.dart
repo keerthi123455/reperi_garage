@@ -320,7 +320,7 @@ class _BookServiceScreenState
 
                                     // ── Description ──
                                     Text(
-                                      'Professional servicing for your vehicle with genuine parts and expert technicians.',
+                                      'Professional servicing for your vehicle, handled by our skilled technicians.',
                                       style: TextStyle(
                                         color: AppColors.txt.withOpacity(0.7),
                                         fontSize: 15,

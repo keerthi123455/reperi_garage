@@ -52,8 +52,8 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
   Future<void> _loadAddresses() async {
     setState(() => loading = true);
     try {
-      final addrs = await _addressService.getUserAddresses();
-      final defaultAddr = await _addressService.getDefaultAddress();
+      final addrs = await _addressService.getUserAddresses(rethrowOnError: true);
+      final defaultAddr = await _addressService.getDefaultAddress(rethrowOnError: true);
 
       if (mounted) {
         setState(() {

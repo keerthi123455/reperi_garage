@@ -235,7 +235,7 @@ class _PaymentScreenState
   /// Load the default address for display
   Future<void> _loadDefaultAddress() async {
     try {
-      final defaultAddr = await _addressService.getDefaultAddress();
+      final defaultAddr = await _addressService.getDefaultAddress(rethrowOnError: true);
 
       if (mounted) {
         setState(() {

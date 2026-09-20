@@ -244,7 +244,7 @@ class _SparesScreenState extends State<SparesScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'HAG-certified parts for your engine, cabin & AC.',
+                    'HAG filters for your engine, cabin & AC.',
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.88),
                       fontSize: 13.5,

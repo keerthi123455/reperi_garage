@@ -130,10 +130,10 @@ const _comparisonRows = [
 ];
 
 const _whyChooseUs = [
-  (Icons.build_circle_rounded, 'Certified Mechanics'),
+  (Icons.build_circle_rounded, 'Skilled Mechanics'),
   (Icons.receipt_long_rounded, 'Transparent Pricing'),
   (Icons.smartphone_rounded, 'Digital Vehicle Health Report'),
-  (Icons.verified_user_rounded, 'Genuine Parts'),
+  (Icons.verified_user_rounded, 'Quality Parts'),
 ];
 
 class ServicingPackageScreen extends StatefulWidget {

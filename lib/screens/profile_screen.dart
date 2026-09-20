@@ -627,7 +627,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     'active_vehicle_id': inserted['id'],
                   });
                 } else {
+                  // The "Your Name" field is shown (and required) on every
+                  // vehicle add, not just the first — it needs to actually
+                  // save here too, or re-entering it after the first
+                  // vehicle silently does nothing and the drawer keeps
+                  // showing whatever (or nothing) was saved originally.
                   await supabase.from('profiles').update({
+                    'name': nameController.text.trim(),
                     'active_vehicle_id': inserted['id'],
                   }).eq('id', user.id);
                 }
@@ -642,7 +648,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 if (!mounted) return;
                 Navigator.pop(ctx);
-                fetchVehicles();
+                await fetchVehicles();
+                vehicleChangeBus.notifyVehicleUpdated();
 
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(

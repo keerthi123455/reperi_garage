@@ -150,8 +150,13 @@ class _HomeScreenState extends State<HomeScreen> {
     // Fired whenever a vehicle's details are edited from anywhere else in
     // the app (My Garage, the vehicle dashboard) — re-pulls the fleet so
     // this screen's carousel reflects the change immediately, without
-    // needing to leave and come back.
+    // needing to leave and come back. The profile name can change at the
+    // same time (the "Your Name" field lives in the same add-vehicle
+    // sheet), so it needs the same re-fetch-on-notify treatment — without
+    // this, the drawer keeps showing a stale/generic name until the app
+    // is fully restarted.
     vehicleChangeBus.addListener(_loadVehicles);
+    vehicleChangeBus.addListener(_loadProfile);
     _loadVehicles();
     _loadProfile();
     _loadServiceAddress();
@@ -732,6 +737,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     themeController.removeListener(_onThemeChanged);
     vehicleChangeBus.removeListener(_loadVehicles);
+    vehicleChangeBus.removeListener(_loadProfile);
     _toastTimer?.cancel();
     _coverflowPosition.dispose();
     _twoWheelerCoverflowPosition.dispose();

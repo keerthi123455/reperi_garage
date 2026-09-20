@@ -12,7 +12,16 @@ class AddressService {
   final supabase = Supabase.instance.client;
 
   // ── Get all addresses for current user ──
-  Future<List<Map<String, dynamic>>> getUserAddresses() async {
+  //
+  // [rethrowOnError] defaults to false because most callers (payment/
+  // booking flows) treat a saved address as optional prefill — a network
+  // blip here shouldn't abort an otherwise-valid booking. Screens whose
+  // whole job is showing the user's saved addresses (address_management_
+  // screen.dart) pass true instead, since there an empty list must be
+  // distinguishable from "the fetch failed" — silently returning []
+  // either way made a real fetch failure look identical to "you have no
+  // addresses yet".
+  Future<List<Map<String, dynamic>>> getUserAddresses({bool rethrowOnError = false}) async {
     try {
       final user = supabase.auth.currentUser;
       if (user == null) return [];
@@ -26,12 +35,13 @@ class AddressService {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
+      if (rethrowOnError) rethrow;
       return [];
     }
   }
 
   // ── Get default address ──
-  Future<Map<String, dynamic>?> getDefaultAddress() async {
+  Future<Map<String, dynamic>?> getDefaultAddress({bool rethrowOnError = false}) async {
     try {
       final user = supabase.auth.currentUser;
       if (user == null) return null;
@@ -45,12 +55,13 @@ class AddressService {
 
       if (response.isEmpty) {
         // Return first address if no default set
-        final allAddresses = await getUserAddresses();
+        final allAddresses = await getUserAddresses(rethrowOnError: rethrowOnError);
         return allAddresses.isNotEmpty ? allAddresses.first : null;
       }
 
       return response[0];
     } catch (e) {
+      if (rethrowOnError) rethrow;
       return null;
     }
   }

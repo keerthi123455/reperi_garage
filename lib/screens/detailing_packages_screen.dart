@@ -370,7 +370,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '24/7 Assistance',
+                                'Dedicated Support',
                                 style: TextStyle(
                                   color: AppColors.txt,
                                   fontSize: 14,
@@ -379,7 +379,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'Expert support anytime on call',
+                                'Reach our team on call for any queries',
                                 style: TextStyle(
                                   color: AppColors.mut,
                                   fontSize: 13,
@@ -417,8 +417,8 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
               const SizedBox(width: 12),
               _buildStatCard(
                 icon: Icons.shield_rounded,
-                value: '8 Years',
-                label: 'Max Warranty',
+                value: 'Up to 8 Yrs',
+                label: 'Warranty',
               ),
             ],
           ),
@@ -581,7 +581,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
         'isPremium': false,
       },
       {
-        'brand': 'Garware Pro',
+        'brand': 'PPF - Full Coverage',
         'price': '₹75,000 - ₹1,00,000',
         'coverage': 'Full Coverage',
         'warranty': '8 Years',
@@ -740,7 +740,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
         'isPremium': false,
       },
       {
-        'brand': 'Stek Brand Premium',
+        'brand': 'Sun Film - Premium',
         'price': '₹25,000',
         'coverage': 'Full Body',
         'warranty': '5-10 Years',
@@ -1081,141 +1081,297 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     );
   }
 
+  // Common real film/coating brands per category — the package itself is
+  // generic ("PPF - Full Coverage", not a specific manufacturer's name),
+  // and the customer picks which brand they'd actually like installed
+  // here instead. Avoids presenting any one manufacturer's product as our
+  // own package, and "Others" covers anything not listed.
+  static const Map<String, List<String>> _brandOptionsByCategory = {
+    'PPF': ['3M', 'Garware', 'STEK', 'XPEL', 'Llumar'],
+    'Sun Film': ['Garware', '3M', 'Llumar', 'V-Kool', 'Solar Gard'],
+    'Ceramic': ['CarPro', 'Gtechniq', 'Ceramic Pro', 'Nasiol'],
+    'Graphene': ['CarPro Graphene', 'Gyeon', 'Feynlab'],
+  };
+
   // ── BOOKING CONFIRMATION DIALOG ──
   void _showBookingConfirmation(Map<String, dynamic> package) {
     final serviceName = package['brand'] ?? 'Service';
+    final category = _getServiceCategory(serviceName);
+    final brandOptions = _brandOptionsByCategory[category] ?? const [];
+    final othersController = TextEditingController();
+
     showDialog(
       context: context,
-      builder: (context) => Dialog(
-        backgroundColor: AppColors.surfaceRaised,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Check icon
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD4A017).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(32),
-                  border: Border.all(
-                    color: const Color(0xFFD4A017),
-                    width: 2,
+      builder: (context) {
+        String? selectedBrand;
+        bool showOthersField = false;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final chosenBrand = showOthersField
+                ? (othersController.text.trim().isEmpty ? null : othersController.text.trim())
+                : selectedBrand;
+
+            return Dialog(
+              backgroundColor: AppColors.surfaceRaised,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Check icon
+                      Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD4A017).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(32),
+                          border: Border.all(
+                            color: const Color(0xFFD4A017),
+                            width: 2,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.check_circle_rounded,
+                          color: Color(0xFFD4A017),
+                          size: 40,
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Service name (no "Booking Confirmed!" title)
+                      Text(
+                        serviceName,
+                        style: const TextStyle(
+                          color: Color(0xFFD4A017),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+
+                      if (brandOptions.isNotEmpty) ...[
+                        const SizedBox(height: 22),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Preferred brand (optional)',
+                            style: TextStyle(
+                              color: AppColors.txt,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ...brandOptions.map((b) {
+                              final selected = !showOthersField && selectedBrand == b;
+                              return GestureDetector(
+                                onTap: () => setDialogState(() {
+                                  showOthersField = false;
+                                  selectedBrand = b;
+                                }),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  curve: Curves.easeOut,
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: selected ? const Color(0xFFD4A017) : AppColors.chipBg,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: selected ? const Color(0xFFD4A017) : AppColors.line,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    b,
+                                    style: TextStyle(
+                                      color: selected ? AppColors.onAccentDark : AppColors.txt,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                            GestureDetector(
+                              onTap: () => setDialogState(() {
+                                showOthersField = true;
+                                selectedBrand = null;
+                              }),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                curve: Curves.easeOut,
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: showOthersField ? const Color(0xFFD4A017) : AppColors.chipBg,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: showOthersField ? const Color(0xFFD4A017) : AppColors.line,
+                                  ),
+                                ),
+                                child: Text(
+                                  'Others',
+                                  style: TextStyle(
+                                    color: showOthersField ? AppColors.onAccentDark : AppColors.txt,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        ClipRect(
+                          child: AnimatedSize(
+                            duration: const Duration(milliseconds: 260),
+                            curve: Curves.easeOutCubic,
+                            alignment: Alignment.topCenter,
+                            child: showOthersField
+                                ? Padding(
+                                    padding: const EdgeInsets.only(top: 12),
+                                    child: TextField(
+                                      controller: othersController,
+                                      autofocus: true,
+                                      onChanged: (_) => setDialogState(() {}),
+                                      style: TextStyle(color: AppColors.txt),
+                                      decoration: InputDecoration(
+                                        hintText: 'Enter brand name',
+                                        hintStyle: TextStyle(color: AppColors.mut),
+                                        filled: true,
+                                        fillColor: AppColors.surfaceSunken,
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 12,
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(color: AppColors.line),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(color: AppColors.line),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: const BorderSide(color: Color(0xFFD4A017), width: 1.5),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : const SizedBox(width: double.infinity),
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 20),
+
+                      // Message box
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceSunken,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.line,
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          'On confirming, our expert will have a discussion with you and go ahead with the further processes',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.txt.withOpacity(0.7),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            height: 1.6,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Confirm button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _showSuccessAnimation(
+                              serviceName,
+                              package: package,
+                              preferredBrand: chosenBrand,
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFD4A017),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Discuss',
+                            style: TextStyle(
+                              color: AppColors.onAccentDark,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // Cancel button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(
+                              color: AppColors.line,
+                              width: 1,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Maybe later',
+                            style: TextStyle(
+                              color: AppColors.txt.withOpacity(0.7),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                child: const Icon(
-                  Icons.check_circle_rounded,
-                  color: Color(0xFFD4A017),
-                  size: 40,
                 ),
               ),
-
-              const SizedBox(height: 20),
-
-              // Service name (no "Booking Confirmed!" title)
-              Text(
-                serviceName,
-                style: const TextStyle(
-                  color: Color(0xFFD4A017),
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Message box
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceSunken,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.line,
-                    width: 1,
-                  ),
-                ),
-                child: Text(
-                  'On confirming, our expert will have a discussion with you and go ahead with the further processes',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.txt.withOpacity(0.7),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    height: 1.6,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Confirm button
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _showSuccessAnimation(serviceName, package: package);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD4A017),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'Discuss',
-                    style: TextStyle(
-                      color: AppColors.onAccentDark,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Cancel button
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(
-                      color: AppColors.line,
-                      width: 1,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'Maybe later',
-                    style: TextStyle(
-                      color: AppColors.txt.withOpacity(0.7),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+            );
+          },
+        );
+      },
+    ).then((_) => othersController.dispose());
   }
 
   // ── SUCCESS ANIMATION DIALOG ──
-  void _showSuccessAnimation(String serviceName, {Map<String, dynamic>? package}) {
+  void _showSuccessAnimation(
+    String serviceName, {
+    Map<String, dynamic>? package,
+    String? preferredBrand,
+  }) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1309,6 +1465,24 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                                 height: 1.6,
                               ),
                             ),
+                            if (preferredBrand != null && preferredBrand.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFD4A017).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  'Preferred brand: $preferredBrand',
+                                  style: const TextStyle(
+                                    color: Color(0xFFD4A017),
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       );
@@ -1349,7 +1523,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     // Auto-close dialog and save booking after 3 seconds
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && Navigator.canPop(context)) {
-        _saveBookingToDatabase(serviceName, package: package);
+        _saveBookingToDatabase(serviceName, package: package, preferredBrand: preferredBrand);
         Navigator.pop(context);
       }
     });
@@ -1389,6 +1563,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
   Future<void> _saveBookingToDatabase(
     String serviceName, {
     Map<String, dynamic>? package,
+    String? preferredBrand,
   }) async {
     try {
       final supabase = Supabase.instance.client;
@@ -1426,6 +1601,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
         'service_category': serviceCategory,
         'service_price': servicePrice,
         'service_warranty': serviceWarranty,
+        'preferred_brand': preferredBrand,
       }).select();
 
       if (response != null && response.isNotEmpty) {

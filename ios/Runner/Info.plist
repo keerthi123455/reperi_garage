@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-<string>Reperi Garage uses your location to dispatch roadside assistance.</string>
+<string>Reperi Garage uses your location to auto-detect your service or pickup address when booking, and to dispatch help for Roadside Assistance.</string>
 	<key>NSCameraUsageDescription</key>
 <string>Reperi Garage uses your camera to photograph your vehicle so we can recommend the right service.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

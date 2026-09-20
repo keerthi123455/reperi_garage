@@ -85,10 +85,10 @@ const _comparisonRows = [
 ];
 
 const _whyChooseUs = [
-  (Icons.ac_unit_rounded, 'Certified AC Technicians'),
+  (Icons.ac_unit_rounded, 'Skilled AC Technicians'),
   (Icons.receipt_long_rounded, 'Transparent Pricing'),
-  (Icons.verified_user_rounded, 'Genuine Refrigerant & Parts'),
-  (Icons.thermostat_rounded, 'Ice-Cold Cooling Guaranteed'),
+  (Icons.verified_user_rounded, 'Quality Refrigerant & Parts'),
+  (Icons.thermostat_rounded, 'Focused on Cooling Performance'),
 ];
 
 class AcPackageScreen extends StatefulWidget {
