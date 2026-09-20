@@ -10,6 +10,24 @@ import '/services/admin_assignment_service.dart';  // ✅ NEW: Admin assignment 
 import '/services/delivery_partner_assignment_service.dart';
 import '/services/service_area.dart';
 
+/// Fixed white/blue corporate palette for this screen — set explicitly
+/// rather than pulled from Theme.of(context), so checkout looks identical
+/// whether the device is in light or dark mode. Radii here are kept modest
+/// (12–16) rather than the pill-shaped buttons used elsewhere in the app;
+/// sharper corners read as more like a bank/payment form, which is the
+/// point on the one screen where people are about to pay.
+class _PayColors {
+  static const bg = Color(0xFFF5F8FC);
+  static const surface = Colors.white;
+  static const border = Color(0xFFE0E7F1);
+  static const navy = Color(0xFF0E2A4A);
+  static const blue = Color(0xFF1D5FD6);
+  static const blueDark = Color(0xFF123E8F);
+  static const blueTint = Color(0xFFEAF1FC);
+  static const muted = Color(0xFF62728A);
+  static const success = Color(0xFF1E9E64);
+}
+
 class PaymentScreen extends StatefulWidget {
   final String title;
   final String price;
@@ -76,12 +94,10 @@ class PaymentScreen extends StatefulWidget {
   });
 
   @override
-  State<PaymentScreen> createState() =>
-      _PaymentScreenState();
+  State<PaymentScreen> createState() => _PaymentScreenState();
 }
 
-class _PaymentScreenState
-    extends State<PaymentScreen>
+class _PaymentScreenState extends State<PaymentScreen>
     with SingleTickerProviderStateMixin {
   bool orderPlaced = false;
   bool isProcessing = false;
@@ -129,20 +145,20 @@ class _PaymentScreenState
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF262626),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: _PayColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Doorstep Pickup & Drop',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(color: _PayColors.navy, fontWeight: FontWeight.bold),
         ),
         content: const Text(
           '₹100 will be added to your bill for doorstep pickup and drop-off. Continue?',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: _PayColors.muted),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
+            child: const Text('CANCEL', style: TextStyle(color: _PayColors.muted)),
           ),
           TextButton(
             onPressed: () {
@@ -151,7 +167,7 @@ class _PaymentScreenState
             },
             child: const Text(
               'YES, ADD ₹100',
-              style: TextStyle(color: Color(0xFFD4A017), fontWeight: FontWeight.bold),
+              style: TextStyle(color: _PayColors.blue, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -167,11 +183,8 @@ class _PaymentScreenState
   bool addressLoading = true;
   late final AddressService _addressService;
 
-  late AnimationController
-      _controller;
-
-  late Animation<double>
-      _scaleAnimation;
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
@@ -179,12 +192,10 @@ class _PaymentScreenState
 
     _controller = AnimationController(
       vsync: this,
-      duration:
-          const Duration(milliseconds: 700),
+      duration: const Duration(milliseconds: 700),
     );
 
-    _scaleAnimation =
-        CurvedAnimation(
+    _scaleAnimation = CurvedAnimation(
       parent: _controller,
       curve: Curves.elasticOut,
     );
@@ -211,10 +222,11 @@ class _PaymentScreenState
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF262626),
+        backgroundColor: _PayColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'ADD A VEHICLE TO BOOK THIS SERVICE',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(color: _PayColors.navy, fontWeight: FontWeight.bold),
         ),
         actions: [
           TextButton(
@@ -225,13 +237,13 @@ class _PaymentScreenState
                 MaterialPageRoute(builder: (_) => const ProfileScreen(autoOpenAddVehicle: true)),
               );
             },
-            child: const Text('ADD VEHICLE', style: TextStyle(color: Color(0xFFD4A017))),
+            child: const Text('ADD VEHICLE', style: TextStyle(color: _PayColors.blue)),
           ),
         ],
       ),
     );
   }
-  
+
   /// Load the default address for display
   Future<void> _loadDefaultAddress() async {
     try {
@@ -285,14 +297,15 @@ class _PaymentScreenState
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF262626),
+        backgroundColor: _PayColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Not Available in Your Area',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(color: _PayColors.navy, fontWeight: FontWeight.bold),
         ),
         content: const Text(
           'We are not operational in your area yet! Try a different pickup address, or come back later.',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: _PayColors.muted),
         ),
         actions: [
           TextButton(
@@ -300,20 +313,20 @@ class _PaymentScreenState
               Navigator.pop(context); // close dialog
               Navigator.pop(context); // leave PaymentScreen
             },
-            child: const Text('CANCEL', style: TextStyle(color: Colors.white70)),
+            child: const Text('CANCEL', style: TextStyle(color: _PayColors.muted)),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context); // close dialog only — stay on PaymentScreen
               _navigateToAddressManagement();
             },
-            child: const Text('CHANGE ADDRESS', style: TextStyle(color: Color(0xFFD4A017))),
+            child: const Text('CHANGE ADDRESS', style: TextStyle(color: _PayColors.blue)),
           ),
         ],
       ),
     );
   }
-  
+
   /// Check if address is valid before proceeding to payment
   bool _isAddressValid() {
     return selectedAddress.isNotEmpty &&
@@ -323,30 +336,31 @@ class _PaymentScreenState
         selectedLatitude != null &&
         selectedLongitude != null;
   }
-  
+
   /// Show error popup if address is invalid
   void _showAddressErrorPopup() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF262626),
+        backgroundColor: _PayColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Address Required',
           style: TextStyle(
-            color: Colors.white,
+            color: _PayColors.navy,
             fontWeight: FontWeight.bold,
           ),
         ),
         content: const Text(
           'Enter valid address to continue to payment',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: _PayColors.muted),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
               'Close',
-              style: TextStyle(color: Color(0xFFD4A017)),
+              style: TextStyle(color: _PayColors.blue),
             ),
           ),
           TextButton(
@@ -356,14 +370,14 @@ class _PaymentScreenState
             },
             child: const Text(
               'Add Address',
-              style: TextStyle(color: Color(0xFFD4A017)),
+              style: TextStyle(color: _PayColors.blue),
             ),
           ),
         ],
       ),
     );
   }
-  
+
   /// Navigate to address management screen
   Future<void> _navigateToAddressManagement() async {
     await Navigator.push(
@@ -407,7 +421,7 @@ class _PaymentScreenState
       _showAddressErrorPopup();
       return;
     }
-    
+
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
 
@@ -497,7 +511,7 @@ class _PaymentScreenState
         // ── Get location and customer details ──
         final addressService = AddressService();
         final defaultAddr = await addressService.getDefaultAddress();
-        
+
         // Get customer details from profiles
         Map<String, dynamic>? profileData;
         try {
@@ -509,7 +523,7 @@ class _PaymentScreenState
         } catch (e) {
           // Profile might not exist, continue with null values
         }
-        
+
         // ✅ NEW: Get admin ID — forcedAdminUsername (e.g. Roadside
         // Assistance -> 'emergency_service') always wins; otherwise scoped
         // to this vehicle's type (two-wheeler bookings only rotate among
@@ -547,11 +561,11 @@ class _PaymentScreenState
           'dropoff_latitude': defaultAddr?['latitude'],
           'dropoff_longitude': defaultAddr?['longitude'],
           'dropoff_address_name': defaultAddr?['name'],
-          
+
           // ── Customer Details ──
           'customer_name': profileData?['full_name'] ?? 'Unknown',
           'customer_phone': profileData?['phone'],
-          
+
           // ✅ NEW: Admin Assignment (Load-Balanced)
           'assigned_to_admin_id': assignedAdminId,
         });
@@ -576,7 +590,7 @@ class _PaymentScreenState
       _showAddressErrorPopup();
       return;
     }
-    
+
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
 
@@ -671,16 +685,102 @@ class _PaymentScreenState
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+        Text(label, style: const TextStyle(color: _PayColors.muted, fontSize: 14)),
         Text(
           value,
           style: TextStyle(
-            color: valueColor ?? Colors.white,
+            color: valueColor ?? _PayColors.navy,
             fontSize: 14,
             fontWeight: FontWeight.w700,
           ),
         ),
       ],
+    );
+  }
+
+  /// The doorstep pickup/drop toggle — given a bordered, tinted card of its
+  /// own (rather than blending into the bill breakdown like the other
+  /// rows) plus a small badge, so it reads as the one decision on this
+  /// screen worth pausing on instead of another line item to skim past.
+  Widget _pickupDropCard() {
+    final active = _addPickupDrop;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _PayColors.blueTint,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: active ? _PayColors.blue : _PayColors.blue.withOpacity(0.35),
+          width: active ? 1.6 : 1.1,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: _PayColors.blue,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 21),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    const Text(
+                      'Doorstep Pickup & Drop',
+                      style: TextStyle(color: _PayColors.navy, fontWeight: FontWeight.w800, fontSize: 14),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _PayColors.blue,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'RECOMMENDED',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  active
+                      ? 'Added — +₹$_pickupDropFee for pickup & drop'
+                      : 'We collect your vehicle and drop it back — no need to visit the garage',
+                  style: TextStyle(
+                    color: active ? _PayColors.blue : _PayColors.muted,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.normal,
+                    fontSize: 12,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Switch(
+            value: _addPickupDrop,
+            onChanged: _setPickupDrop,
+            activeColor: _PayColors.blue,
+          ),
+        ],
+      ),
     );
   }
 
@@ -693,8 +793,7 @@ class _PaymentScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFF262626),
+      backgroundColor: _PayColors.bg,
 
       body: orderPlaced
           ? Center(
@@ -702,70 +801,40 @@ class _PaymentScreenState
                 constraints: const BoxConstraints(maxWidth: 600),
                 child: ScaleTransition(
                   scale: _scaleAnimation,
-
                   child: Column(
-                    mainAxisAlignment:
-                        MainAxisAlignment
-                            .center,
-
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                    Container(
-                      width: 140,
-                      height: 140,
-
-                      decoration:
-                          const BoxDecoration(
-                        shape:
-                            BoxShape.circle,
-
-                        color:
-                            Color(
-                                0xFFD4A017),
+                      Container(
+                        width: 128,
+                        height: 128,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _PayColors.blue,
+                        ),
+                        child: const Icon(
+                          Icons.check_rounded,
+                          size: 72,
+                          color: Colors.white,
+                        ),
                       ),
-
-                      child: const Icon(
-                        Icons.check,
-                        size: 80,
-                        color:
-                            Colors.black,
+                      const SizedBox(height: 28),
+                      const Text(
+                        'ORDER PLACED',
+                        style: TextStyle(
+                          color: _PayColors.navy,
+                          fontSize: 30,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                        ),
                       ),
-                    ),
-
-                    const SizedBox(
-                        height: 30),
-
-                    const Text(
-                      'ORDER PLACED',
-
-                      style: TextStyle(
-                        color:
-                            Colors.white,
-
-                        fontSize: 34,
-
-                        fontWeight:
-                            FontWeight
-                                .w900,
-
-                        letterSpacing:
-                            2,
+                      const SizedBox(height: 12),
+                      Text(
+                        '${widget.title} booked successfully',
+                        style: const TextStyle(
+                          color: _PayColors.muted,
+                          fontSize: 15,
+                        ),
                       ),
-                    ),
-
-                    const SizedBox(
-                        height: 14),
-
-                    Text(
-                      '${widget.title} booked successfully',
-
-                      style:
-                          const TextStyle(
-                        color:
-                            Colors.white70,
-
-                        fontSize: 16,
-                      ),
-                    ),
                     ],
                   ),
                 ),
@@ -775,525 +844,339 @@ class _PaymentScreenState
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 600),
-                  child:
-                      SingleChildScrollView(
-                    padding:
-                        const EdgeInsets.all(
-                            24),
-
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment
-                              .start,
-
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    /// TOP BAR
-                    Row(
-                      children: [
-
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.pop(
-                                context);
-                          },
-
-                          child: Container(
-                            padding:
-                                const EdgeInsets
-                                    .all(12),
-
-                            decoration:
-                                BoxDecoration(
-                              color: const Color(
-                                  0xFF262626),
-
-                              borderRadius:
-                                  BorderRadius
-                                      .circular(
-                                          18),
-                            ),
-
-                            child: const Icon(
-                              Icons.arrow_back,
-                              color:
-                                  Colors.white,
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(
-                            width: 18),
-
-                        const Text(
-                          'Confirm Order',
-
-                          style:
-                              TextStyle(
-                            color:
-                                Colors.white,
-
-                            fontSize: 28,
-
-                            fontWeight:
-                                FontWeight
-                                    .w900,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(
-                        height: 40),
-
-                    /// PACKAGE CARD
-                    Container(
-                      padding:
-                          const EdgeInsets
-                              .all(24),
-
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            const Color(
-                                0xFF1C1C1C),
-
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                                    30),
-
-                        border: Border.all(
-                          color: const Color(
-                              0xFF3A3A3A),
-                        ),
-                      ),
-
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment
-                                .start,
-
-                        children: [
-
-                          const Text(
-                            'Selected Package',
-
-                            style:
-                                TextStyle(
-                              color:
-                                  Color(
-                                      0xFFD4A017),
-
-                              fontSize:
-                                  14,
-
-                              letterSpacing:
-                                  2,
-                            ),
-                          ),
-
-                          const SizedBox(
-                              height: 18),
-
-                          Text(
-                            widget.title,
-
-                            style:
-                                const TextStyle(
-                              color:
-                                  Colors.white,
-
-                              fontSize:
-                                  30,
-
-                              fontWeight:
-                                  FontWeight
-                                      .w900,
-                            ),
-                          ),
-
-                          const SizedBox(
-                              height: 12),
-
-                          Row(
-                            children: [
-
-                              const Icon(
-                                Icons.timer,
-                                color:
-                                    Colors.white70,
-                                size: 18,
+                        /// TOP BAR
+                        Row(
+                          children: [
+                            GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: _PayColors.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: _PayColors.border),
+                                ),
+                                child: const Icon(
+                                  Icons.arrow_back,
+                                  color: _PayColors.navy,
+                                  size: 20,
+                                ),
                               ),
+                            ),
+                            const SizedBox(width: 16),
+                            const Text(
+                              'Confirm Order',
+                              style: TextStyle(
+                                color: _PayColors.navy,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
 
-                              const SizedBox(
-                                  width: 6),
+                        const SizedBox(height: 32),
 
+                        /// PACKAGE CARD
+                        Container(
+                          padding: const EdgeInsets.all(22),
+                          decoration: BoxDecoration(
+                            color: _PayColors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: _PayColors.border),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _PayColors.navy.withOpacity(0.05),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'SELECTED PACKAGE',
+                                style: TextStyle(
+                                  color: _PayColors.blue,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.5,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
                               Text(
-                                widget
-                                    .duration,
-
-                                style:
-                                    const TextStyle(
-                                  color:
-                                      Colors
-                                          .white70,
+                                widget.title,
+                                style: const TextStyle(
+                                  color: _PayColors.navy,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
-                            ],
-                          ),
-
-                          const SizedBox(
-                              height: 28),
-
-                          /// BILL BREAKDOWN — package amount, the (always
-                          /// free, for now) platform fee, and the optional
-                          /// doorstep pickup/drop add-on.
-                          _billRow('Package Amount', widget.price),
-                          const SizedBox(height: 10),
-                          _billRow('Platform Fee', 'Free', valueColor: const Color(0xFF6FCF97)),
-                          if (_showPickupDrop) ...[
-                            const SizedBox(height: 14),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF262626),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFF3A3A3A)),
-                              ),
-                              child: Row(
+                              const SizedBox(height: 10),
+                              Row(
                                 children: [
-                                  const Icon(Icons.local_shipping_outlined, color: Colors.white70, size: 20),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'Doorstep Pickup & Drop',
-                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
-                                        ),
-                                        Text(
-                                          _addPickupDrop ? '+ ₹$_pickupDropFee added' : 'Not added',
-                                          style: TextStyle(
-                                            color: _addPickupDrop ? const Color(0xFFD4A017) : Colors.white54,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Switch(
-                                    value: _addPickupDrop,
-                                    onChanged: _setPickupDrop,
-                                    activeColor: const Color(0xFFD4A017),
+                                  const Icon(Icons.timer_outlined, color: _PayColors.muted, size: 17),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    widget.duration,
+                                    style: const TextStyle(color: _PayColors.muted, fontSize: 13),
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
-                          const SizedBox(height: 20),
-                          Container(
-                            height: 1,
-                            color: const Color(0xFF3A3A3A),
-                          ),
-                          const SizedBox(height: 20),
+                              const SizedBox(height: 24),
 
-                          Container(
-                            width:
-                                double.infinity,
-
-                            padding:
-                                const EdgeInsets
-                                    .all(22),
-
-                            decoration:
-                                BoxDecoration(
-                              gradient:
-                                  const LinearGradient(
-                                colors: [
-                                  Color(
-                                      0xFFD4A017),
-                                  Color(
-                                      0xFFF5C842),
-                                ],
-                              ),
-
-                              borderRadius:
-                                  BorderRadius
-                                      .circular(
-                                          24),
-                            ),
-
-                            child: Column(
-                              children: [
-
-                                const Text(
-                                  'TOTAL PAYABLE',
-
-                                  style:
-                                      TextStyle(
-                                    color:
-                                        Colors.black87,
-
-                                    letterSpacing:
-                                        2,
-
-                                    fontWeight:
-                                        FontWeight.bold,
-                                  ),
-                                ),
-
-                                const SizedBox(
-                                    height:
-                                        12),
-
-                                Text(
-                                  _totalPriceDisplay,
-
-                                  style:
-                                      const TextStyle(
-                                    color:
-                                        Colors.black,
-
-                                    fontSize:
-                                        42,
-
-                                    fontWeight:
-                                        FontWeight
-                                            .w900,
-                                  ),
-                                ),
+                              /// BILL BREAKDOWN — package amount, the (always
+                              /// free, for now) platform fee, and the optional
+                              /// doorstep pickup/drop add-on.
+                              _billRow('Package Amount', widget.price),
+                              const SizedBox(height: 10),
+                              _billRow('Platform Fee', 'Free', valueColor: _PayColors.success),
+                              if (_showPickupDrop) ...[
+                                const SizedBox(height: 16),
+                                _pickupDropCard(),
                               ],
-                            ),
-                          ),
-                          if (widget.billItems != null) ...[
-                            const SizedBox(height: 20),
-                            Container(
-                              padding: const EdgeInsets.all(18),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF141414),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Column(
-                                children: widget.billItems!
-                                    .map((item) => Padding(
-                                          padding: const EdgeInsets.only(bottom: 8),
-                                          child: Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  item['name']?.toString() ?? '',
-                                                  style: const TextStyle(color: Colors.white70),
-                                                ),
-                                              ),
-                                              Text('₹${item['price']}',
-                                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                                            ],
-                                          ),
-                                        ))
-                                    .toList(),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+                              const SizedBox(height: 20),
+                              Container(height: 1, color: _PayColors.border),
+                              const SizedBox(height: 20),
 
-                    const SizedBox(
-                        height: 50),
-
-                    /// ── ADDRESS DISPLAY SECTION ──
-                    Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF262626),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: const Color(0xFF3A3A3A),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'PICKUP ADDRESS',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.5,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.location_on_rounded,
-                                color: Color(0xFFD4A017),
-                                size: 16,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: addressLoading
-                                    ? const SizedBox(
-                                        height: 16,
-                                        width: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(
-                                            Color(0xFFD4A017),
-                                          ),
-                                        ),
-                                      )
-                                    : Text(
-                                        selectedAddress,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          letterSpacing: 0.3,
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                              ),
-                              const SizedBox(width: 12),
-                              GestureDetector(
-                                onTap: _navigateToAddressManagement,
-                                child: const Text(
-                                  'Change',
-                                  style: TextStyle(
-                                    color: Color(0xFFD4A017),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    decoration: TextDecoration.underline,
-                                  ),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: _PayColors.blue,
+                                  borderRadius: BorderRadius.circular(14),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 32),
-
-                    /// PAY ONLINE BUTTON
-                    GestureDetector(
-                      onTap: isProcessing ? null : placeOnlineOrder,
-
-                      child: Container(
-                        height: 72,
-
-                        decoration:
-                            BoxDecoration(
-                          gradient:
-                              const LinearGradient(
-                            colors: [
-                              Color(
-                                  0xFFD4A017),
-                              Color(
-                                  0xFFF5C842),
-                            ],
-                          ),
-
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                                      28),
-
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(
-                                      0xFFD4A017)
-                                  .withOpacity(
-                                      0.35),
-
-                              blurRadius:
-                                  24,
-
-                              offset:
-                                  const Offset(
-                                      0,
-                                      10),
-                            ),
-                          ],
-                        ),
-
-                        child: Center(
-                          child: isProcessing
-                              ? const SizedBox(
-                                  height: 24,
-                                  width: 24,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.black,
-                                    strokeWidth: 2.5,
-                                  ),
-                                )
-                              : const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
+                                child: Column(
                                   children: [
-                                    Icon(Icons.bolt, color: Colors.black, size: 22),
-                                    SizedBox(width: 10),
-                                    Text(
-                                      'PAY ONLINE',
+                                    const Text(
+                                      'TOTAL PAYABLE',
                                       style: TextStyle(
-                                        color: Colors.black,
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 1,
+                                        color: Colors.white70,
+                                        letterSpacing: 1.5,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      _totalPriceDisplay,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 36,
+                                        fontWeight: FontWeight.w800,
                                       ),
                                     ),
                                   ],
                                 ),
-                        ),
-                      ),
-                    ),
-
-                    if (!widget.onlineOnly) ...[
-                    const SizedBox(
-                        height: 16),
-
-                    /// CASH ON PICKUP BUTTON
-                    GestureDetector(
-                      onTap: isProcessing ? null : placeCashOnPickupOrder,
-
-                      child: Container(
-                        height: 72,
-
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1C1C1C),
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(
-                            color: const Color(0xFF3A3A3A),
+                              ),
+                              if (widget.billItems != null) ...[
+                                const SizedBox(height: 18),
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: _PayColors.bg,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: _PayColors.border),
+                                  ),
+                                  child: Column(
+                                    children: widget.billItems!
+                                        .map((item) => Padding(
+                                              padding: const EdgeInsets.only(bottom: 8),
+                                              child: Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      item['name']?.toString() ?? '',
+                                                      style: const TextStyle(color: _PayColors.muted),
+                                                    ),
+                                                  ),
+                                                  Text('₹${item['price']}',
+                                                      style: const TextStyle(
+                                                          color: _PayColors.navy, fontWeight: FontWeight.w700)),
+                                                ],
+                                              ),
+                                            ))
+                                        .toList(),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
 
-                        child: const Center(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                        const SizedBox(height: 24),
+
+                        /// ── ADDRESS DISPLAY SECTION ──
+                        Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: _PayColors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: _PayColors.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.currency_rupee, color: Colors.white70, size: 20),
-                              SizedBox(width: 10),
-                              Text(
-                                'CASH ON PICKUP',
+                              const Text(
+                                'PICKUP ADDRESS',
                                 style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1,
+                                  color: _PayColors.muted,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.5,
                                 ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.location_on_rounded,
+                                    color: _PayColors.blue,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: addressLoading
+                                        ? const SizedBox(
+                                            height: 16,
+                                            width: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation<Color>(
+                                                _PayColors.blue,
+                                              ),
+                                            ),
+                                          )
+                                        : Text(
+                                            selectedAddress,
+                                            style: const TextStyle(
+                                              color: _PayColors.navy,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              letterSpacing: 0.2,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  GestureDetector(
+                                    onTap: _navigateToAddressManagement,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                      decoration: BoxDecoration(
+                                        color: _PayColors.blueTint,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: _PayColors.blue.withOpacity(0.35)),
+                                      ),
+                                      child: const Text(
+                                        'CHANGE',
+                                        style: TextStyle(
+                                          color: _PayColors.blue,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ),
 
-                    const SizedBox(
-                        height: 40),
-                    ],
+                        const SizedBox(height: 28),
+
+                        /// PAY ONLINE BUTTON
+                        GestureDetector(
+                          onTap: isProcessing ? null : placeOnlineOrder,
+                          child: Container(
+                            height: 58,
+                            decoration: BoxDecoration(
+                              color: _PayColors.blue,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _PayColors.blue.withOpacity(0.28),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: isProcessing
+                                  ? const SizedBox(
+                                      height: 22,
+                                      width: 22,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2.5,
+                                      ),
+                                    )
+                                  : const Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.lock_outline_rounded, color: Colors.white, size: 19),
+                                        SizedBox(width: 10),
+                                        Text(
+                                          'PAY SECURELY ONLINE',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 15.5,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 0.6,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                        ),
+
+                        if (!widget.onlineOnly) ...[
+                          const SizedBox(height: 14),
+
+                          /// CASH ON PICKUP BUTTON
+                          GestureDetector(
+                            onTap: isProcessing ? null : placeCashOnPickupOrder,
+                            child: Container(
+                              height: 58,
+                              decoration: BoxDecoration(
+                                color: _PayColors.surface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: _PayColors.border, width: 1.4),
+                              ),
+                              child: const Center(
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.currency_rupee_rounded, color: _PayColors.navy, size: 18),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'CASH ON PICKUP',
+                                      style: TextStyle(
+                                        color: _PayColors.navy,
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 36),
+                        ],
                       ],
                     ),
                   ),

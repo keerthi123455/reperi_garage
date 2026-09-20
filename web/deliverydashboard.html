@@ -690,6 +690,8 @@
                     },
                     pickupOtpCode: r.pickup_otp_code || null,
                     pickupOtpVerifiedAt: r.pickup_otp_verified_at || null,
+                    returnOtpCode: r.return_otp_code || null,
+                    returnOtpVerifiedAt: r.return_otp_verified_at || null,
                     // Only ever set on 'bookings' — see booking_details_screen.dart's
                     // MARK AS DONE button, which is what flips this to
                     // 'Ready for Pickup' once the garage finishes the service.
@@ -783,6 +785,12 @@
                 // Gate "Picked Up" (from the garage) on the garage's own
                 // MARK AS DONE — see renderGarageWaitBlock below.
                 actionHtml = renderGarageWaitBlock(b);
+            } else if (nextStage(b) === 'delivered') {
+                // Final leg back to the customer — 'out_for_delivery' for
+                // 'bookings', 'to_garage' for pollution/inspection (they
+                // skip the out_for_delivery leg). Gate it on a return OTP,
+                // mirroring renderPickupOtpBlock for the initial pickup.
+                actionHtml = renderReturnOtpBlock(b);
             } else {
                 actionHtml = `<button class="advance-btn" onclick="advanceStageByKey('${keyFor(b)}')">${escapeHtml(nextLabel)}</button>`;
             }
@@ -843,6 +851,37 @@
                 <div class="otp-box">
                     <div class="otp-box-hint">Vehicle dropped at ${escapeHtml(b.garageName || 'the garage')} — waiting for them to finish the service.</div>
                     <button class="advance-btn secondary" onclick="fetchAssignedBookings(currentPartnerId)">Check Again</button>
+                </div>
+            `;
+        }
+
+        // Shown on the leg immediately before 'delivered' — confirms the
+        // customer actually received their vehicle back before the trip
+        // can be closed out. Mirrors renderPickupOtpBlock exactly, just
+        // against the return_otp_* columns instead of pickup_otp_*.
+        function renderReturnOtpBlock(b) {
+            if (b.returnOtpVerifiedAt) {
+                return `
+                    <div class="otp-verified">✅ Customer confirmed receiving the vehicle.</div>
+                    <button class="advance-btn" onclick="advanceStageByKey('${keyFor(b)}')">Vehicle Delivered</button>
+                `;
+            }
+
+            if (b.returnOtpCode) {
+                return `
+                    <div class="otp-box">
+                        <div class="otp-box-label">Tell the customer this code:</div>
+                        <div class="otp-code">${escapeHtml(b.returnOtpCode)}</div>
+                        <div class="otp-box-hint">Waiting for the customer to enter it in their app…</div>
+                        <button class="advance-btn secondary" onclick="fetchAssignedBookings(currentPartnerId)">Check Again</button>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="otp-box">
+                    <div class="otp-box-hint">At the customer's location? Generate a code and read it to them before handing back the vehicle.</div>
+                    <button class="advance-btn" onclick="generateReturnOtpByKey('${keyFor(b)}')">Generate Return OTP</button>
                 </div>
             `;
         }
@@ -935,6 +974,27 @@
             await fetchAssignedBookings(currentPartnerId);
         }
 
+        // Same idea as generateOtpByKey, for the return leg — writes
+        // return_otp_code/return_otp_generated_at instead.
+        async function generateReturnOtpByKey(key) {
+            const booking = bookingsIndex[key];
+            if (!booking) return;
+
+            const code = String(Math.floor(1000 + Math.random() * 9000));
+
+            const { error } = await sbClient
+                .from(booking.sourceTable)
+                .update({ return_otp_code: code, return_otp_generated_at: new Date().toISOString() })
+                .eq('id', booking.id);
+
+            if (error) {
+                alert('Failed to generate OTP: ' + error.message);
+                return;
+            }
+
+            await fetchAssignedBookings(currentPartnerId);
+        }
+
         async function advanceStage(booking) {
             const next = nextStage(booking);
             if (!next) return; // already delivered — trip is closed
@@ -955,6 +1015,14 @@
                 booking.deliveryStage === 'to_garage' &&
                 booking.bookingStatus !== 'Ready for Pickup') {
                 alert('Waiting for the garage to mark this service as done first.');
+                return;
+            }
+
+            // Return-leg equivalent of the pickup-OTP guard above — the
+            // final "Vehicle Delivered" tap shouldn't reach here until the
+            // customer has verified the return code in their app.
+            if (next === 'delivered' && !booking.returnOtpVerifiedAt) {
+                alert('Ask the customer to verify your return OTP in their app first.');
                 return;
             }
 

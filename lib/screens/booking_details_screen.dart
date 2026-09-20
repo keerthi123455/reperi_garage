@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -29,6 +30,14 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   bool loading = false;
   bool hasUnreadMessages = false;
   bool markingDone = false;
+  bool checkingReturnOtp = false;
+
+  /// This 'bookings' row has no delivery-partner trip — the customer comes
+  /// to collect the vehicle in person, so MARK AS DONE below is what
+  /// generates the return code (rather than a delivery partner doing it
+  /// from web/deliverydashboard.html at the out_for_delivery leg).
+  bool get hasPickupDrop =>
+      (widget.booking['pickupdrop'] ?? '').toString().toLowerCase() == 'yes';
 
   final stages = [
     'Car Picked Up',
@@ -156,6 +165,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   /// watches for (on `bookings` UPDATE) to notify the customer always, and
   /// the assigned delivery partner too when this booking actually has a
   /// pickup/drop trip for them to make.
+  ///
+  /// When there's no pickup/drop trip, this also generates the return
+  /// OTP — there's no delivery partner to do it later, so the customer's
+  /// in-person collection needs to be confirmed right here instead. The
+  /// customer verifies it from vehicle_bookings_screen.dart's
+  /// _ReturnOtpVerification before this booking counts as truly closed.
   Future<void> _markAsDone() async {
     setState(() => markingDone = true);
 
@@ -163,18 +178,34 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       final supabase = Supabase.instance.client;
       final nowIso = DateTime.now().toIso8601String();
 
-      await supabase.from('bookings').update({
+      final update = <String, dynamic>{
         'booking_status': 'Ready for Pickup',
         'marked_done_at': nowIso,
-      }).eq('id', widget.booking['id']);
+      };
+
+      String? returnOtpCode;
+      if (!hasPickupDrop) {
+        returnOtpCode = (1000 + math.Random().nextInt(9000)).toString();
+        update['return_otp_code'] = returnOtpCode;
+        update['return_otp_generated_at'] = nowIso;
+      }
+
+      await supabase
+          .from('bookings')
+          .update(update)
+          .eq('id', widget.booking['id']);
 
       if (!mounted) return;
 
       // Mutating the passed-in booking map in place is what flips the
-      // button below into its "already marked" pill without needing to
+      // button below into its "already marked" state without needing to
       // leave this screen and re-fetch.
       widget.booking['booking_status'] = 'Ready for Pickup';
       widget.booking['marked_done_at'] = nowIso;
+      if (returnOtpCode != null) {
+        widget.booking['return_otp_code'] = returnOtpCode;
+        widget.booking['return_otp_generated_at'] = nowIso;
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Marked done — customer notified')),
@@ -187,6 +218,120 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     }
 
     if (mounted) setState(() => markingDone = false);
+  }
+
+  /// Re-pulls just the verification timestamp so the OTP box below can
+  /// flip to its "customer confirmed" state without leaving this screen —
+  /// mirrors web/deliverydashboard.html's own "Check Again" button.
+  Future<void> _refreshReturnOtpStatus() async {
+    setState(() => checkingReturnOtp = true);
+
+    try {
+      final row = await Supabase.instance.client
+          .from('bookings')
+          .select('return_otp_verified_at')
+          .eq('id', widget.booking['id'])
+          .single();
+
+      if (!mounted) return;
+      widget.booking['return_otp_verified_at'] = row['return_otp_verified_at'];
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not check status: $e')),
+      );
+    }
+
+    if (mounted) setState(() => checkingReturnOtp = false);
+  }
+
+  /// Shown in place of the plain "MARKED DONE" pill once this booking has
+  /// no pickup/drop trip — displays the return code for staff to read to
+  /// the customer, then a "customer confirmed" state once they've entered
+  /// it correctly in their app.
+  Widget _buildReturnOtpBox() {
+    final verified = widget.booking['return_otp_verified_at'] != null;
+
+    if (verified) {
+      return Container(
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.green.withOpacity(0.4)),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
+            SizedBox(width: 10),
+            Text(
+              'CUSTOMER CONFIRMED PICKUP',
+              style: TextStyle(
+                color: Colors.green,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.8,
+                fontSize: 15,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final code = widget.booking['return_otp_code'] as String?;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1C),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'Read this code to the customer before handing over the vehicle:',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            code ?? '----',
+            style: const TextStyle(
+              color: Color(0xFFD4A017),
+              fontSize: 34,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 10,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Waiting for the customer to enter it in their app…',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          TextButton(
+            onPressed: checkingReturnOtp ? null : _refreshReturnOtpStatus,
+            child: checkingReturnOtp
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Color(0xFFD4A017)),
+                  )
+                : const Text(
+                    'CHECK AGAIN',
+                    style: TextStyle(
+                      color: Color(0xFFD4A017),
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -728,30 +873,34 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                 // assigned delivery partner, but only when this booking
                 // actually has a pickup/drop trip for them to make.
                 if (widget.booking['marked_done_at'] != null)
-                  Container(
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(color: Colors.green.withOpacity(0.4)),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
-                        SizedBox(width: 10),
-                        Text(
-                          'MARKED DONE',
-                          style: TextStyle(
-                            color: Colors.green,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1,
-                            fontSize: 16,
+                  (!hasPickupDrop
+                      ? _buildReturnOtpBox()
+                      : Container(
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(28),
+                            border:
+                                Border.all(color: Colors.green.withOpacity(0.4)),
                           ),
-                        ),
-                      ],
-                    ),
-                  )
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.check_circle_rounded,
+                                  color: Colors.green, size: 22),
+                              SizedBox(width: 10),
+                              Text(
+                                'MARKED DONE',
+                                style: TextStyle(
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ))
                 else
                   GestureDetector(
                     onTap: markingDone ? null : _markAsDone,

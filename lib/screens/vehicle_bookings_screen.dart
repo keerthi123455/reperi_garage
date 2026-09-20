@@ -2249,7 +2249,34 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                     verifiedAt: booking['pickup_otp_verified_at'],
                                     onVerified: fetchBookings,
                                   ),
-                              ],
+                                // Final leg back to the customer — mirrors
+                                // the pickup OTP above, gating the delivery
+                                // partner's "Vehicle Delivered" tap on the
+                                // customer confirming they actually got it.
+                                if (booking['delivery_stage'] == 'out_for_delivery')
+                                  _ReturnOtpVerification(
+                                    table: 'bookings',
+                                    bookingId: booking['id'],
+                                    otpCode: booking['return_otp_code'] as String?,
+                                    verifiedAt: booking['return_otp_verified_at'],
+                                    partnerLabel: 'your delivery partner',
+                                    onVerified: fetchBookings,
+                                  ),
+                              ] else if (booking['booking_status'] ==
+                                  'Ready for Pickup')
+                                // No pickup/drop — the customer collects the
+                                // vehicle in person, so the garage itself
+                                // (booking_details_screen.dart's MARK AS
+                                // DONE) generates this code instead of a
+                                // delivery partner.
+                                _ReturnOtpVerification(
+                                  table: 'bookings',
+                                  bookingId: booking['id'],
+                                  otpCode: booking['return_otp_code'] as String?,
+                                  verifiedAt: booking['return_otp_verified_at'],
+                                  partnerLabel: 'the garage',
+                                  onVerified: fetchBookings,
+                                ),
 
                               const SizedBox(height: 22),
 
@@ -2424,6 +2451,20 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
               bookingId: booking['id'],
               otpCode: booking['pickup_otp_code'] as String?,
               verifiedAt: booking['pickup_otp_verified_at'],
+              onVerified: table == 'pollution_booking'
+                  ? fetchPollutionBookings
+                  : fetchInspectionBookings,
+            ),
+          // Final leg back to the customer — these tables skip the
+          // out_for_delivery stage, so 'to_garage' is the one immediately
+          // before 'delivered' here.
+          if (booking['delivery_stage'] == 'to_garage')
+            _ReturnOtpVerification(
+              table: table,
+              bookingId: booking['id'],
+              otpCode: booking['return_otp_code'] as String?,
+              verifiedAt: booking['return_otp_verified_at'],
+              partnerLabel: 'your delivery partner',
               onVerified: table == 'pollution_booking'
                   ? fetchPollutionBookings
                   : fetchInspectionBookings,
@@ -3235,6 +3276,385 @@ class _PickupOtpVerificationState extends State<_PickupOtpVerification> {
     );
   }
 }
+
+/// Shown on the leg immediately before the final hand-back to the customer
+/// — 'out_for_delivery' for 'bookings' (delivery partner), 'to_garage' for
+/// pollution_booking/inspection_booking (no separate out-for-delivery leg
+/// there), or once booking_details_screen.dart's MARK AS DONE has fired for
+/// a 'bookings' row with no pickup/drop (customer collects in person).
+/// Mirrors [_PickupOtpVerification] exactly, but against the
+/// `return_otp_code` / `return_otp_verified_at` columns, and confirming the
+/// customer *received* their vehicle rather than confirming who's taking it.
+class _ReturnOtpVerification extends StatefulWidget {
+  const _ReturnOtpVerification({
+    required this.table,
+    required this.bookingId,
+    required this.otpCode,
+    required this.verifiedAt,
+    required this.onVerified,
+    required this.partnerLabel,
+  });
+
+  /// 'bookings' | 'pollution_booking' | 'inspection_booking'.
+  final String table;
+  final dynamic bookingId;
+
+  /// The code the garage/delivery partner generated — null until they do.
+  final String? otpCode;
+
+  /// Set once the customer has already verified successfully.
+  final dynamic verifiedAt;
+
+  /// Re-fetches this card's booking list so it picks up the fresh
+  /// `return_otp_verified_at`.
+  final VoidCallback onVerified;
+
+  /// Who's handing the vehicle back — e.g. 'your delivery partner' or
+  /// 'the garage' — filled into the copy below.
+  final String partnerLabel;
+
+  @override
+  State<_ReturnOtpVerification> createState() => _ReturnOtpVerificationState();
+}
+
+class _ReturnOtpVerificationState extends State<_ReturnOtpVerification> {
+  final _controller = TextEditingController();
+  bool _submitting = false;
+  bool _justVerified = false;
+  String? _error;
+  // Bumped on every failed attempt — giving the shake TweenAnimationBuilder
+  // below a fresh ValueKey each time is what makes it replay instead of
+  // just sitting at its already-settled end value.
+  int _shakeToken = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _verify() async {
+    final entered = _controller.text.trim();
+    if (entered.isEmpty) {
+      setState(() {
+        _error = 'Enter the code ${widget.partnerLabel} told you.';
+        _shakeToken++;
+      });
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    try {
+      final rows = await Supabase.instance.client
+          .from(widget.table)
+          .update({'return_otp_verified_at': DateTime.now().toIso8601String()})
+          .eq('id', widget.bookingId)
+          .eq('return_otp_code', entered)
+          .select('id');
+
+      if (!mounted) return;
+
+      if ((rows as List).isEmpty) {
+        setState(() {
+          _error = "That code doesn't match — check with ${widget.partnerLabel} and try again.";
+          _submitting = false;
+          _shakeToken++;
+        });
+        return;
+      }
+
+      // Flips the button itself to the same green-check "success" beat the
+      // Edit Vehicle sheet's SAVE CHANGES button uses, just ahead of the
+      // fuller-screen confirmation below.
+      setState(() {
+        _submitting = false;
+        _justVerified = true;
+      });
+      widget.onVerified();
+
+      await Future.delayed(const Duration(milliseconds: 260));
+      if (!mounted) return;
+      await _showVerifiedDialog();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Something went wrong verifying that code — please try again.';
+        _submitting = false;
+        _shakeToken++;
+      });
+    }
+  }
+
+  Future<void> _showVerifiedDialog() {
+    return showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Vehicle received',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (context, animation, secondaryAnimation) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 40),
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceRaised,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 500),
+                  curve: Curves.elasticOut,
+                  builder: (context, value, child) => Transform.scale(scale: value, child: child),
+                  child: const Icon(Icons.verified_rounded, color: Colors.green, size: 56),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Vehicle received',
+                  style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w900, fontSize: 17),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Thanks for confirming — this booking is now complete.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.mut, fontSize: 13),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.green.withOpacity(0.12),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('OK', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      transitionBuilder: (context, animation, secondaryAnimation, child) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget content;
+    final Key contentKey;
+
+    if (widget.verifiedAt != null || _justVerified) {
+      contentKey = const ValueKey('verified');
+      content = Container(
+        key: contentKey,
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.green.withOpacity(0.35)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.verified_rounded, color: Colors.green, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Verified — this booking is complete.',
+                style: TextStyle(color: AppColors.txt.withOpacity(0.85), fontSize: 12.5, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (widget.otpCode == null) {
+      contentKey = const ValueKey('waiting-for-code');
+      content = Container(
+        key: contentKey,
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceSunken,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.pending_outlined, color: AppColors.mut, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${_capitalize(widget.partnerLabel)} will share a code before handing back your vehicle — enter it here to confirm you\'ve received it.',
+                style: TextStyle(color: AppColors.mut, fontSize: 12.5, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      contentKey = const ValueKey('entry');
+      content = Container(
+        key: contentKey,
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(
+              const Color(0xFFD4A017).withOpacity(0.08), AppColors.surfaceSunken),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Confirm you've received your vehicle",
+              style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w800, fontSize: 13.5),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Ask ${widget.partnerLabel} for the code and enter it below.',
+              style: TextStyle(color: AppColors.mut, fontSize: 11.5, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TweenAnimationBuilder<double>(
+                    key: ValueKey(_shakeToken),
+                    tween: Tween(begin: 0, end: 1),
+                    duration: const Duration(milliseconds: 420),
+                    // A decaying wobble — sin() for the back-and-forth,
+                    // (1 - value) as the envelope so it settles to dead
+                    // still by the time the animation ends.
+                    builder: (context, value, child) => Transform.translate(
+                      offset: Offset(math.sin(value * math.pi * 3) * 8 * (1 - value), 0),
+                      child: child,
+                    ),
+                    child: TextField(
+                      controller: _controller,
+                      keyboardType: TextInputType.number,
+                      maxLength: 4,
+                      style: TextStyle(
+                        color: AppColors.txt,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                        letterSpacing: 6,
+                      ),
+                      decoration: InputDecoration(
+                        counterText: '',
+                        hintText: '••••',
+                        hintStyle: TextStyle(color: AppColors.mut, letterSpacing: 6),
+                        filled: true,
+                        fillColor: AppColors.surfaceRaised,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: _error != null ? Colors.redAccent : AppColors.line,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: _error != null ? Colors.redAccent : AppColors.line,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD4A017).withOpacity(_submitting ? 0.6 : 1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: _submitting ? null : _verify,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
+                          child: _submitting
+                              ? const SizedBox(
+                                  key: ValueKey('spinner'),
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                                )
+                              : const Text(
+                                  'Verify',
+                                  key: ValueKey('label'),
+                                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: _error == null
+                  ? const SizedBox.shrink(key: ValueKey('no-error'))
+                  : Padding(
+                      key: const ValueKey('error'),
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(color: Colors.redAccent, fontSize: 11.5),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _VehicleEditFadeIn(
+      index: 0,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SizeTransition(
+            sizeFactor: animation,
+            axisAlignment: -1,
+            child: child,
+          ),
+        ),
+        child: content,
+      ),
+    );
+  }
+}
+
+String _capitalize(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 
 /// Fades + rises a field into place, each successive [index] settling
 /// slightly later than the one before — used by the "Edit Vehicle" sheet
