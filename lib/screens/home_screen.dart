@@ -106,6 +106,21 @@ class _HomeScreenState extends State<HomeScreen> {
   // drawer, ...), not whichever one happens to be first.
   int _activeVehicleIndex = 0;
 
+  // Persisted across even a full HomeScreen recreation (e.g.
+  // PaymentScreen's pushAndRemoveUntil back to Home after a booking) so
+  // _loadVehicles() below can restore whichever vehicle was actually
+  // active instead of always snapping back to the first one.
+  static const _lastActiveVehiclePrefKey = 'home_last_active_vehicle_id';
+
+  Future<void> _persistActiveVehicleId(String? id) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (id == null) {
+      await prefs.remove(_lastActiveVehiclePrefKey);
+    } else {
+      await prefs.setString(_lastActiveVehiclePrefKey, id);
+    }
+  }
+
   Vehicle? get _activeVehicle {
     if (_vehicles.isEmpty) return null;
     return _vehicles[_activeVehicleIndex.clamp(0, _vehicles.length - 1)];
@@ -241,6 +256,15 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    // Which vehicle to keep centered once the fresh list comes in — the
+    // in-memory active one if this is a same-instance refresh (e.g. from
+    // vehicleChangeBus, or returning from viewing a vehicle's bookings),
+    // or whatever was last persisted if this is a brand new HomeScreen
+    // instance (e.g. PaymentScreen's pushAndRemoveUntil back to Home,
+    // where there's no prior in-memory state to fall back on at all).
+    final targetVehicleId = _activeVehicle?.id ??
+        (await SharedPreferences.getInstance()).getString(_lastActiveVehiclePrefKey);
+
     try {
       final vehicleRows = List<Map<String, dynamic>>.from(
         await supabase
@@ -266,11 +290,14 @@ class _HomeScreenState extends State<HomeScreen> {
       }));
 
       if (!mounted) return;
+      final restoredIndex =
+          targetVehicleId == null ? -1 : vehicles.indexWhere((v) => v.id == targetVehicleId);
       setState(() {
         _vehicles = vehicles;
-        _activeVehicleIndex = 0;
+        _activeVehicleIndex = restoredIndex >= 0 ? restoredIndex : 0;
         _vehiclesLoading = false;
       });
+      _persistActiveVehicleId(_activeVehicle?.id);
     } catch (e) {
       if (!mounted) return;
       setState(() => _vehiclesLoading = false);
@@ -546,6 +573,12 @@ class _HomeScreenState extends State<HomeScreen> {
             fleetUser: {
               'id': prefs.getString('fleet_user_id'),
               'company_name': prefs.getString('fleet_company'),
+              // Missing before — fleet_order_sheet.dart reads this when
+              // placing a pickup request, so a fleet user who arrived via
+              // this restored-session path (rather than a fresh login)
+              // would have silently inserted a null username on every
+              // order they placed.
+              'username': prefs.getString('fleet_username'),
             },
           ),
         ),
@@ -811,10 +844,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           // saw the button to add their first one.
                           VehicleCarousel(
                             vehicles: _vehicles,
+                            activeIndex: _activeVehicleIndex,
                             onTap: _openVehicleBookings,
                             onPhotoTap: _showVehiclePhotoSourceSheet,
                             onAddVehicle: _openAddVehicle,
-                            onPageChanged: (page) => setState(() => _activeVehicleIndex = page),
+                            onPageChanged: (page) {
+                              setState(() => _activeVehicleIndex = page);
+                              _persistActiveVehicleId(_activeVehicle?.id);
+                            },
                           ),
                         const SizedBox(height: 6),
                         // Book Service/Book Washing don't apply to a

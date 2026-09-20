@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'home_screen.dart';
@@ -118,7 +119,13 @@ class _LoginScreenState extends State<LoginScreen>
                 final verifyData = verify.data as Map<String, dynamic>?;
 
                 if (verifyData?['valid'] != true) {
-                  if (!mounted) return;
+                  // context.mounted (not the outer LoginScreen's mounted) —
+                  // this dialog can be cancelled while this request is
+                  // in-flight without LoginScreen itself going anywhere,
+                  // and updating a StatefulBuilder/context that's already
+                  // been popped is exactly what crashes with a
+                  // "deactivated widget" or dependents-not-empty error.
+                  if (!context.mounted) return;
                   ErrorDisplay.showPremiumToast(
                     context,
                     message: 'That email and username don\'t match a garage account.',
@@ -134,13 +141,13 @@ class _LoginScreenState extends State<LoginScreen>
                   shouldCreateUser: true,
                 );
 
-                if (!mounted) return;
+                if (!context.mounted) return;
                 setDialogState(() {
                   isLoading = false;
                   step = 1;
                 });
               } catch (e) {
-                if (!mounted) return;
+                if (!context.mounted) return;
                 ErrorDisplay.showPremiumError(context, error: e);
                 setDialogState(() => isLoading = false);
               }
@@ -193,9 +200,10 @@ class _LoginScreenState extends State<LoginScreen>
                 );
 
                 final resetData = reset.data as Map<String, dynamic>?;
-                if (!mounted) return;
+                if (!context.mounted) return;
 
                 if (resetData?['success'] == true) {
+                  FocusManager.instance.primaryFocus?.unfocus();
                   Navigator.pop(context);
                   ErrorDisplay.showPremiumToast(
                     context,
@@ -213,7 +221,7 @@ class _LoginScreenState extends State<LoginScreen>
                   setDialogState(() => isLoading = false);
                 }
               } catch (e) {
-                if (!mounted) return;
+                if (!context.mounted) return;
                 ErrorDisplay.showPremiumToast(
                   context,
                   message: 'That code is invalid or expired — request a new one.',
@@ -283,7 +291,17 @@ class _LoginScreenState extends State<LoginScreen>
               ),
               actions: [
                 TextButton(
-                  onPressed: isLoading ? null : () => Navigator.pop(context),
+                  onPressed: isLoading
+                      ? null
+                      : () {
+                          // Dropping focus before popping avoids a rare
+                          // Flutter crash ('_dependents.isEmpty' assertion)
+                          // that can fire if this dialog's TextField still
+                          // has focus (and the keyboard is mid-animation)
+                          // when its route gets torn down.
+                          FocusManager.instance.primaryFocus?.unfocus();
+                          Navigator.pop(context);
+                        },
                   child: const Text(
                     'Cancel',
                     style: TextStyle(color: Color(0xFFD4A017)),
@@ -339,7 +357,14 @@ class _LoginScreenState extends State<LoginScreen>
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              // Dropping focus before popping avoids a rare Flutter crash
+              // ('_dependents.isEmpty' assertion) that can fire if this
+              // dialog's TextField still has focus (and the keyboard is
+              // mid-animation) when its route gets torn down.
+              FocusManager.instance.primaryFocus?.unfocus();
+              Navigator.pop(context);
+            },
             child: const Text('Cancel'),
           ),
           ElevatedButton(
@@ -377,8 +402,12 @@ class _LoginScreenState extends State<LoginScreen>
                   redirectTo: redirectUrl,
                 );
 
-                if (!mounted) return;
+                // context.mounted, not the outer LoginScreen's mounted —
+                // this dialog can be cancelled mid-request without
+                // LoginScreen itself going anywhere.
+                if (!context.mounted) return;
 
+                FocusManager.instance.primaryFocus?.unfocus();
                 Navigator.pop(context);
 
                 ErrorDisplay.showPremiumToast(
@@ -507,6 +536,17 @@ class _LoginScreenState extends State<LoginScreen>
 
         if (data != null && data['success'] == true) {
           final adminId = data['adminId'];
+
+          // Garage/admin login never touches Supabase Auth (it's its own
+          // bcrypt-checked table), so nothing here would otherwise survive
+          // an app restart — persisting it the same way fleet login
+          // already does is what lets SplashScreen send an already-logged-
+          // in garage straight back to their dashboard instead of Login.
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('admin_logged_in', true);
+          await prefs.setString('admin_id', adminId.toString());
+
+          if (!mounted) return;
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
@@ -543,126 +583,56 @@ class _LoginScreenState extends State<LoginScreen>
     final isWide = screenWidth > 600;
 
     return Scaffold(
+      // Plain, flat dark grey — no glow orbs or gradient texture behind
+      // the content, just this one solid color.
       backgroundColor: const Color(0xFF262626),
-      body: Stack(
-        children: [
-          /// ── BACKGROUND GLOW ORBS ──────────────────────────────────
-          Positioned(
-            bottom: 120,
-            right: isWide ? (screenWidth / 2 - 140) : -100,
-            child: Container(
-              width: 280,
-              height: 280,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFD4A017).withOpacity(0.06),
-              ),
-            ),
-          ),
+      body: SafeArea(
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Center(
+            child: ConstrainedBox(
+              // KEY FIX: cap width at 480px so it doesn't stretch on web
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isWide ? 0 : 0,
+                  vertical: isWide ? 24 : 0,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                        // Enough top breathing room to not sit flush
+                        // against the status bar, without pushing
+                        // everything below it too far down.
+                        const SizedBox(height: 32),
 
-          Positioned(
-            top: -60,
-            left: isWide ? (screenWidth / 2 - 160) : -80,
-            child: Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFD4A017).withOpacity(0.04),
-              ),
-            ),
-          ),
-
-          /// ── CONTENT ───────────────────────────────────────────────
-          SafeArea(
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: Center(
-                child: ConstrainedBox(
-                  // KEY FIX: cap width at 480px so it doesn't stretch on web
-                  constraints: const BoxConstraints(maxWidth: 480),
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isWide ? 0 : 0,
-                      vertical: isWide ? 24 : 0,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        /// ── HERO IMAGE ──────────────────────────────
-                        SizedBox(
-                          height: isWide ? 160 : 220,
-                          width: double.infinity,
-                          child: Image.asset(
-                            'assets/images/login.png',
-                            fit: BoxFit.contain,
-                            alignment: Alignment.center,
-                            errorBuilder: (_, __, ___) => const Center(
-                              child: Icon(
-                                Icons.shield_rounded,
-                                size: 80,
-                                color: Color(0xFFD4A017),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        /// ── PARTNER NETWORK ─────────────────────────
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 32),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              _goldLine(),
-                              const SizedBox(width: 12),
-                              const Text(
-                                'PARTNER NETWORK',
-                                style: TextStyle(
-                                  color: Color(0xFFD4A017),
-                                  fontSize: 12,
-                                  letterSpacing: 3,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              _goldLine(),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 6),
-
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _goldLine(width: 20),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'PREMIUM VEHICLE CARE',
-                              style: TextStyle(
-                                color: Color(0xFF666666),
-                                fontSize: 10,
-                                letterSpacing: 2.5,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            _goldLine(width: 20),
-                          ],
-                        ),
-
-                        const SizedBox(height: 28),
-
-                        /// ── HEADLINE ────────────────────────────────
+                        /// ── BRAND ────────────────────────────────────
                         const Text(
-                          'Welcome Back',
+                          'REPERI',
                           style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5,
+                            color: Color(0xFFD4A017),
+                            fontSize: 40,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
                           ),
                         ),
-                        const SizedBox(height: 8),
+
+                        const SizedBox(height: 14),
+
+                        /// ── TAGLINE ──────────────────────────────────
+                        const Text(
+                          'PREMIUM VEHICLE CARE',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0xFFD4A017),
+                            fontSize: 11,
+                            letterSpacing: 2.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
                         const Text(
                           "Your vehicle's next service\nis just a tap away.",
                           textAlign: TextAlign.center,
@@ -673,7 +643,7 @@ class _LoginScreenState extends State<LoginScreen>
                           ),
                         ),
 
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 18),
 
                         /// ── LOGIN CARD ──────────────────────────────
                         Padding(
@@ -681,7 +651,7 @@ class _LoginScreenState extends State<LoginScreen>
                           child: _buildLoginCard(),
                         ),
 
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
 
                         /// ── REGISTER LINK ───────────────────────────
                         Row(
@@ -724,31 +694,21 @@ class _LoginScreenState extends State<LoginScreen>
                           ],
                         ),
 
-                        const SizedBox(height: 36),
-                      ],
-                    ),
-                  ),
+                        const SizedBox(height: 16),
+                  ],
                 ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  // ── HELPERS ────────────────────────────────────────────────────────────────
-
-  Widget _goldLine({double width = 36}) => Container(
-        width: width,
-        height: 1,
-        color: const Color(0xFFD4A017),
-      );
-
   // ── LOGIN CARD ─────────────────────────────────────────────────────────────
   Widget _buildLoginCard() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       decoration: BoxDecoration(
         color: const Color(0xFF1C1C1C),
         borderRadius: BorderRadius.circular(28),
@@ -773,7 +733,7 @@ class _LoginScreenState extends State<LoginScreen>
             icon: Icons.person_outline_rounded,
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
           /// PASSWORD FIELD
           _buildPasswordField(),
@@ -806,12 +766,12 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
 
           /// SIGN IN BUTTON
           _buildSignInButton(),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
 
           /// LOGIN AS TOGGLE
           _buildLoginAsSection(),

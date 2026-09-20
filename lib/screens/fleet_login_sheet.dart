@@ -275,6 +275,7 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                 if (!context.mounted) return;
 
                 if (resetData?['success'] == true) {
+                  FocusManager.instance.primaryFocus?.unfocus();
                   Navigator.pop(context);
                   _showSuccessDialog(
                     'Password Reset',
@@ -354,7 +355,17 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
               ),
               actions: [
                 TextButton(
-                  onPressed: isLoading ? null : () => Navigator.pop(context),
+                  onPressed: isLoading
+                      ? null
+                      : () {
+                          // Dropping focus before popping avoids a rare
+                          // Flutter crash ('_dependents.isEmpty' assertion)
+                          // that can fire if this dialog's TextField still
+                          // has focus (and the keyboard is mid-animation)
+                          // when its route gets torn down.
+                          FocusManager.instance.primaryFocus?.unfocus();
+                          Navigator.pop(context);
+                        },
                   child: const Text(
                     'Cancel',
                     style: TextStyle(color: Color(0xFFD4A017)),

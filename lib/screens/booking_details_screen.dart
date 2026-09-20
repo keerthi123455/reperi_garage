@@ -31,6 +31,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   bool hasUnreadMessages = false;
   bool markingDone = false;
   bool checkingReturnOtp = false;
+  bool generatingReturnOtp = false;
 
   /// This 'bookings' row has no delivery-partner trip — the customer comes
   /// to collect the vehicle in person, so MARK AS DONE below is what
@@ -245,12 +246,43 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     if (mounted) setState(() => checkingReturnOtp = false);
   }
 
+  /// Generates the return code on demand — covers bookings that were
+  /// already marked done *before* this feature existed (so _markAsDone's
+  /// own generation never ran for them) as well as a first attempt that
+  /// failed partway through. Without this, a booking stuck with
+  /// marked_done_at set but no return_otp_code had no way to ever get one.
+  Future<void> _generateReturnOtpNow() async {
+    setState(() => generatingReturnOtp = true);
+
+    try {
+      final code = (1000 + math.Random().nextInt(9000)).toString();
+      final nowIso = DateTime.now().toIso8601String();
+
+      await Supabase.instance.client
+          .from('bookings')
+          .update({'return_otp_code': code, 'return_otp_generated_at': nowIso})
+          .eq('id', widget.booking['id']);
+
+      if (!mounted) return;
+      widget.booking['return_otp_code'] = code;
+      widget.booking['return_otp_generated_at'] = nowIso;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not generate code: $e')),
+      );
+    }
+
+    if (mounted) setState(() => generatingReturnOtp = false);
+  }
+
   /// Shown in place of the plain "MARKED DONE" pill once this booking has
   /// no pickup/drop trip — displays the return code for staff to read to
   /// the customer, then a "customer confirmed" state once they've entered
   /// it correctly in their app.
   Widget _buildReturnOtpBox() {
     final verified = widget.booking['return_otp_verified_at'] != null;
+    final code = widget.booking['return_otp_code'] as String?;
 
     if (verified) {
       return Container(
@@ -279,7 +311,52 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       );
     }
 
-    final code = widget.booking['return_otp_code'] as String?;
+    if (code == null) {
+      // marked_done_at is set but no code was ever written — either this
+      // booking was marked done before this feature shipped, or the first
+      // generation attempt failed partway through. Either way, give staff
+      // a way to generate one now instead of leaving them stuck.
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1C1C1C),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+        ),
+        child: Column(
+          children: [
+            const Text(
+              'No return code has been generated for this booking yet.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: generatingReturnOtp ? null : _generateReturnOtpNow,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4A017),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: generatingReturnOtp
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                      )
+                    : const Text(
+                        'GENERATE RETURN CODE',
+                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -296,7 +373,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            code ?? '----',
+            code,
             style: const TextStyle(
               color: Color(0xFFD4A017),
               fontSize: 34,

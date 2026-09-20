@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -79,6 +80,33 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   bool _insuranceExpanded = false;
   bool _subscriptionExpanded = false;
   Map subscription = {};
+
+  // ── "NEW SERVICE UPDATE" badge, per booking ─────────────────────────
+  // booking_status has no server-side "read" flag (unlike the admin chat's
+  // is_read_by_consumer), so whether a booking's current status counts as
+  // "new" is tracked locally: the last status the customer actually opened
+  // this booking's tracking screen at, keyed by booking id. Loaded once
+  // after each fetchBookings() so the tile list below can check it
+  // synchronously, and updated the moment a tile is tapped.
+  Map<String, String> _seenBookingStatuses = {};
+  static const _seenStatusPrefix = 'booking_status_seen_';
+
+  Future<void> _loadSeenBookingStatuses() async {
+    final prefs = await SharedPreferences.getInstance();
+    final seen = <String, String>{};
+    for (final b in bookings) {
+      final id = b['id'].toString();
+      final value = prefs.getString('$_seenStatusPrefix$id');
+      if (value != null) seen[id] = value;
+    }
+    if (mounted) setState(() => _seenBookingStatuses = seen);
+  }
+
+  Future<void> _markBookingStatusSeen(String bookingId, String status) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_seenStatusPrefix$bookingId', status);
+    if (mounted) setState(() => _seenBookingStatuses[bookingId] = status);
+  }
 
   // ── Cancel window ──────────────────────────────────────────────────
   // Services, pollution, inspection, and insurance claim bookings can all
@@ -207,32 +235,59 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       }
     }
 
+    // Same as latestRowIsActive, but also treats a verified return OTP as
+    // "done" in its own right — _ReturnOtpVerification._verify() flips
+    // booking_status to 'Delivered' on the 'bookings' table the moment it
+    // succeeds, but pollution_booking/inspection_booking only reach
+    // delivery_stage == 'delivered' once the delivery partner separately
+    // taps their own "Vehicle Delivered" button afterwards. Checking
+    // return_otp_verified_at directly means the customer isn't stuck
+    // unable to delete the vehicle just because that second tap hasn't
+    // happened yet — the OTP handover is what actually matters.
+    Future<bool> latestRowIsActiveUnlessReturned({
+      required String table,
+      required String statusColumn,
+    }) async {
+      try {
+        final rows = await supabase
+            .from(table)
+            .select('$statusColumn, return_otp_verified_at')
+            .eq('vehicle_id', vehicleId)
+            .order('created_at', ascending: false)
+            .limit(1);
+        if (rows.isEmpty) return false;
+        final row = rows.first;
+        if (row['return_otp_verified_at'] != null) return false;
+        final value = (row[statusColumn] ?? '').toString().toLowerCase();
+        return value != 'delivered';
+      } catch (e) {
+        return false;
+      }
+    }
+
     // General service bookings go through the stages set in
     // booking_details_screen.dart ('Pending', 'Car Picked Up', 'Inspection
     // In Progress', 'Inspection Completed', 'Service In Progress', 'Billing
     // Process', 'Delivered') — 'Delivered' is the only terminal one, so
     // anything else (including a still-null/'pending' status right after
     // booking) blocks deletion.
-    if (await latestRowIsActive(
+    if (await latestRowIsActiveUnlessReturned(
       table: 'bookings',
       statusColumn: 'booking_status',
-      isActive: (s) => s != 'delivered',
     )) {
       return true;
     }
 
-    if (await latestRowIsActive(
+    if (await latestRowIsActiveUnlessReturned(
       table: 'pollution_booking',
       statusColumn: 'delivery_stage',
-      isActive: (s) => s != 'delivered',
     )) {
       return true;
     }
 
-    if (await latestRowIsActive(
+    if (await latestRowIsActiveUnlessReturned(
       table: 'inspection_booking',
       statusColumn: 'delivery_stage',
-      isActive: (s) => s != 'delivered',
     )) {
       return true;
     }
@@ -1064,6 +1119,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
         _loadError = false;
       });
       _syncCancelTicker();
+      await _loadSeenBookingStatuses();
     } catch (e) {
       // Without this, a failed fetch (no network, RLS hiccup, timeout) left
       // `loading` stuck true forever — an unrecoverable spinner with no
@@ -1933,8 +1989,10 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       ),
 
                     ...bookings.map((booking) {
-                      final hasUpdate =
-                          booking['booking_status'] != 'Pending';
+                      final bookingId = booking['id'].toString();
+                      final currentStatus = (booking['booking_status'] ?? '').toString();
+                      final hasUpdate = currentStatus != 'Pending' &&
+                          _seenBookingStatuses[bookingId] != currentStatus;
                       final hasUnread = unreadBookingIds
                           .contains(booking['id'].toString());
 
@@ -1955,6 +2013,13 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
                       return GestureDetector(
                         onTap: () {
+                          // Viewing the tracking screen IS "seeing" this
+                          // booking's current status — snapshot it now so
+                          // the "NEW SERVICE UPDATE" badge clears and stays
+                          // cleared until the status next changes.
+                          if (currentStatus.isNotEmpty) {
+                            _markBookingStatusSeen(bookingId, currentStatus);
+                          }
                           Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -3349,9 +3414,23 @@ class _ReturnOtpVerificationState extends State<_ReturnOtpVerification> {
     });
 
     try {
+      // For 'bookings' rows, this is also the moment the booking itself
+      // counts as finished — flipping booking_status to 'Delivered' here
+      // (rather than waiting on the admin's separate stage dropdown in
+      // booking_details_screen.dart) is what lets the customer actually
+      // delete this vehicle afterwards; see _checkActiveService below,
+      // which also treats return_otp_verified_at alone as "done" as a
+      // fallback for rows verified before this existed.
+      final updatePayload = <String, dynamic>{
+        'return_otp_verified_at': DateTime.now().toIso8601String(),
+      };
+      if (widget.table == 'bookings') {
+        updatePayload['booking_status'] = 'Delivered';
+      }
+
       final rows = await Supabase.instance.client
           .from(widget.table)
-          .update({'return_otp_verified_at': DateTime.now().toIso8601String()})
+          .update(updatePayload)
           .eq('id', widget.bookingId)
           .eq('return_otp_code', entered)
           .select('id');

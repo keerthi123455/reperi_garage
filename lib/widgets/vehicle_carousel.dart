@@ -15,6 +15,7 @@ class VehicleCarousel extends StatefulWidget {
     required this.onPhotoTap,
     required this.onAddVehicle,
     this.onPageChanged,
+    this.activeIndex = 0,
   });
 
   final List<Vehicle> vehicles;
@@ -32,6 +33,15 @@ class VehicleCarousel extends StatefulWidget {
   /// drawer, ...), not just whichever one happens to be first.
   final ValueChanged<int>? onPageChanged;
 
+  /// Which vehicle the parent considers active right now — used only to
+  /// re-sync scroll position when it changes out from under this widget's
+  /// own settled page (e.g. HomeScreen restoring the previously-active
+  /// vehicle after a reload). Day-to-day scrolling is still entirely
+  /// driven by the user's own drag gestures; this never fights those,
+  /// since [onPageChanged] keeps the parent's value in step with whatever
+  /// the user actually settles on.
+  final int activeIndex;
+
   @override
   State<VehicleCarousel> createState() => _VehicleCarouselState();
 }
@@ -46,6 +56,50 @@ class _VehicleCarouselState extends State<VehicleCarousel> {
   // row, which is fine flickering through intermediate values.
   int _settledPage = 0;
   bool _isSnapping = false;
+  // Recomputed on every build() (it depends on MediaQuery) — kept around
+  // so _syncScrollToActiveIndex can convert an index into a scroll offset
+  // without needing its own MediaQuery lookup.
+  double? _lastCardExtent;
+
+  @override
+  void initState() {
+    super.initState();
+    _page = widget.activeIndex;
+    _settledPage = widget.activeIndex;
+    // Deferred a frame so the ListView has actually laid out (and
+    // _lastCardExtent is set from the first build()) before jumping it.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncScrollToActiveIndex());
+  }
+
+  @override
+  void didUpdateWidget(covariant VehicleCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only forcibly re-sync when the parent's idea of "active" changed to
+    // something this widget's own scrolling hasn't already caught up to —
+    // e.g. HomeScreen restoring a previously-active vehicle after
+    // _loadVehicles() re-fetches. A change that already matches
+    // _settledPage means the user scrolled it there themselves (that's
+    // exactly how it got reported up to the parent in the first place),
+    // so there's nothing to correct.
+    if (widget.activeIndex != oldWidget.activeIndex && widget.activeIndex != _settledPage) {
+      _page = widget.activeIndex;
+      _settledPage = widget.activeIndex;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncScrollToActiveIndex());
+    }
+  }
+
+  void _syncScrollToActiveIndex() {
+    if (!mounted || !_controller.hasClients) return;
+    if (widget.vehicles.isEmpty) return;
+    final extent = _lastCardExtent;
+    if (extent == null) return;
+    final target = widget.activeIndex.clamp(0, widget.vehicles.length - 1);
+    final offset = (target * extent).clamp(
+      _controller.position.minScrollExtent,
+      _controller.position.maxScrollExtent,
+    );
+    _controller.jumpTo(offset);
+  }
 
   static const double _gap = 14;
   static const double _sidePadding = 18;
@@ -132,6 +186,7 @@ class _VehicleCarouselState extends State<VehicleCarousel> {
     // to full size to match the cards next to it.
     final cardWidth = isEmpty ? fullCardWidth * 0.5 : fullCardWidth;
     final cardExtent = cardWidth + _gap;
+    _lastCardExtent = cardExtent;
     final itemCount = widget.vehicles.length + 1;
     final tileHeight = isEmpty ? _tileHeight * 0.5 : _tileHeight;
 

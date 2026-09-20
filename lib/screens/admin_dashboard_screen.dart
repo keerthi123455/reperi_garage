@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -108,8 +109,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
   }
 
-  void _logout() {
+  Future<void> _logout() async {
     PushNotificationService.logout();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('admin_logged_in');
+    await prefs.remove('admin_id');
+    if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const LoginScreen()),

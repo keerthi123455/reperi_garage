@@ -207,34 +207,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     }
 
+    // Same as latestRowIsActive, but also treats a verified return OTP as
+    // "done" in its own right — vehicle_bookings_screen.dart's
+    // _ReturnOtpVerification._verify() flips booking_status to 'Delivered'
+    // on the 'bookings' table the moment it succeeds, but
+    // pollution_booking/inspection_booking only reach delivery_stage ==
+    // 'delivered' once the delivery partner separately taps their own
+    // "Vehicle Delivered" button afterwards. Checking
+    // return_otp_verified_at directly means the customer isn't stuck
+    // unable to delete the vehicle just because that second tap hasn't
+    // happened yet — the OTP handover is what actually matters.
+    Future<bool> latestRowIsActiveUnlessReturned({
+      required String table,
+      required String statusColumn,
+    }) async {
+      try {
+        final rows = await supabase
+            .from(table)
+            .select('$statusColumn, return_otp_verified_at')
+            .eq('vehicle_id', vehicleId)
+            .order('created_at', ascending: false)
+            .limit(1);
+        if (rows.isEmpty) return false;
+        final row = rows.first;
+        if (row['return_otp_verified_at'] != null) return false;
+        final value = (row[statusColumn] ?? '').toString().toLowerCase();
+        return value != 'delivered';
+      } catch (e) {
+        return false;
+      }
+    }
+
     // General service bookings go through the stages set in
     // booking_details_screen.dart ('Pending', 'Car Picked Up', 'Inspection
     // In Progress', 'Inspection Completed', 'Service In Progress', 'Billing
     // Process', 'Delivered') — 'Delivered' is the only terminal one, so
     // anything else (including a still-null/'pending' status right after
     // booking) blocks deletion.
-    if (await latestRowIsActive(
+    if (await latestRowIsActiveUnlessReturned(
       table: 'bookings',
       statusColumn: 'booking_status',
-      isActive: (s) => s != 'delivered',
     )) {
       return true;
     }
 
     // Pollution/inspection are doorstep pickup+drop bookings — active for
     // as long as the vehicle hasn't actually been delivered back yet.
-    if (await latestRowIsActive(
+    if (await latestRowIsActiveUnlessReturned(
       table: 'pollution_booking',
       statusColumn: 'delivery_stage',
-      isActive: (s) => s != 'delivered',
     )) {
       return true;
     }
 
-    if (await latestRowIsActive(
+    if (await latestRowIsActiveUnlessReturned(
       table: 'inspection_booking',
       statusColumn: 'delivery_stage',
-      isActive: (s) => s != 'delivered',
     )) {
       return true;
     }
