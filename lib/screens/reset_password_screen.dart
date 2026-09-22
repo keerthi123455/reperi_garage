@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/ai_chat_session.dart';
 import 'login_screen.dart';
+import '../widgets/error_display.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({super.key});
@@ -89,10 +90,11 @@ Navigator.of(context).pushAndRemoveUntil(
   (route) => false,
 );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-        ),
+      if (!mounted) return;
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not update your password. Please try again.',
       );
     } finally {
       if (mounted) {

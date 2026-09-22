@@ -365,9 +365,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
                       ),
 
                       const SizedBox(height: 34),
-                      _ReperiScoreCard(score: _kOverallScore),
-
-                      const SizedBox(height: 34),
                       _sectionTitle('What we check'),
                       const SizedBox(height: 6),
                       Text(
@@ -410,8 +407,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
                     checks: const [
                       'Engine', 'ABS', 'Airbags', 'Transmission', 'Steering', 'TPMS',
                     ],
-                    scoreLabel: 'Diagnostics Health',
-                    score: 8.5,
                   ),
                 ),
 
@@ -427,8 +422,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
                     checks: const [
                       'Bonnet', 'Roof', 'Front fenders', 'Doors', 'Rear panels', 'Boot',
                     ],
-                    scoreLabel: 'Paint Condition',
-                    score: 8.8,
                     footnote: 'Paint thickness readings help identify variations between '
                         'panels. Areas with significant variation may require further '
                         'inspection.',
@@ -620,109 +613,6 @@ class _BenefitCard extends StatelessWidget {
   }
 }
 
-// ── REPERI SCORE CARD ────────────────────────────────────────────────
-class _ReperiScoreCard extends StatelessWidget {
-  const _ReperiScoreCard({required this.score});
-  final double score;
-
-  String _statusFor(double s) {
-    if (s >= 8) return 'GOOD VEHICLE HEALTH';
-    if (s >= 5) return 'ATTENTION RECOMMENDED';
-    return 'FURTHER INSPECTION RECOMMENDED';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 24),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.accent.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            'SAMPLE SCORE — ILLUSTRATIVE',
-            style: GoogleFonts.manrope(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.5,
-              color: AppColors.mut,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'REPERI SCORE',
-            style: GoogleFonts.manrope(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 2.5,
-              color: AppColors.accent,
-            ),
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: 150,
-            height: 150,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 150,
-                  height: 150,
-                  child: CircularProgressIndicator(
-                    value: score / 10,
-                    strokeWidth: 8,
-                    backgroundColor: AppColors.line,
-                    valueColor: AlwaysStoppedAnimation(AppColors.accent),
-                  ),
-                ),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      score.toStringAsFixed(1),
-                      style: GoogleFonts.manrope(
-                        fontSize: 40,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.txt,
-                      ),
-                    ),
-                    Text(
-                      '/ 10',
-                      style: GoogleFonts.manrope(fontSize: 14, color: AppColors.mut),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            _statusFor(score),
-            style: GoogleFonts.manrope(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1,
-              color: AppColors.txt,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Every inspection category receives an individual Vehicle Health '
-            'Score. All category scores are combined to generate your overall '
-            'REPERI Score out of 10.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.manrope(fontSize: 12.5, height: 1.6, color: AppColors.mut),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ── EXPANDABLE CATEGORY CARD ─────────────────────────────────────────
 class _CategoryCard extends StatelessWidget {
   const _CategoryCard({
@@ -832,8 +722,6 @@ class _CategoryCard extends StatelessWidget {
                     category.howWeCheck,
                     style: GoogleFonts.manrope(fontSize: 13, height: 1.5, color: AppColors.txt),
                   ),
-                  const SizedBox(height: 16),
-                  _scoreRow('${category.title} Score', category.score),
                 ],
               ],
             ),
@@ -859,39 +747,6 @@ class _CategoryCard extends StatelessWidget {
   }
 }
 
-/// Shared "Xyz Score  ████████░░  8.2/10" row used in category details and
-/// the feature image sections below.
-Widget _scoreRow(String label, double score) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: GoogleFonts.manrope(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.txt),
-          ),
-          Text(
-            '${score.toStringAsFixed(1)} / 10',
-            style: GoogleFonts.manrope(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppColors.accent),
-          ),
-        ],
-      ),
-      const SizedBox(height: 8),
-      ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: LinearProgressIndicator(
-          value: score / 10,
-          minHeight: 8,
-          backgroundColor: AppColors.line,
-          valueColor: AlwaysStoppedAnimation(AppColors.accent),
-        ),
-      ),
-    ],
-  );
-}
-
 // ── FEATURE IMAGE SECTION (OBD / Paint) ──────────────────────────────
 class _FeatureImageSection extends StatelessWidget {
   const _FeatureImageSection({
@@ -900,8 +755,6 @@ class _FeatureImageSection extends StatelessWidget {
     required this.title,
     required this.description,
     required this.checks,
-    required this.scoreLabel,
-    required this.score,
     this.footnote,
   });
 
@@ -910,8 +763,6 @@ class _FeatureImageSection extends StatelessWidget {
   final String title;
   final String description;
   final List<String> checks;
-  final String scoreLabel;
-  final double score;
   final String? footnote;
 
   @override
@@ -981,18 +832,8 @@ class _FeatureImageSection extends StatelessWidget {
                   ))
               .toList(),
         ),
-        const SizedBox(height: 18),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceRaised,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.line),
-          ),
-          child: _scoreRow(scoreLabel, score),
-        ),
         if (footnote != null) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
           Text(
             footnote!,
             style: GoogleFonts.manrope(fontSize: 11.5, height: 1.5, color: AppColors.mut),

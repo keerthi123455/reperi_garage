@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/error_display.dart';
 
 class InsuranceClaimScreen extends StatefulWidget {
   final String vehicleId;
@@ -101,8 +102,10 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking file: $e')),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not select that file. Please try again.',
         );
       }
     }
@@ -123,8 +126,10 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking image: $e')),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not select that photo. Please try again.',
         );
       }
     }
@@ -242,11 +247,10 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error submitting claim: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not submit your insurance claim. Please try again.',
         );
       }
     } finally {

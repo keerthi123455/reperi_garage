@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'payment_screen.dart';
+import '../widgets/error_display.dart';
 
 class FleetRequestViewScreen extends StatefulWidget {
   final Map request;
@@ -398,11 +399,10 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
     } catch (e) {
       _sheetSetState?.call(() => _chatMessages.remove(optimisticMsg));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Send failed: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not send this message. Please try again.',
         );
       }
     }
@@ -783,10 +783,10 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Failed to submit: $e'),
-            backgroundColor: Colors.red),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not submit your decision. Please try again.',
       );
     }
   }
@@ -894,11 +894,10 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not block this user. Please try again.',
         );
       }
     }
@@ -928,11 +927,10 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not unblock this user. Please try again.',
         );
       }
     }
@@ -1009,11 +1007,10 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not submit this report. Please try again.',
         );
       }
     }

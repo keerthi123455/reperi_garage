@@ -5,6 +5,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:reperi_garage/services/address_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/error_display.dart';
 
 // Brand gold — a fixed accent, not a themed surface, so it stays literal
 // across light and dark mode like it does on the other package screens.
@@ -65,7 +66,13 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => loading = false);
-        _showOverlayMessage('Error loading addresses: $e', isError: true);
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage:
+              'Could not load your addresses. Please check your connection and try again.',
+          onRetry: _loadAddresses,
+        );
       }
     }
   }
@@ -164,7 +171,11 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
           },
           onError: (error) {
             Navigator.pop(ctx);
-            _showOverlayMessage('Failed to save address: $error', isError: true);
+            ErrorDisplay.showPremiumError(
+              context,
+              error: error,
+              customMessage: 'Could not save this address. Please try again.',
+            );
           },
         );
       },
@@ -509,7 +520,7 @@ class _AddressInputSheet extends StatefulWidget {
 
   final AddressService addressService;
   final VoidCallback onSaved;
-  final Function(String) onError;
+  final Function(dynamic) onError;
 
   const _AddressInputSheet({
     required this.context,
@@ -624,7 +635,12 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
     } catch (e) {
       if (mounted) {
         setState(() => isDetectingLocation = false);
-        _showDetectionMessage('Error detecting location: $e', isError: true);
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not detect your location. Please try again.',
+          onRetry: _detectLocation,
+        );
       }
     }
   }
@@ -858,14 +874,8 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
     } catch (e) {
       if (!mounted) return;
 
-      // Show error message and let parent handle display
-      widget.onError(e.toString());
-
-      // Also show in-sheet error dialog
-      await _showSimpleDialog(
-        'Could Not Save Address',
-        'Something went wrong while saving your address.\n\n$e',
-      );
+      // Let the parent close this sheet and show a plain-English error.
+      widget.onError(e);
     }
   }
 

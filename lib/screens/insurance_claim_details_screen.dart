@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../widgets/error_display.dart';
 
 class InsuranceClaimDetailsScreen extends StatefulWidget {
   final int claimId;
@@ -53,8 +54,13 @@ class _InsuranceClaimDetailsScreenState
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+        setState(() => loading = false);
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage:
+              'Could not load this claim\'s details. Please try again.',
+          onRetry: _fetchClaimDetails,
         );
       }
     }
@@ -86,8 +92,10 @@ class _InsuranceClaimDetailsScreenState
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not open this document. Please try again.',
         );
       }
     }
@@ -120,8 +128,10 @@ class _InsuranceClaimDetailsScreenState
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not add your update. Please try again.',
         );
       }
     }

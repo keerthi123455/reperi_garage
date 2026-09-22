@@ -8,6 +8,7 @@ import 'fleet_request_details_screen.dart';
 import 'insurance_claim_details_screen.dart';
 import 'login_screen.dart';
 import '../services/push_notification_service.dart';
+import '../widgets/error_display.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   final String adminId;
@@ -53,11 +54,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       debugPrint('Error fetching bookings: $e');
       if (!mounted) return;
       setState(() => loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not load bookings: $e'),
-          backgroundColor: Colors.red,
-        ),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not load bookings. Please check your connection and try again.',
       );
     }
   }
@@ -154,11 +154,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not open the garage info page. Please try again.',
       );
     }
   }

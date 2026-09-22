@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'fleet_order_sheet.dart';
 import 'fleet_dashboard_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../widgets/error_display.dart';
 
 // Same project URL/anon key as Supabase.initialize() in main.dart — used
 // to spin up a throwaway SupabaseClient for the fleet OTP reset flow
@@ -229,7 +230,11 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
               } catch (e) {
                 if (!context.mounted) return;
                 setDialogState(() => isLoading = false);
-                _showErrorDialog('Error', 'Could not send verification code: $e');
+                ErrorDisplay.showPremiumError(
+                  context,
+                  error: e,
+                  customMessage: 'Could not send your verification code. Please try again.',
+                );
               }
             }
 
@@ -292,7 +297,11 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
               } catch (e) {
                 if (!context.mounted) return;
                 setDialogState(() => isLoading = false);
-                _showErrorDialog('Invalid Code', 'Invalid or expired code: $e');
+                ErrorDisplay.showPremiumError(
+                  context,
+                  error: e,
+                  customMessage: 'That code is invalid or has expired. Please try again.',
+                );
               }
             }
 
@@ -630,9 +639,11 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                               setState(() {
                                 _loading = false;
                               });
-                              _showErrorDialog(
-                                'Error',
-                                'An error occurred: ${e.toString()}',
+                              ErrorDisplay.showPremiumError(
+                                context,
+                                error: e,
+                                customMessage:
+                                    'Could not log in. Please check your username and password and try again.',
                               );
                             }
                           },

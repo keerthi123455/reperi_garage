@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../widgets/error_display.dart';
+
 class FleetRequestDetailsScreen extends StatefulWidget {
   final Map fleetRequest;
 
@@ -375,9 +377,10 @@ class _FleetRequestDetailsScreenState
       _chatMessages.remove(optimisticMsg);
       _sheetSetState?.call(() {});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Send failed: $e'), backgroundColor: Colors.red),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not send this message. Please try again.',
         );
       }
     }
@@ -762,10 +765,10 @@ class _FleetRequestDetailsScreenState
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not update the request status. Please try again.',
       );
     } finally {
       if (mounted) setState(() => _updating = false);
@@ -1002,8 +1005,10 @@ class _FleetRequestDetailsScreenState
     } catch (e) {
       if (!mounted) return;
       setState(() => _updating = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to charge: $e'), backgroundColor: Colors.red),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not save this bill. Please try again.',
       );
     }
   }
@@ -1038,10 +1043,10 @@ class _FleetRequestDetailsScreenState
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not save this comment. Please try again.',
       );
     } finally {
       if (mounted) setState(() => _updating = false);
@@ -1153,8 +1158,11 @@ class _FleetRequestDetailsScreenState
         const SnackBar(content: Text('Garage photo uploaded')),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+      if (!mounted) return;
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not upload this photo. Please try again.',
       );
     }
     if (mounted) setState(() => _updating = false);
@@ -1882,11 +1890,10 @@ class _FleetRequestDetailsScreenState
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not block this user. Please try again.',
         );
       }
     }
@@ -1916,11 +1923,10 @@ class _FleetRequestDetailsScreenState
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not unblock this user. Please try again.',
         );
       }
     }
@@ -1997,11 +2003,10 @@ class _FleetRequestDetailsScreenState
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not submit this report. Please try again.',
         );
       }
     }

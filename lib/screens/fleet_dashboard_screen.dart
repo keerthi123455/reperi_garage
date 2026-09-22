@@ -6,6 +6,7 @@ import 'fleet_order_sheet.dart';
 import 'fleet_request_view_screen.dart';
 import 'login_screen.dart';
 import '../services/push_notification_service.dart';
+import '../widgets/error_display.dart';
 
 class FleetDashboardScreen extends StatefulWidget {
   final Map<String, dynamic> fleetUser;
@@ -35,25 +36,37 @@ class _FleetDashboardScreenState
 
   Future<void> fetchRequests() async {
 
-    final response =
-        await Supabase.instance.client
-            .from('fleet_pickup_requests')
-            .select()
-            .eq(
-              'fleet_user_id',
-              widget.fleetUser['id'],
-            )
-            .order(
-              'created_at',
-              ascending: false,
-            );
+    try {
+      final response =
+          await Supabase.instance.client
+              .from('fleet_pickup_requests')
+              .select()
+              .eq(
+                'fleet_user_id',
+                widget.fleetUser['id'],
+              )
+              .order(
+                'created_at',
+                ascending: false,
+              );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      requests = response;
-      loading = false;
-    });
+      setState(() {
+        requests = response;
+        loading = false;
+      });
+    } catch (e) {
+      // Without this, a failed initial load left `loading` stuck true
+      // forever, and a failed pull-to-refresh threw unhandled.
+      if (!mounted) return;
+      setState(() => loading = false);
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not load your pickup requests. Please check your connection and try again.',
+      );
+    }
   }
 
   Future<void> _logout() async {

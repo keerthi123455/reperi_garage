@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'booking_tracking_screen.dart'; // imports ChatSheet
 import 'inspection_upload_screen.dart';
+import '../widgets/error_display.dart';
 
 class BookingDetailsScreen extends StatefulWidget {
   final Map booking;
@@ -151,12 +152,15 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
 
       Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+      if (!mounted) return;
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not upload this update. Please try again.',
       );
     }
 
-    setState(() => loading = false);
+    if (mounted) setState(() => loading = false);
   }
 
   /// One-tap "service work is physically finished" signal — separate from
@@ -213,8 +217,10 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not mark as done: $e')),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not mark this booking as done. Please try again.',
       );
     }
 
@@ -238,8 +244,10 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       widget.booking['return_otp_verified_at'] = row['return_otp_verified_at'];
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not check status: $e')),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not check the pickup confirmation status. Please try again.',
       );
     }
 
@@ -268,8 +276,10 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       widget.booking['return_otp_generated_at'] = nowIso;
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not generate code: $e')),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not generate the return code. Please try again.',
       );
     }
 

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../widgets/inspection_view_widget.dart';
+import '../widgets/error_display.dart';
 
 class BookingTrackingScreen extends StatefulWidget {
   final Map booking;
@@ -82,18 +83,24 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   Future<void> checkUnreadMessages() async {
     final supabase = Supabase.instance.client;
 
-    final response = await supabase
-        .from('booking_chats')
-        .select()
-        .eq('booking_id', widget.booking['id'])
-        .eq('sender', 'admin')
-        .eq('is_read_by_consumer', false);
+    try {
+      final response = await supabase
+          .from('booking_chats')
+          .select()
+          .eq('booking_id', widget.booking['id'])
+          .eq('sender', 'admin')
+          .eq('is_read_by_consumer', false);
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      hasUnreadMessages = (response as List).isNotEmpty;
-    });
+      setState(() {
+        hasUnreadMessages = (response as List).isNotEmpty;
+      });
+    } catch (e) {
+      // Background check only — no loading state tied to this and no
+      // user-initiated action, so just log it instead of surfacing a toast.
+      debugPrint('Error checking unread messages: $e');
+    }
   }
 
   void openChat() {
@@ -587,20 +594,32 @@ class _ChatSheetState extends State<ChatSheet> {
   Future<void> fetchMessages() async {
     final supabase = Supabase.instance.client;
 
-    final response = await supabase
-        .from('booking_chats')
-        .select()
-        .eq('booking_id', widget.bookingId)
-        .order('created_at', ascending: true);
+    try {
+      final response = await supabase
+          .from('booking_chats')
+          .select()
+          .eq('booking_id', widget.bookingId)
+          .order('created_at', ascending: true);
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      messages = response;
-      loading = false;
-    });
+      setState(() {
+        messages = response;
+        loading = false;
+      });
 
-    _scrollToBottom();
+      _scrollToBottom();
+    } catch (e) {
+      // Without this, a failed fetch left `loading` stuck true forever —
+      // an unrecoverable spinner in the chat sheet with no way out.
+      if (!mounted) return;
+      setState(() => loading = false);
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not load messages. Please try again.',
+      );
+    }
   }
 
   Future<void> markMessagesRead() async {
@@ -670,8 +689,10 @@ class _ChatSheetState extends State<ChatSheet> {
     } catch (e) {
       if (mounted) {
         setState(() => messages.remove(optimisticMsg));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Send failed: $e'), backgroundColor: Colors.red),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not send this message. Please try again.',
         );
       }
     }
@@ -1101,11 +1122,10 @@ class _ChatSheetState extends State<ChatSheet> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not block this user. Please try again.',
         );
       }
     }
@@ -1134,11 +1154,10 @@ class _ChatSheetState extends State<ChatSheet> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not unblock this user. Please try again.',
         );
       }
     }
@@ -1215,11 +1234,10 @@ class _ChatSheetState extends State<ChatSheet> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not submit this report. Please try again.',
         );
       }
     }

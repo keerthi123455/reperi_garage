@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/error_display.dart';
 
 class DetailingPackagesScreen extends StatefulWidget {
   /// When set, opens the matching category tab (PPF / Ceramic / Graphene /
@@ -1309,7 +1310,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
                         child: ElevatedButton(
                           onPressed: () {
                             Navigator.pop(context);
-                            _showSuccessAnimation(
+                            _confirmDiscuss(
                               serviceName,
                               package: package,
                               preferredBrand: chosenBrand,
@@ -1370,10 +1371,45 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     ).then((_) => othersController.dispose());
   }
 
-  // ── SUCCESS ANIMATION DIALOG ──
-  void _showSuccessAnimation(
+  /// Saves the booking first, then only shows the success animation once
+  /// that actually succeeds — previously the success dialog appeared
+  /// immediately and the database insert was scheduled 3 seconds later,
+  /// gated on the screen still being mounted at that point. Closing the
+  /// sheet, navigating away, or backgrounding the app inside that window
+  /// meant the insert silently never ran: the customer saw "success" but
+  /// no lead was ever created, with nothing telling them it failed.
+  Future<void> _confirmDiscuss(
     String serviceName, {
     Map<String, dynamic>? package,
+    String? preferredBrand,
+  }) async {
+    final saved = await _saveBookingToDatabase(
+      serviceName,
+      package: package,
+      preferredBrand: preferredBrand,
+    );
+    if (!mounted) return;
+    if (saved) {
+      _showSuccessAnimation(serviceName, preferredBrand: preferredBrand);
+    } else {
+      ErrorDisplay.showPremiumError(
+        context,
+        error: 'booking_save_failed',
+        customMessage: 'Could not submit your request. Please try again.',
+        onRetry: () => _confirmDiscuss(
+          serviceName,
+          package: package,
+          preferredBrand: preferredBrand,
+        ),
+      );
+    }
+  }
+
+  // ── SUCCESS ANIMATION DIALOG ──
+  // Purely a confirmation animation now — the actual save already
+  // succeeded by the time this is called (see _confirmDiscuss above).
+  void _showSuccessAnimation(
+    String serviceName, {
     String? preferredBrand,
   }) {
     showDialog(
@@ -1524,10 +1560,10 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
       ),
     );
 
-    // Auto-close dialog and save booking after 3 seconds
+    // The booking is already saved by this point — this just auto-closes
+    // the confirmation animation after a moment.
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && Navigator.canPop(context)) {
-        _saveBookingToDatabase(serviceName, package: package, preferredBrand: preferredBrand);
         Navigator.pop(context);
       }
     });
@@ -1564,7 +1600,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
   }
 
   // ── SAVE BOOKING TO DATABASE ──
-  Future<void> _saveBookingToDatabase(
+  Future<bool> _saveBookingToDatabase(
     String serviceName, {
     Map<String, dynamic>? package,
     String? preferredBrand,
@@ -1575,7 +1611,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
 
       if (user == null) {
         debugPrint('❌ User not authenticated');
-        return;
+        return false;
       }
 
       // Get name from profiles table
@@ -1608,11 +1644,13 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
         'preferred_brand': preferredBrand,
       }).select();
 
-      if (response != null && response.isNotEmpty) {
+      if (response.isNotEmpty) {
         debugPrint('✅ Booking saved: ${response[0]['id']}');
       }
+      return true;
     } catch (e) {
       debugPrint('❌ Error: $e');
+      return false;
     }
   }
 

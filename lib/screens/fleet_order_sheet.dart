@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../widgets/error_display.dart';
 
 class FleetOrderSheet extends StatefulWidget {
   final Map<String, dynamic> fleetUser;
@@ -197,11 +198,13 @@ class _FleetOrderSheetState
 
     } catch (e) {
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-        ),
-      );
+      if (mounted) {
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not submit your pickup request. Please try again.',
+        );
+      }
 
     }
 
