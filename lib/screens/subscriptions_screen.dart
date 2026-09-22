@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../services/address_service.dart';
+import '../widgets/error_display.dart';
 
 class SubscriptionsScreen extends StatefulWidget {
   final String vehicleId;
@@ -54,6 +55,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: AppColors.accent),
+          tooltip: 'Back',
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -167,7 +169,16 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     ));
   }
 
-  /// Save subscription to database after successful payment
+  /// Save subscription to database after successful payment.
+  ///
+  /// This runs as PaymentScreen's onSuccess callback — Razorpay has
+  /// already charged the customer by the time this is called, so a
+  /// failure here used to mean they were charged with no subscription
+  /// record ever created and no indication anything went wrong (this
+  /// caught its own error and only printed it). It now surfaces an
+  /// honest message — payment succeeded, saving the record didn't — with
+  /// a retry that re-attempts just this insert using the same
+  /// orderId/paymentId, rather than charging them again.
   Future<void> _saveSubscriptionToDatabase(
     String orderId,
     String paymentId,
@@ -175,7 +186,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) {
-        print('Error: User not authenticated');
+        debugPrint('Error: User not authenticated');
         return;
       }
 
@@ -200,9 +211,17 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         'pickup_address_name': defaultAddr?['name'],
       });
 
-      print('✅ Subscription saved to database');
+      debugPrint('✅ Subscription saved to database');
     } catch (e) {
-      print('❌ Error saving subscription: $e');
+      debugPrint('❌ Error saving subscription: $e');
+      if (!mounted) return;
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage:
+            'Your payment went through, but we couldn\'t save your subscription (ref: $paymentId). Tap retry, or contact support with that reference if it keeps failing.',
+        onRetry: () => _saveSubscriptionToDatabase(orderId, paymentId),
+      );
     }
   }
 
@@ -242,6 +261,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                           ),
                           IconButton(
                             icon: Icon(Icons.close, color: AppColors.txt),
+                            tooltip: 'Close',
                             onPressed: () => Navigator.pop(context),
                           ),
                         ],

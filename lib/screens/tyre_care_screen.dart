@@ -227,6 +227,29 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
     await launchUrl(Uri.parse('tel:9353094672'));
   }
 
+  /// This is a custom-quote request, not a fixed price — there is no
+  /// amount for Razorpay to charge, so it goes to WhatsApp (carrying
+  /// whatever brand/size the customer picked) instead of PaymentScreen,
+  /// matching how every other "Custom Quote" item in the catalog behaves.
+  Future<void> _requestTyreQuote() async {
+    final brand = selectedTyreBrand != null
+        ? _tyreBrandLabels[_tyreBrands.indexOf(selectedTyreBrand!)]
+        : null;
+    final details = [
+      if (brand != null) 'Brand: $brand',
+      if (selectedWheelSize != null) 'Wheel size: $selectedWheelSize"',
+    ].join(', ');
+    final message = details.isEmpty
+        ? "Hi, I'd like a quote for a tyre change."
+        : "Hi, I'd like a quote for a tyre change. $details.";
+    final uri = Uri.parse(
+      'https://wa.me/919353094672?text=${Uri.encodeComponent(message)}',
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   void _scrollToPackages() {
     final ctx = _packagesKey.currentContext;
     if (ctx == null) return;
@@ -323,16 +346,20 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.45),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white24),
+                Semantics(
+                  button: true,
+                  label: 'Back',
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.45),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
                     ),
-                    child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
                   ),
                 ),
                 const SizedBox(height: 130),
@@ -615,19 +642,7 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
             ),
             const SizedBox(height: 18),
             GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => PaymentScreen(
-                      title: 'Tyre Change',
-                      price: 'Custom Quote',
-                      duration: 'TBD',
-                      vehicleId: widget.vehicle['id'].toString(),
-                    ),
-                  ),
-                );
-              },
+              onTap: _requestTyreQuote,
               child: Container(
                 width: double.infinity,
                 height: 58,

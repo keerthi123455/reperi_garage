@@ -526,6 +526,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                   ),
                 IconButton(
                   icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                  tooltip: 'Close',
                   onPressed: () => Navigator.pop(sheetCtx),
                 ),
               ],
@@ -1049,6 +1050,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new,
               color: Colors.white, size: 18),
+          tooltip: 'Back',
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(

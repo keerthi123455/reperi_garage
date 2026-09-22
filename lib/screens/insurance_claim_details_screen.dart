@@ -60,10 +60,29 @@ class _InsuranceClaimDetailsScreenState
     }
   }
 
-  Future<void> _downloadDocument(String url) async {
+  // How long a document link stays valid once generated — long enough to
+  // actually view/download it, short enough that it's useless if it ever
+  // leaks (chat log, screenshot, browser history) after that.
+  static const _signedUrlExpirySeconds = 300;
+
+  /// Documents are stored in a private bucket by their storage PATH (see
+  /// insurance_claim_screen.dart's upload code) — this mints a fresh,
+  /// short-lived signed URL right before actually opening the document,
+  /// rather than reading a permanent public link straight off the row.
+  /// Also handles claims submitted before this fix, whose stored value is
+  /// still a full public URL rather than a bare path.
+  Future<void> _downloadDocument(String storedValue) async {
     try {
-      if (await canLaunchUrl(Uri.parse(url))) {
-        await launchUrl(Uri.parse(url));
+      final path = storedValue.contains('/insurance-documents/')
+          ? storedValue.split('/insurance-documents/').last
+          : storedValue;
+
+      final signedUrl = await _supabase.storage
+          .from('insurance-documents')
+          .createSignedUrl(path, _signedUrlExpirySeconds);
+
+      if (await canLaunchUrl(Uri.parse(signedUrl))) {
+        await launchUrl(Uri.parse(signedUrl));
       }
     } catch (e) {
       if (mounted) {

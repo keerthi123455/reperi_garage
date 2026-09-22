@@ -14,6 +14,7 @@ import '../theme/theme_controller.dart';
 import '../widgets/ask_ai_button.dart';
 import '../widgets/bottom_nav_actions.dart';
 import '../widgets/bottom_nav_bar.dart';
+import '../widgets/error_display.dart';
 import 'booking_tracking_screen.dart';
 
 // Same brand catalog as profile_screen.dart's "Add/Edit Vehicle" sheet —
@@ -995,8 +996,6 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
           .eq('vehicle_id', widget.vehicleId)
           .single();
 
-      if (subResponse == null) return;
-
       final subscriptionId = subResponse['id'];
 
       final response = await supabase
@@ -1048,7 +1047,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
         insuranceUpdates = updatesResponse;
       });
     } catch (e) {
-      print('Error fetching insurance updates: $e');
+      debugPrint('Error fetching insurance updates: $e');
     }
   }
 
@@ -1261,8 +1260,10 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not cancel: $e')),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not cancel this booking. Please try again.',
       );
     }
   }
@@ -2045,7 +2046,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      booking['package_name'],
+                                      booking['package_name'] ?? '',
                                       style: TextStyle(
                                         color: AppColors.txt,
                                         fontSize: 24,
@@ -2149,7 +2150,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                 ),
 
                               Text(
-                                booking['package_price'],
+                                booking['package_price'] ?? '',
                                 style: const TextStyle(
                                   color: Color(0xFFD4A017),
                                   fontSize: 22,
@@ -2272,7 +2273,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                   ],
                                 ),
                                 child: Text(
-                                  booking['booking_status'],
+                                  booking['booking_status'] ?? '',
                                   style: TextStyle(
                                     color: AppColors.onAccentDark,
                                     fontWeight: FontWeight.w900,

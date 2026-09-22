@@ -41,9 +41,6 @@ dependencies:
   ## PUSH NOTIFICATIONS
   onesignal_flutter: ^5.3.5
 
-  ## ENV VARIABLES
-  flutter_dotenv: ^5.1.0
-
 dev_dependencies:
   flutter_test:
     sdk: flutter

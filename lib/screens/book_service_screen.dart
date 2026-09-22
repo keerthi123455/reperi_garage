@@ -260,19 +260,23 @@ class _BookServiceScreenState
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 // ── Back Button ──
-                                GestureDetector(
-                                  onTap: () => Navigator.pop(context),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.55),
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: Colors.white30),
-                                    ),
-                                    child: const Icon(
-                                      Icons.arrow_back,
-                                      color: Colors.white,
-                                      size: 20,
+                                Semantics(
+                                  button: true,
+                                  label: 'Back',
+                                  child: GestureDetector(
+                                    onTap: () => Navigator.pop(context),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.55),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: Colors.white30),
+                                      ),
+                                      child: const Icon(
+                                        Icons.arrow_back,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
                                     ),
                                   ),
                                 ),

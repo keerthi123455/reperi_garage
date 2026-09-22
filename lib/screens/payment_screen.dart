@@ -6,9 +6,10 @@ import 'profile_screen.dart';
 import 'package:reperi_garage/services/address_service.dart';
 import 'package:reperi_garage/screens/address_management_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '/services/admin_assignment_service.dart';  // ✅ NEW: Admin assignment service
+import '/services/admin_assignment_service.dart';
 import '/services/delivery_partner_assignment_service.dart';
 import '/services/service_area.dart';
+import '../widgets/error_display.dart';
 
 /// Fixed white/blue corporate palette for this screen — set explicitly
 /// rather than pulled from Theme.of(context), so checkout looks identical
@@ -524,7 +525,7 @@ class _PaymentScreenState extends State<PaymentScreen>
           // Profile might not exist, continue with null values
         }
 
-        // ✅ NEW: Get admin ID — forcedAdminUsername (e.g. Roadside
+        // Get admin ID — forcedAdminUsername (e.g. Roadside
         // Assistance -> 'emergency_service') always wins; otherwise scoped
         // to this vehicle's type (two-wheeler bookings only rotate among
         // two-wheeler admins, four-wheeler among four-wheeler admins).
@@ -566,7 +567,7 @@ class _PaymentScreenState extends State<PaymentScreen>
           'customer_name': profileData?['full_name'] ?? 'Unknown',
           'customer_phone': profileData?['phone'],
 
-          // ✅ NEW: Admin Assignment (Load-Balanced)
+          // Admin Assignment (Load-Balanced)
           'assigned_to_admin_id': assignedAdminId,
         });
       }
@@ -577,8 +578,10 @@ class _PaymentScreenState extends State<PaymentScreen>
       setState(() {
         isProcessing = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not place your booking. Please try again.',
       );
     }
   }
@@ -624,7 +627,7 @@ class _PaymentScreenState extends State<PaymentScreen>
           // Profile might not exist, continue with null values
         }
 
-        // ✅ NEW: Get admin ID — forcedAdminUsername (e.g. Roadside
+        // Get admin ID — forcedAdminUsername (e.g. Roadside
         // Assistance -> 'emergency_service') always wins; otherwise scoped
         // to this vehicle's type (two-wheeler bookings only rotate among
         // two-wheeler admins, four-wheeler among four-wheeler admins).
@@ -664,7 +667,7 @@ class _PaymentScreenState extends State<PaymentScreen>
           'customer_name': profileData?['full_name'] ?? 'Unknown',
           'customer_phone': profileData?['phone'],
 
-          // ✅ NEW: Admin Assignment (Load-Balanced)
+          // Admin Assignment (Load-Balanced)
           'assigned_to_admin_id': assignedAdminId,
         });
       }
@@ -675,8 +678,10 @@ class _PaymentScreenState extends State<PaymentScreen>
       setState(() {
         isProcessing = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not place your booking. Please try again.',
       );
     }
   }
@@ -852,19 +857,23 @@ class _PaymentScreenState extends State<PaymentScreen>
                         /// TOP BAR
                         Row(
                           children: [
-                            GestureDetector(
-                              onTap: () => Navigator.pop(context),
-                              child: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: _PayColors.surface,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: _PayColors.border),
-                                ),
-                                child: const Icon(
-                                  Icons.arrow_back,
-                                  color: _PayColors.navy,
-                                  size: 20,
+                            Semantics(
+                              button: true,
+                              label: 'Back',
+                              child: GestureDetector(
+                                onTap: () => Navigator.pop(context),
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: _PayColors.surface,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: _PayColors.border),
+                                  ),
+                                  child: const Icon(
+                                    Icons.arrow_back,
+                                    color: _PayColors.navy,
+                                    size: 20,
+                                  ),
                                 ),
                               ),
                             ),

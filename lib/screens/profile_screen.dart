@@ -12,9 +12,7 @@ import '../widgets/bottom_nav_bar.dart';
 import '../widgets/error_display.dart';
 
 // Brand highlight yellow — a fixed accent, not a themed surface, used for
-// the badges/CTAs on this screen (this used to come from the app's legacy
-// ../constants/app_colors.dart palette, now superseded by ../theme/app_colors.dart
-// for everything else on this screen).
+// the badges/CTAs on this screen.
 const Color _highlightYellow = Color(0xFFFFD600);
 
 class ProfileScreen extends StatefulWidget {
@@ -1322,21 +1320,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   padding: const EdgeInsets.fromLTRB(22, 22, 22, 0),
                   child: Row(
                     children: [
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceRaised,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.07),
-                                blurRadius: 12, offset: const Offset(4, 4),
-                              ),
-                            ],
+                      Semantics(
+                        button: true,
+                        label: 'Back',
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceRaised,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.07),
+                                  blurRadius: 12, offset: const Offset(4, 4),
+                                ),
+                              ],
+                            ),
+                            child: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: AppColors.txt),
                           ),
-                          child: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: AppColors.txt),
                         ),
                       ),
                       const SizedBox(width: 16),

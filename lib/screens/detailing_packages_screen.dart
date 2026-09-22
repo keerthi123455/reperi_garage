@@ -35,7 +35,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
         _selectedCategory = 1;
       } else if (target.contains('graphene')) {
         _selectedCategory = 2;
-      } else if (target.contains('sun film') || target.contains('stek')) {
+      } else if (target.contains('sun film')) {
         _selectedCategory = 3;
       }
       _tabController.index = _selectedCategory;
@@ -196,17 +196,21 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Back button
-              GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceRaised,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.arrow_back_rounded,
-                    color: AppColors.txt,
+              Semantics(
+                button: true,
+                label: 'Back',
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceRaised,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.arrow_back_rounded,
+                      color: AppColors.txt,
+                    ),
                   ),
                 ),
               ),
@@ -348,7 +352,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
 
                     const SizedBox(height: 12),
 
-                    // Benefit 2: 24/7 Assistance
+                    // Benefit 2: Dedicated Support
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1570,7 +1574,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
       final user = supabase.auth.currentUser;
 
       if (user == null) {
-        print('❌ User not authenticated');
+        debugPrint('❌ User not authenticated');
         return;
       }
 
@@ -1605,10 +1609,10 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
       }).select();
 
       if (response != null && response.isNotEmpty) {
-        print('✅ Booking saved: ${response[0]['id']}');
+        debugPrint('✅ Booking saved: ${response[0]['id']}');
       }
     } catch (e) {
-      print('❌ Error: $e');
+      debugPrint('❌ Error: $e');
     }
   }
 

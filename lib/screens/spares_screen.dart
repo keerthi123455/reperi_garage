@@ -147,16 +147,20 @@ class _SparesScreenState extends State<SparesScreen> {
   Widget _buildHeader() {
     return Row(
       children: [
-        GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceRaised,
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.line),
+        Semantics(
+          button: true,
+          label: 'Back',
+          child: GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceRaised,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.line),
+              ),
+              child: Icon(Icons.arrow_back, color: AppColors.txt, size: 20),
             ),
-            child: Icon(Icons.arrow_back, color: AppColors.txt, size: 20),
           ),
         ),
         const SizedBox(width: 14),
@@ -425,12 +429,16 @@ class _SparePartSheet extends StatelessWidget {
                           child: Material(
                             color: Colors.black.withOpacity(0.4),
                             shape: const CircleBorder(),
-                            child: InkWell(
-                              customBorder: const CircleBorder(),
-                              onTap: () => Navigator.pop(context),
-                              child: const Padding(
-                                padding: EdgeInsets.all(8),
-                                child: Icon(Icons.close_rounded, color: Colors.white, size: 20),
+                            child: Semantics(
+                              button: true,
+                              label: 'Close',
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: () => Navigator.pop(context),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(8),
+                                  child: Icon(Icons.close_rounded, color: Colors.white, size: 20),
+                                ),
                               ),
                             ),
                           ),

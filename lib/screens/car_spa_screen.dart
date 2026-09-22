@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'payment_screen.dart';
 import '../services/catalog_service.dart';
@@ -25,14 +24,6 @@ class CarSpaScreen extends StatefulWidget {
 class _CarSpaScreenState extends State<CarSpaScreen> {
   int selectedPackage = -1;
   final List<GlobalKey> _cardKeys = [];
-
-  Timer? _autoScrollTimer;
-
-  final List<String> _beforeAfterImages = [
-    'assets/images/before_after_1.jpg',
-    'assets/images/before_after_2.jpg',
-    'assets/images/before_after_3.jpg',
-  ];
 
   static const Color _gold = Color(0xFFD4A017);
 
@@ -180,7 +171,6 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
 
   @override
   void dispose() {
-    _autoScrollTimer?.cancel();
     themeController.removeListener(_onThemeChanged);
     super.dispose();
   }
@@ -270,19 +260,23 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 // ── Back Button ──
-                                GestureDetector(
-                                  onTap: () => Navigator.pop(context),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.55),
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: Colors.white30),
-                                    ),
-                                    child: const Icon(
-                                      Icons.arrow_back,
-                                      color: Colors.white,
-                                      size: 20,
+                                Semantics(
+                                  button: true,
+                                  label: 'Back',
+                                  child: GestureDetector(
+                                    onTap: () => Navigator.pop(context),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.55),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: Colors.white30),
+                                      ),
+                                      child: const Icon(
+                                        Icons.arrow_back,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
                                     ),
                                   ),
                                 ),

@@ -497,111 +497,16 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                       ),
                       
                       const SizedBox(height: 20),
-                      
-                      // ── PICKUP ADDRESS ──
-                      const Text(
-                        'Pickup Address:',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        widget.booking['pickup_address'] ?? 'Not specified',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          height: 1.5,
-                        ),
-                      ),
-                      
-                      // ── GPS COORDINATES ──
-                      if (widget.booking['pickup_latitude'] != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.gps_fixed_rounded,
-                                color: Color(0xFFD4A017),
-                                size: 14,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '${widget.booking['pickup_latitude']?.toStringAsFixed(4)}, ${widget.booking['pickup_longitude']?.toStringAsFixed(4)}',
-                                style: const TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 11,
-                                  fontFamily: 'monospace',
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      
-                      // ── DROPOFF ADDRESS (if different) ──
-                      if (widget.booking['dropoff_address'] != null &&
-                          widget.booking['dropoff_address'] !=
-                              widget.booking['pickup_address'])
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 18),
-                            const Text(
-                              'Dropoff Address:',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              widget.booking['dropoff_address'] ??
-                                  'Not specified',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                height: 1.5,
-                              ),
-                            ),
-                            if (widget.booking['dropoff_latitude'] !=
-                                null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 10),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.gps_fixed_rounded,
-                                      color: Color(0xFFD4A017),
-                                      size: 14,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '${widget.booking['dropoff_latitude']?.toStringAsFixed(4)}, ${widget.booking['dropoff_longitude']?.toStringAsFixed(4)}',
-                                      style: const TextStyle(
-                                        color: Colors.white54,
-                                        fontSize: 11,
-                                        fontFamily: 'monospace',
-                                        letterSpacing: 0.2,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                      
+
+                      // Pickup/dropoff address and GPS coordinates are
+                      // deliberately not shown here — garage staff only get
+                      // customer chat, not the customer's home address or
+                      // phone number. A delivery partner (assigned
+                      // separately) handles the actual pickup/drop-off
+                      // logistics and sees that address on their own screen.
+
                       // ── CUSTOMER CONTACT ──
-                      if (widget.booking['customer_name'] != null ||
-                          widget.booking['customer_phone'] != null)
+                      if (widget.booking['customer_name'] != null)
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -654,44 +559,8 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                                   ),
                                 ],
                               ),
-                            if (widget.booking['customer_phone'] != null)
-                              Padding(
-                                padding:
-                                    const EdgeInsets.only(top: 10),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Phone:',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    GestureDetector(
-                                      onTap: () {
-                                        // Optional: Launch dialer
-                                        // final phone = widget.booking['customer_phone'];
-                                        // launchUrl(Uri(scheme: 'tel', path: phone));
-                                      },
-                                      child: Text(
-                                        widget.booking['customer_phone'] ??
-                                            '',
-                                        style: const TextStyle(
-                                          color: Color(0xFFD4A017),
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          decoration:
-                                              TextDecoration.underline,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                            // No phone number shown here — garage staff
+                            // reach the customer through in-app chat only.
                           ],
                         ),
                       

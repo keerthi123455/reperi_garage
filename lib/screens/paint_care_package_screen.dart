@@ -172,7 +172,29 @@ class PaintCarePackageScreen extends StatefulWidget {
 
 class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
   int _selectedTier = 1; // default to Paint Protection Package (recommended)
-  final List<GlobalKey> _cardKeys = List.generate(_tiers.length, (_) => GlobalKey());
+
+  // ── Booking selection ───────────────────────────────────────────────
+  // Separate from `_selectedTier` above, which only tracks which card is
+  // being *viewed* in the horizontal scroller. A package is only actually
+  // part of the booking once its own "Add Package" button is tapped, and
+  // add-ons are independent of any package — either can be booked alone.
+  _Tier? _includedTier;
+  final Set<_AddOn> _selectedAddOns = {};
+
+  int _parsePrice(String price) =>
+      int.parse(price.replaceAll(RegExp(r'[^0-9]'), ''));
+
+  int get _totalRupees {
+    var total = 0;
+    if (_includedTier != null) total += _parsePrice(_includedTier!.price);
+    for (final addOn in _selectedAddOns) {
+      total += _parsePrice(addOn.startingPrice);
+    }
+    return total;
+  }
+
+  int get _bookedItemCount =>
+      (_includedTier != null ? 1 : 0) + _selectedAddOns.length;
 
   @override
   void initState() {
@@ -182,17 +204,6 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
       final match = _tiers.indexWhere((t) => t.name.toLowerCase() == target);
       if (match != -1) {
         _selectedTier = match;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final ctx = _cardKeys[match].currentContext;
-          if (ctx != null) {
-            Scrollable.ensureVisible(
-              ctx,
-              duration: const Duration(milliseconds: 450),
-              curve: Curves.easeInOut,
-              alignment: 0.1,
-            );
-          }
-        });
       }
     }
     // AppColors' fields are mutated in place by themeController, not routed
@@ -218,29 +229,225 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  void _bookTier(_Tier tier) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PaymentScreen(
-          title: tier.name,
-          price: tier.price,
-          duration: '2-3 hrs',
-          vehicleId: widget.vehicleId,
+  void _toggleTier(_Tier tier) {
+    final adding = _includedTier != tier;
+    setState(() => _includedTier = adding ? tier : null);
+    if (adding) _showAddedPopup(tier.name);
+  }
+
+  void _toggleAddOn(_AddOn addOn) {
+    final adding = !_selectedAddOns.contains(addOn);
+    setState(() {
+      if (adding) {
+        _selectedAddOns.add(addOn);
+      } else {
+        _selectedAddOns.remove(addOn);
+      }
+    });
+    if (adding) _showAddedPopup(addOn.name);
+  }
+
+  void _showAddedPopup(String name) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Added',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 380),
+      pageBuilder: (_, __, ___) => _AddedConfirmationDialog(name: name),
+      transitionBuilder: (_, animation, __, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutBack,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: animation,
+          child: ScaleTransition(scale: curved, child: child),
+        );
+      },
+    );
+  }
+
+  void _showPackageDetails(_Tier tier) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _PackageDetailsSheet(
+        tier: tier,
+        isAdded: _includedTier == tier,
+        onAddPackage: () {
+          Navigator.pop(sheetContext);
+          _toggleTier(tier);
+        },
+      ),
+    );
+  }
+
+  /// Simplified summary card — just enough to identify and compare the
+  /// package at a glance. Full highlights/best-for copy lives in the detail
+  /// sheet ([_showPackageDetails]) instead of crowding this card.
+  Widget _buildPackageCard(_Tier tier, Color recommendedCardColor) {
+    final isIncluded = _includedTier == tier;
+    return GestureDetector(
+      onTap: () => _showPackageDetails(tier),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color:
+              tier.recommended ? recommendedCardColor : AppColors.surfaceRaised,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isIncluded ? tier.accent : tier.accent.withOpacity(0.25),
+            width: isIncluded ? 2 : 1,
+          ),
+          boxShadow: tier.recommended
+              ? [
+                  BoxShadow(
+                    color: tier.accent.withOpacity(0.25),
+                    blurRadius: 26,
+                    offset: const Offset(0, 12),
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (tier.recommended || isIncluded)
+              Row(
+                children: [
+                  if (tier.recommended)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: tier.accent,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.workspace_premium_rounded,
+                              color: AppColors.onAccentDark, size: 12),
+                          const SizedBox(width: 4),
+                          Text(
+                            'RECOMMENDED',
+                            style: TextStyle(
+                              color: AppColors.onAccentDark,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (isIncluded)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: tier.accent.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'ADDED',
+                        style: TextStyle(
+                          color: tier.accent,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            if (tier.recommended || isIncluded) const SizedBox(height: 14),
+            Text(
+              tier.name,
+              style: TextStyle(
+                color: tier.accent,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.4,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              tier.price,
+              style: TextStyle(
+                color: AppColors.txt,
+                fontSize: 34,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              tier.tagline,
+              style: TextStyle(color: AppColors.mut, fontSize: 13.5, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: tier.accent.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'Protection: ${tier.protection}',
+                style: TextStyle(
+                  color: tier.accent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Tap for full details',
+                  style: TextStyle(
+                    color: AppColors.mut,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded,
+                    color: AppColors.mut, size: 22),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 
-  void _bookAddOn(_AddOn addOn) {
+  void _book() {
+    if (_bookedItemCount == 0) return;
+    final items = <Map<String, dynamic>>[
+      if (_includedTier != null)
+        {
+          'name': _includedTier!.name,
+          'price': _parsePrice(_includedTier!.price),
+        },
+      for (final addOn in _selectedAddOns)
+        {'name': addOn.name, 'price': _parsePrice(addOn.startingPrice)},
+    ];
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
-          title: addOn.name,
-          price: addOn.startingPrice,
-          duration: 'Quoted on inspection',
+          title: _includedTier?.name ?? 'Paint Care Add-Ons',
+          price: '₹$_totalRupees',
+          duration: '2-3 hrs',
           vehicleId: widget.vehicleId,
+          billItems: items,
         ),
       ),
     );
@@ -248,7 +455,6 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final selected = _tiers[_selectedTier];
     // A warm, gold-tinted card for the "recommended" tier — blended over
     // the current mode's surface so it stays subtle in both themes instead
     // of a fixed near-black tint that would look wrong in light mode.
@@ -272,17 +478,21 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceRaised,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: AppColors.line),
+                        Semantics(
+                          button: true,
+                          label: 'Back',
+                          child: GestureDetector(
+                            onTap: () => Navigator.pop(context),
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceRaised,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppColors.line),
+                              ),
+                              child: Icon(Icons.arrow_back,
+                                  color: AppColors.txt, size: 20),
                             ),
-                            child: Icon(Icons.arrow_back,
-                                color: AppColors.txt, size: 20),
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -358,7 +568,7 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Two levels of paint care, each with a clear protection duration.',
+                        'Tap a package below to see full details.',
                         style: TextStyle(color: AppColors.mut, fontSize: 13),
                       ),
                     ],
@@ -366,296 +576,21 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
                 ),
               ),
 
-              // ── PACKAGE CARDS ──
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 500,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 24),
-                    itemCount: _tiers.length,
-                    itemBuilder: (_, i) {
-                      final tier = _tiers[i];
-                      final isSelected = i == _selectedTier;
-                      return GestureDetector(
-                        key: _cardKeys[i],
-                        onTap: () => setState(() => _selectedTier = i),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          width: tier.recommended ? 260 : 230,
-                          margin: const EdgeInsets.symmetric(horizontal: 8),
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: tier.recommended
-                                ? recommendedCardColor
-                                : AppColors.surfaceRaised,
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(
-                              color: isSelected
-                                  ? tier.accent
-                                  : tier.accent.withOpacity(0.25),
-                              width: isSelected ? 2 : 1,
-                            ),
-                            boxShadow: tier.recommended
-                                ? [
-                                    BoxShadow(
-                                      color: tier.accent.withOpacity(0.25),
-                                      blurRadius: 26,
-                                      offset: const Offset(0, 12),
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (tier.recommended)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: tier.accent,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.workspace_premium_rounded,
-                                          color: AppColors.onAccentDark, size: 12),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        'RECOMMENDED',
-                                        style: TextStyle(
-                                          color: AppColors.onAccentDark,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 0.6,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              if (tier.recommended) const SizedBox(height: 12),
-                              Text(
-                                tier.name,
-                                style: TextStyle(
-                                  color: tier.accent,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.4,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                tier.price,
-                                style: TextStyle(
-                                  color: AppColors.txt,
-                                  fontSize: 30,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                tier.tagline,
-                                style: TextStyle(
-                                    color: AppColors.mut, fontSize: 12),
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: tier.accent.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  'Protection: ${tier.protection}',
-                                  style: TextStyle(
-                                    color: tier.accent,
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Expanded(
-                                child: ListView(
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  children: tier.highlights
-                                      .take(9)
-                                      .map((h) => Padding(
-                                            padding: const EdgeInsets.only(
-                                                bottom: 8),
-                                            child: Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Icon(Icons.check_circle,
-                                                    color: tier.accent,
-                                                    size: 15),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                  child: Text(
-                                                    h,
-                                                    style: TextStyle(
-                                                        color: AppColors.txt
-                                                            .withOpacity(0.7),
-                                                        fontSize: 12.5),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ))
-                                      .toList(),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Best for: ${tier.bestFor}',
-                                style: TextStyle(
-                                  color: AppColors.mut,
-                                  fontSize: 10.5,
-                                  fontStyle: FontStyle.italic,
-                                  height: 1.3,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: isSelected
-                                        ? tier.accent
-                                        : AppColors.chipBg,
-                                    foregroundColor: isSelected
-                                        ? AppColors.onAccentDark
-                                        : AppColors.txt.withOpacity(0.7),
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(14)),
-                                  ),
-                                  onPressed: () => _bookTier(tier),
-                                  child: const Text('Book Now',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w800)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+              // ── STICKY PACKAGE SWITCHER ──
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _PackageTabBarDelegate(
+                  selectedIndex: _selectedTier,
+                  onSelect: (i) => setState(() => _selectedTier = i),
                 ),
               ),
 
-              // ── COMPARISON TABLE ──
+              // ── SELECTED PACKAGE CARD ──
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Compare Packages',
-                        style: TextStyle(
-                          color: AppColors.txt,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Table(
-                          defaultVerticalAlignment:
-                              TableCellVerticalAlignment.middle,
-                          columnWidths: const {
-                            0: FixedColumnWidth(180),
-                            1: FixedColumnWidth(100),
-                            2: FixedColumnWidth(110),
-                          },
-                          children: [
-                            TableRow(
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(color: AppColors.line),
-                                ),
-                              ),
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                  child: Text('Feature',
-                                      style: TextStyle(
-                                          color: AppColors.mut,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700)),
-                                ),
-                                const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 10),
-                                  child: Text('₹1,999',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                          color: Color(0xFF4FA3E3),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800)),
-                                ),
-                                const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 10),
-                                  child: Text('₹2,999',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                          color: Color(0xFFD4A017),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800)),
-                                ),
-                              ],
-                            ),
-                            for (final row in _comparisonRows)
-                              TableRow(
-                                decoration: BoxDecoration(
-                                  border: Border(
-                                    bottom: BorderSide(
-                                        color: AppColors.line.withOpacity(0.6)),
-                                  ),
-                                ),
-                                children: [
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 12),
-                                    child: Text(row.$1,
-                                        style: TextStyle(
-                                            color: AppColors.txt.withOpacity(0.7),
-                                            fontSize: 12.5)),
-                                  ),
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 12),
-                                    child: Text(row.$2,
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                            color: AppColors.txt.withOpacity(0.7),
-                                            fontSize: 12.5)),
-                                  ),
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 12),
-                                    child: Text(row.$3,
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                            color: AppColors.txt.withOpacity(0.7),
-                                            fontSize: 12.5)),
-                                  ),
-                                ],
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: _buildPackageCard(
+                      _tiers[_selectedTier], recommendedCardColor),
                 ),
               ),
 
@@ -691,6 +626,7 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     final addOn = _addOns[index];
+                    final isAdded = _selectedAddOns.contains(addOn);
                     return Padding(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                       child: Container(
@@ -772,6 +708,10 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
                               width: double.infinity,
                               child: OutlinedButton(
                                 style: OutlinedButton.styleFrom(
+                                  backgroundColor: isAdded
+                                      ? const Color(0xFFD4A017)
+                                          .withOpacity(0.12)
+                                      : null,
                                   side: const BorderSide(
                                       color: Color(0xFFD4A017)),
                                   padding: const EdgeInsets.symmetric(
@@ -780,9 +720,9 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
                                       borderRadius:
                                           BorderRadius.circular(14)),
                                 ),
-                                onPressed: () => _bookAddOn(addOn),
+                                onPressed: () => _toggleAddOn(addOn),
                                 child: Text(
-                                  'Book ${addOn.name}',
+                                  isAdded ? 'Added to booking' : 'Add On',
                                   style: const TextStyle(
                                     color: Color(0xFFD4A017),
                                     fontWeight: FontWeight.w800,
@@ -837,7 +777,9 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
             ],
           ),
 
-          // ── STICKY BOOK NOW BAR ──
+          // ── STICKY BOOK BAR ──
+          // Enabled once anything is added — a package, add-ons, or both;
+          // a package on its own is never required to book add-ons.
           Positioned(
             left: 0,
             right: 0,
@@ -846,35 +788,42 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                 child: GestureDetector(
-                  onTap: () => _bookTier(selected),
+                  onTap: _bookedItemCount > 0 ? _book : null,
                   child: Container(
                     height: 64,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFD4A017), Color(0xFFF5C842)],
-                      ),
+                      gradient: _bookedItemCount > 0
+                          ? const LinearGradient(
+                              colors: [Color(0xFFD4A017), Color(0xFFF5C842)],
+                            )
+                          : null,
+                      color: _bookedItemCount > 0 ? null : AppColors.chipBg,
                       borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFFD4A017).withOpacity(0.4),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
+                      boxShadow: _bookedItemCount > 0
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFFD4A017).withOpacity(0.4),
+                                blurRadius: 20,
+                                offset: const Offset(0, 8),
+                              ),
+                            ]
+                          : null,
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.calendar_month,
-                            color: AppColors.onAccentDark, size: 22),
-                        const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'BOOK ${selected.name} • ${selected.price}',
+                            _bookedItemCount > 0
+                                ? 'BOOK $_bookedItemCount ITEM${_bookedItemCount > 1 ? 'S' : ''} • ₹$_totalRupees'
+                                : 'Add a package or add-on to book',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: AppColors.onAccentDark,
+                              color: _bookedItemCount > 0
+                                  ? AppColors.onAccentDark
+                                  : AppColors.mut,
                               fontSize: 15,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0.5,
@@ -891,5 +840,391 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
         ],
       ),
     );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Full package detail sheet, opened by tapping either package card. Carries
+// the "Add Package" action itself — the inline card is a tap target only,
+// so this is the one and only place that button lives.
+// ─────────────────────────────────────────────────────────────────────────────
+class _PackageDetailsSheet extends StatelessWidget {
+  const _PackageDetailsSheet({
+    required this.tier,
+    required this.isAdded,
+    required this.onAddPackage,
+  });
+
+  final _Tier tier;
+  final bool isAdded;
+  final VoidCallback onAddPackage;
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.78,
+      minChildSize: 0.5,
+      maxChildSize: 0.94,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.surfaceRaised,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: AppColors.line,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+                  children: [
+                    if (tier.recommended)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: tier.accent,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.workspace_premium_rounded,
+                                color: AppColors.onAccentDark, size: 14),
+                            const SizedBox(width: 6),
+                            Text(
+                              'RECOMMENDED',
+                              style: TextStyle(
+                                color: AppColors.onAccentDark,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (tier.recommended) const SizedBox(height: 14),
+                    Text(
+                      tier.name,
+                      style: TextStyle(
+                        color: tier.accent,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      tier.price,
+                      style: TextStyle(
+                        color: AppColors.txt,
+                        fontSize: 38,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      tier.tagline,
+                      style: TextStyle(
+                          color: AppColors.mut, fontSize: 15.5, height: 1.4),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: tier.accent.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Protection: ${tier.protection}',
+                        style: TextStyle(
+                          color: tier.accent,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    Text(
+                      "What's included",
+                      style: TextStyle(
+                        color: AppColors.txt,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    ...tier.highlights.map((h) => Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.check_circle,
+                                  color: tier.accent, size: 20),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  h,
+                                  style: TextStyle(
+                                    color: AppColors.txt.withOpacity(0.85),
+                                    fontSize: 15.5,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.chipBg,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(
+                        'Best for: ${tier.bestFor}',
+                        style: TextStyle(
+                          color: AppColors.mut,
+                          fontSize: 14,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                    24, 12, 24, 12 + MediaQuery.of(context).padding.bottom),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          isAdded ? AppColors.chipBg : tier.accent,
+                      foregroundColor: isAdded
+                          ? AppColors.txt.withOpacity(0.7)
+                          : AppColors.onAccentDark,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: onAddPackage,
+                    child: Text(
+                      isAdded ? 'Remove Package' : 'Add Package',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The "added to booking" confirmation — a large, centered, self-dismissing
+// popup with a bouncy check-mark entrance. Replaces the old plain AlertDialog
+// (small text, static appearance, needed a manual OK tap).
+// ─────────────────────────────────────────────────────────────────────────────
+class _AddedConfirmationDialog extends StatefulWidget {
+  const _AddedConfirmationDialog({required this.name});
+
+  final String name;
+
+  @override
+  State<_AddedConfirmationDialog> createState() =>
+      _AddedConfirmationDialogState();
+}
+
+class _AddedConfirmationDialogState extends State<_AddedConfirmationDialog>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _iconController;
+  late final Animation<double> _iconScale;
+
+  @override
+  void initState() {
+    super.initState();
+    _iconController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 550),
+    );
+    _iconScale = CurvedAnimation(
+      parent: _iconController,
+      curve: Curves.elasticOut,
+    );
+    _iconController.forward();
+
+    // Self-dismissing, same pattern as ErrorDisplay's premium toast — pops
+    // this dialog's own route via its own context, so it can never end up
+    // popping something else pushed on top of it in the meantime.
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
+
+  @override
+  void dispose() {
+    _iconController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 40),
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 36),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceRaised,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.35),
+                blurRadius: 40,
+                offset: const Offset(0, 20),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ScaleTransition(
+                scale: _iconScale,
+                child: Container(
+                  width: 76,
+                  height: 76,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD4A017).withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_circle_rounded,
+                    color: Color(0xFFD4A017),
+                    size: 52,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                widget.name,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.txt,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 22,
+                  height: 1.25,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Added to your booking',
+                style: TextStyle(
+                  color: AppColors.mut,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The sticky pill switcher between the two packages, replacing the old
+// horizontal-scroll cards + separate comparison table below them.
+// ─────────────────────────────────────────────────────────────────────────────
+class _PackageTabBarDelegate extends SliverPersistentHeaderDelegate {
+  _PackageTabBarDelegate({
+    required this.selectedIndex,
+    required this.onSelect,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+
+  @override
+  double get minExtent => 64;
+
+  @override
+  double get maxExtent => 64;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: AppColors.ink,
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Row(
+          children: List.generate(_tiers.length, (i) {
+            final tier = _tiers[i];
+            final selected = i == selectedIndex;
+            final label = tier.name.replaceAll(' PACKAGE', '');
+            return Expanded(
+              child: GestureDetector(
+                onTap: () => onSelect(i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  decoration: BoxDecoration(
+                    color: selected ? tier.accent : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: selected
+                          ? AppColors.onAccentDark
+                          : AppColors.txt.withOpacity(0.7),
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _PackageTabBarDelegate oldDelegate) {
+    return oldDelegate.selectedIndex != selectedIndex;
   }
 }

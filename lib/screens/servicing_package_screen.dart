@@ -251,17 +251,21 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen>
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceRaised,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.line),
+          Semantics(
+            button: true,
+            label: 'Back',
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceRaised,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.line),
+                ),
+                child:
+                    Icon(Icons.arrow_back, color: AppColors.txt, size: 20),
               ),
-              child:
-                  Icon(Icons.arrow_back, color: AppColors.txt, size: 20),
             ),
           ),
           const SizedBox(width: 14),

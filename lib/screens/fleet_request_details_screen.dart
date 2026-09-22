@@ -502,6 +502,7 @@ class _FleetRequestDetailsScreenState
                   ),
                 IconButton(
                   icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                  tooltip: 'Close',
                   onPressed: () => Navigator.pop(sheetCtx),
                 ),
               ],
@@ -1184,6 +1185,7 @@ class _FleetRequestDetailsScreenState
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new,
               color: Color(0xFFD4A017)),
+          tooltip: 'Back',
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(

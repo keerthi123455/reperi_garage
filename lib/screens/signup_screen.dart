@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../widgets/custom_textfield.dart';
 import '../widgets/error_display.dart';
 import 'home_screen.dart';
 
@@ -447,17 +446,21 @@ class _SignupScreenState extends State<SignupScreen>
               ),
             ),
           ),
-          GestureDetector(
-            onTap: () =>
-                setState(() => _obscurePassword = !_obscurePassword),
-            child: Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Icon(
-                _obscurePassword
-                    ? Icons.visibility_outlined
-                    : Icons.visibility_off_outlined,
-                color: const Color(0xFFD4A017),
-                size: 22,
+          Semantics(
+            button: true,
+            label: _obscurePassword ? 'Show password' : 'Hide password',
+            child: GestureDetector(
+              onTap: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  color: const Color(0xFFD4A017),
+                  size: 22,
+                ),
               ),
             ),
           ),

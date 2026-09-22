@@ -125,18 +125,22 @@ Navigator.of(context).pushAndRemoveUntil(
               obscureText: obscurePassword,
               decoration: InputDecoration(
                 labelText: 'New Password',
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    obscurePassword
-                        ? Icons.visibility
-                        : Icons.visibility_off,
+                suffixIcon: Semantics(
+                  button: true,
+                  label: obscurePassword ? 'Show password' : 'Hide password',
+                  child: IconButton(
+                    icon: Icon(
+                      obscurePassword
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        obscurePassword =
+                            !obscurePassword;
+                      });
+                    },
                   ),
-                  onPressed: () {
-                    setState(() {
-                      obscurePassword =
-                          !obscurePassword;
-                    });
-                  },
                 ),
               ),
             ),
@@ -148,18 +152,22 @@ Navigator.of(context).pushAndRemoveUntil(
               obscureText: obscureConfirmPassword,
               decoration: InputDecoration(
                 labelText: 'Confirm Password',
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    obscureConfirmPassword
-                        ? Icons.visibility
-                        : Icons.visibility_off,
+                suffixIcon: Semantics(
+                  button: true,
+                  label: obscureConfirmPassword ? 'Show password' : 'Hide password',
+                  child: IconButton(
+                    icon: Icon(
+                      obscureConfirmPassword
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        obscureConfirmPassword =
+                            !obscureConfirmPassword;
+                      });
+                    },
                   ),
-                  onPressed: () {
-                    setState(() {
-                      obscureConfirmPassword =
-                          !obscureConfirmPassword;
-                    });
-                  },
                 ),
               ),
             ),

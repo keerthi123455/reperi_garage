@@ -595,7 +595,7 @@ class _LoginScreenState extends State<LoginScreen>
               constraints: const BoxConstraints(maxWidth: 480),
               child: SingleChildScrollView(
                 padding: EdgeInsets.symmetric(
-                  horizontal: isWide ? 0 : 0,
+                  horizontal: 0,
                   vertical: isWide ? 24 : 0,
                 ),
                 child: Column(
@@ -841,17 +841,21 @@ class _LoginScreenState extends State<LoginScreen>
               ),
             ),
           ),
-          GestureDetector(
-            onTap: () =>
-                setState(() => _obscurePassword = !_obscurePassword),
-            child: Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Icon(
-                _obscurePassword
-                    ? Icons.visibility_outlined
-                    : Icons.visibility_off_outlined,
-                color: const Color(0xFFD4A017),
-                size: 22,
+          Semantics(
+            button: true,
+            label: _obscurePassword ? 'Show password' : 'Hide password',
+            child: GestureDetector(
+              onTap: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  color: const Color(0xFFD4A017),
+                  size: 22,
+                ),
               ),
             ),
           ),

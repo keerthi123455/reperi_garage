@@ -130,7 +130,15 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
     }
   }
 
-  /// Upload file to Supabase storage and return public URL
+  /// Uploads a file to the (private) 'insurance-documents' bucket and
+  /// returns its storage PATH — not a public URL. These are government ID
+  /// documents (Aadhaar, PAN, RC, driving license) plus the insurance copy
+  /// and damage photo, so a permanent public link would let anyone who
+  /// ever got hold of it view them indefinitely. Storing just the path
+  /// means access is only ever granted via a short-lived signed URL,
+  /// minted on demand right when someone actually opens the document (see
+  /// insurance_claim_details_screen.dart's _downloadDocument) rather than
+  /// baked in forever at upload time.
   Future<String?> _uploadFile(File file, String folderPath, String fileName) async {
     try {
       final bytes = await file.readAsBytes();
@@ -140,11 +148,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
           .from('insurance-documents')
           .uploadBinary(path, bytes);
 
-      final publicUrl = _supabase.storage
-          .from('insurance-documents')
-          .getPublicUrl(path);
-
-      return publicUrl;
+      return path;
     } catch (e) {
       throw Exception('Upload failed: $e');
     }
@@ -346,6 +350,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
         centerTitle: true,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: AppColors.txt),
+          tooltip: 'Back',
           onPressed: () => Navigator.pop(context),
         ),
       ),

@@ -25,6 +25,7 @@ import '../widgets/auto_banner_strip.dart';
 import '../widgets/banner_coverflow.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/dot_indicator_row.dart';
+import '../widgets/error_display.dart';
 import '../widgets/location_row.dart';
 import '../widgets/notification_permission_dialog.dart';
 import '../widgets/packages_side_heading.dart';
@@ -1309,8 +1310,10 @@ class _BatteryEnquirySheetState extends State<_BatteryEnquirySheet> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not submit: $e')),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not submit your enquiry. Please try again.',
       );
     }
   }

@@ -47,6 +47,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Future<void> fetchBookings() async {
     final supabase = Supabase.instance.client;
 
+    try {
+      await _fetchBookingsUnsafe(supabase);
+    } catch (e) {
+      debugPrint('Error fetching bookings: $e');
+      if (!mounted) return;
+      setState(() => loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not load bookings: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _fetchBookingsUnsafe(SupabaseClient supabase) async {
     final clientResponse = await supabase
         .from('bookings')
         .select('''

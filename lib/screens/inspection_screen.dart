@@ -509,16 +509,20 @@ class _Hero extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: () => Navigator.maybePop(context),
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.45),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white24),
+                Semantics(
+                  button: true,
+                  label: 'Back',
+                  child: GestureDetector(
+                    onTap: () => Navigator.maybePop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.45),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
                     ),
-                    child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
                   ),
                 ),
                 const SizedBox(height: 130),
