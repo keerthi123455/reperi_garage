@@ -20,6 +20,5 @@
 /// else just `import 'push_notification_service.dart'` and call
 /// PushNotificationService.xxx() — nothing else needs to know which
 /// implementation is actually running.
-export 'push_notification_service_stub.dart'
-    if (dart.library.html) 'push_notification_service_web.dart'
+export 'push_notification_service_web.dart'
     if (dart.library.io) 'push_notification_service_mobile.dart';
