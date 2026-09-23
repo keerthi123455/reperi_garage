@@ -332,6 +332,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Widget _buildClientCard(Map booking) {
     final status = (booking['booking_status'] ?? 'PENDING').toString().toUpperCase();
     final hasUnread = unreadBookingIds.contains(booking['id'].toString());
+    final vehicle = booking['vehicles'] as Map?;
 
     Color statusColor;
     switch (status) {
@@ -399,7 +400,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${booking['vehicles']['car_brand']} ${booking['vehicles']['car_model']}',
+                        '${vehicle?['car_brand'] ?? ''} ${vehicle?['car_model'] ?? ''}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 20,
@@ -422,7 +423,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  booking['vehicles']['car_number'].toString().toUpperCase(),
+                  (vehicle?['car_number'] ?? 'N/A').toString().toUpperCase(),
                   style: const TextStyle(
                     color: Color(0xFFD4A017),
                     fontSize: 16,
@@ -661,7 +662,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Widget _buildInsuranceClaimCard(Map claim) {
     final status = (claim['claim_status'] ?? 'SUBMITTED').toString().toUpperCase();
-    final emoji = _getStatusEmoji(claim['claim_status']);
+    final emoji = _getStatusEmoji((claim['claim_status'] ?? 'submitted').toString());
     final vehicleId = claim['vehicle_id'] ?? 'Unknown';
 
     return _TappableScale(

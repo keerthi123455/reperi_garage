@@ -125,7 +125,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF1C1C1C),
         title: Text(
-          widget.booking['package_name'],
+          widget.booking['package_name'] ?? 'Package',
           style: const TextStyle(color: Color(0xFFD4A017)),
         ),
       ),
@@ -185,7 +185,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Text(
-                        widget.booking['booking_status'],
+                        widget.booking['booking_status'] ?? 'PENDING',
                         style: const TextStyle(
                           color: Color(0xFFD4A017),
                           fontWeight: FontWeight.bold,
@@ -238,7 +238,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    u['stage'],
+                                    u['stage'] ?? 'Update',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 20,
@@ -248,38 +248,40 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 20),
-                            RepaintBoundary(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(22),
-                                child: CachedNetworkImage(
-                                  imageUrl: u['image_url'],
-                                  height: 220,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                  fadeInDuration: Duration.zero,
-                                  fadeOutDuration: Duration.zero,
-                                  useOldImageOnUrlChange: false,
-                                  placeholder: (context, url) => Container(
-                                    color: const Color(0xFF111111),
-                                    child: const Center(
-                                      child: CircularProgressIndicator(
-                                        color: Color(0xFFD4A017),
-                                        strokeWidth: 2,
+                            if (u['image_url'] != null) ...[
+                              const SizedBox(height: 20),
+                              RepaintBoundary(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(22),
+                                  child: CachedNetworkImage(
+                                    imageUrl: u['image_url'],
+                                    height: 220,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    fadeInDuration: Duration.zero,
+                                    fadeOutDuration: Duration.zero,
+                                    useOldImageOnUrlChange: false,
+                                    placeholder: (context, url) => Container(
+                                      color: const Color(0xFF111111),
+                                      child: const Center(
+                                        child: CircularProgressIndicator(
+                                          color: Color(0xFFD4A017),
+                                          strokeWidth: 2,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  errorWidget: (context, url, error) =>
-                                      Container(
-                                    color: const Color(0xFF111111),
-                                    child: const Icon(
-                                      Icons.broken_image_rounded,
-                                      color: Colors.white38,
+                                    errorWidget: (context, url, error) =>
+                                        Container(
+                                      color: const Color(0xFF111111),
+                                      child: const Icon(
+                                        Icons.broken_image_rounded,
+                                        color: Colors.white38,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
+                            ],
                             const SizedBox(height: 20),
                             Text(
                               u['description'] ?? '',
@@ -357,8 +359,22 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                     GestureDetector(
                       onTap: () async {
                         final uri = Uri(scheme: 'tel', path: '9353094672');
-                        // ignore: deprecated_member_use
-                        await launchUrl(uri);
+                        try {
+                          if (await canLaunchUrl(uri)) {
+                            // ignore: deprecated_member_use
+                            await launchUrl(uri);
+                          } else {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Could not open dialer. Please try again.')),
+                            );
+                          }
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Could not open dialer. Please try again.')),
+                          );
+                        }
                       },
                       child: Container(
                         height: 68,
@@ -623,22 +639,27 @@ class _ChatSheetState extends State<ChatSheet> {
   }
 
   Future<void> markMessagesRead() async {
-    final supabase = Supabase.instance.client;
+    try {
+      final supabase = Supabase.instance.client;
 
-    final otherSender =
-        widget.sender == 'consumer' ? 'admin' : 'consumer';
+      final otherSender =
+          widget.sender == 'consumer' ? 'admin' : 'consumer';
 
-    final readField = widget.sender == 'consumer'
-        ? 'is_read_by_consumer'
-        : 'is_read_by_admin';
+      final readField = widget.sender == 'consumer'
+          ? 'is_read_by_consumer'
+          : 'is_read_by_admin';
 
-    await supabase
-        .from('booking_chats')
-        .update({readField: true})
-        .eq('booking_id', widget.bookingId)
-        .eq('sender', otherSender);
+      await supabase
+          .from('booking_chats')
+          .update({readField: true})
+          .eq('booking_id', widget.bookingId)
+          .eq('sender', otherSender);
 
-    widget.onMessagesRead?.call();
+      widget.onMessagesRead?.call();
+    } catch (e) {
+      // Non-fatal — worst case the "seen" tick / unread badge lags.
+      debugPrint('Error marking messages read: $e');
+    }
   }
 
   Future<void> sendMessage() async {

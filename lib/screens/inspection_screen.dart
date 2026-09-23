@@ -240,30 +240,38 @@ class _InspectionScreenState extends State<InspectionScreen> {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
 
-    final defaultAddr = await AddressService().getDefaultAddress();
-    // Alternates between delivery partner 1 and 2 for every booking.
-    final deliveryPartnerId =
-        await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('inspection_booking');
+    try {
+      final defaultAddr = await AddressService().getDefaultAddress();
+      // Alternates between delivery partner 1 and 2 for every booking.
+      final deliveryPartnerId =
+          await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('inspection_booking');
 
-    await Supabase.instance.client.from('inspection_booking').insert({
-      'user_id': user.id,
-      'vehicle_id': widget.vehicleId,
-      'razorpay_order_id': orderId,
-      'razorpay_payment_id': paymentId,
-      'pickup_address': defaultAddr?['address'],
-      'pickup_latitude': defaultAddr?['latitude'],
-      'pickup_longitude': defaultAddr?['longitude'],
-      'pickup_address_name': defaultAddr?['name'],
-      'dropoff_address': defaultAddr?['address'],
-      'dropoff_latitude': defaultAddr?['latitude'],
-      'dropoff_longitude': defaultAddr?['longitude'],
-      'dropoff_address_name': defaultAddr?['name'],
-      'delivery_partner_id': deliveryPartnerId,
-      // Always yes — a vehicle health check is doorstep pickup/drop by
-      // nature, no opt-out toggle for this service.
-      'pickupdrop': 'yes',
-      'status': 'booked',
-    });
+      await Supabase.instance.client.from('inspection_booking').insert({
+        'user_id': user.id,
+        'vehicle_id': widget.vehicleId,
+        'razorpay_order_id': orderId,
+        'razorpay_payment_id': paymentId,
+        'pickup_address': defaultAddr?['address'],
+        'pickup_latitude': defaultAddr?['latitude'],
+        'pickup_longitude': defaultAddr?['longitude'],
+        'pickup_address_name': defaultAddr?['name'],
+        'dropoff_address': defaultAddr?['address'],
+        'dropoff_latitude': defaultAddr?['latitude'],
+        'dropoff_longitude': defaultAddr?['longitude'],
+        'dropoff_address_name': defaultAddr?['name'],
+        'delivery_partner_id': deliveryPartnerId,
+        // Always yes — a vehicle health check is doorstep pickup/drop by
+        // nature, no opt-out toggle for this service.
+        'pickupdrop': 'yes',
+        'status': 'booked',
+      });
+    } catch (e) {
+      // The payment already succeeded by this point — swallowing this
+      // instead of crashing avoids leaving the customer on a broken
+      // screen after money has already moved. Worst case support has to
+      // manually reconcile this booking from the Razorpay order id.
+      debugPrint('Error saving inspection booking: $e');
+    }
   }
 
   void _planInspection() {

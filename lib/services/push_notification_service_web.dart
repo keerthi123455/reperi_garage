@@ -1,95 +1,118 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:js_interop';
+import 'payment_service.dart';
 import 'dart:js_interop_unsafe';
+PaymentService createPaymentService() => PaymentServiceWeb();
 
-/// Web implementation, built directly against OneSignal's JavaScript Web
-/// SDK via its deferred-command queue (`window.OneSignalDeferred`), since
-/// the official `onesignal_flutter` package does not support Flutter Web.
-///
-/// Relies on web/index.html having set up:
-///   window.OneSignalDeferred = window.OneSignalDeferred || [];
-/// and loaded https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js
-class PushNotificationService {
-  PushNotificationService._();
+@JS('eval')
+external void _jsEval(String code);
 
-  static bool _initStarted = false;
+@JS('openRazorpayCheckout')
+external void _openRazorpayCheckout(
+  JSObject options,
+  JSFunction onSuccess,
+  JSFunction onFailure,
+);
 
-  /// Queues a callback to run once OneSignal's web SDK has finished
-  /// loading. Safe to call any time, including before the SDK script
-  /// tag has finished downloading — that's the whole point of the
-  /// deferred queue.
-  static void _runWhenReady(void Function(JSObject oneSignal) callback) {
-    final deferred = globalContext.getProperty('OneSignalDeferred'.toJS);
-    if (deferred == null || deferred.isUndefinedOrNull) {
-      // The loader script tag in index.html is missing or didn't run
-      // (e.g. blocked by an ad/privacy blocker) — fail silently rather
-      // than crash the app.
-      return;
-    }
-
-    (deferred as JSObject).callMethod('push'.toJS, callback.toJS);
+class PaymentServiceWeb implements PaymentService {
+  PaymentServiceWeb() {
+    _injectHelper();
   }
 
-  /// OneSignal.init() itself runs directly from web/index.html,
-  /// immediately on page load — not delayed until Flutter boots and this
-  /// Dart code runs. That matches OneSignal's own Custom Code integration
-  /// snippet and avoids double-initializing the SDK. This just marks
-  /// that init has happened; the permission prompt is a separate,
-  /// explicit step (requestPermission below).
-  static Future<void> init() async {
-    _initStarted = true;
+  void _injectHelper() {
+    _jsEval('''
+      window.openRazorpayCheckout = function(options, onSuccess, onFailure) {
+        var rzp = new Razorpay({
+          key: options.key,
+          amount: options.amount,
+          currency: options.currency,
+          order_id: options.order_id,
+          name: "Reperi",
+          description: options.description,
+          prefill: {
+            name: options.name,
+            email: options.email,
+            contact: options.contact
+          },
+          theme: {
+            color: "#D4A017"
+          },
+          handler: function (response) {
+            onSuccess(JSON.stringify({
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_signature: response.razorpay_signature
+            }));
+          },
+          modal: {
+            ondismiss: function () {
+              onFailure("Payment cancelled by user");
+            }
+          }
+        });
+        rzp.on('payment.failed', function (response) {
+          onFailure(response.error.description || "Payment failed");
+        });
+        rzp.open();
+      };
+    ''');
   }
 
-  /// Explicitly asks for notification permission — fired later from a
-  /// "soft ask" screen rather than automatically here, so the user sees
-  /// why the app wants to notify them before the native browser prompt
-  /// appears.
-  static Future<void> requestPermission() async {
-    _runWhenReady((oneSignal) {
-      final notifications = oneSignal.getProperty('Notifications'.toJS);
-      if (notifications != null && !notifications.isUndefinedOrNull) {
-        (notifications as JSObject).callMethod('requestPermission'.toJS);
+  @override
+  Future<PaymentResult> openCheckout({
+    required String orderId,
+    required String keyId,
+    required int amountInPaise,
+    required String name,
+    required String email,
+    required String contact,
+  }) async {
+    final completer = Completer<PaymentResult>();
+
+    final onSuccess = (JSString resultJson) {
+      // Parses data handed back from the injected JS glue. If it's ever
+      // malformed (unexpected shape, bad JSON), don't let the exception
+      // escape uncaught inside this JS-invoked callback — that would
+      // leave `completer` never completed and the caller's `await
+      // openCheckout(...)` stuck forever instead of failing visibly.
+      try {
+        final Map<String, dynamic> data = jsonDecode(resultJson.toDart);
+        completer.complete(PaymentResult(
+          success: true,
+          paymentId: data['razorpay_payment_id'] as String?,
+          orderId: data['razorpay_order_id'] as String?,
+          signature: data['razorpay_signature'] as String?,
+        ));
+      } catch (e) {
+        if (!completer.isCompleted) {
+          completer.complete(PaymentResult(
+            success: false,
+            errorMessage: 'Failed to read payment result: $e',
+          ));
+        }
       }
-    });
-  }
+    }.toJS;
 
-  /// Whether the browser has actually granted notification permission
-  /// right now, read straight from the standard `Notification.permission`
-  /// API rather than anything OneSignal-specific. The "soft ask" primer
-  /// checks this — not a one-time "have we shown it" flag — so declining
-  /// once doesn't permanently block every future notification.
-  static bool hasPermission() {
-    final notificationCtor = globalContext.getProperty('Notification'.toJS);
-    if (notificationCtor == null || notificationCtor.isUndefinedOrNull) {
-      return false;
-    }
-    final permission =
-        (notificationCtor as JSObject).getProperty('permission'.toJS) as JSString?;
-    return permission?.toDart == 'granted';
-  }
+    final onFailure = (JSString errorMsg) {
+      completer.complete(PaymentResult(
+        success: false,
+        errorMessage: errorMsg.toDart,
+      ));
+    }.toJS;
 
-  static void loginAsCustomer(String supabaseUserId) {
-    _login('customer_$supabaseUserId');
-  }
+    final options = JSObject()
+      ..setProperty('key'.toJS, keyId.toJS)
+      ..setProperty('amount'.toJS, amountInPaise.toJS)
+      ..setProperty('currency'.toJS, 'INR'.toJS)
+      ..setProperty('order_id'.toJS, orderId.toJS)
+      ..setProperty('description'.toJS, 'Reperi Service Booking'.toJS)
+      ..setProperty('name'.toJS, name.toJS)
+      ..setProperty('email'.toJS, email.toJS)
+      ..setProperty('contact'.toJS, contact.toJS);
 
-  static void loginAsFleet(String fleetUserId) {
-    _login('fleet_$fleetUserId');
-  }
+    _openRazorpayCheckout(options, onSuccess, onFailure);
 
-  static void loginAsAdmin() {
-    _login('admin');
-  }
-
-  static void _login(String externalId) {
-    _runWhenReady((oneSignal) {
-      oneSignal.callMethod('login'.toJS, externalId.toJS);
-    });
-  }
-
-  /// Call on logout for any of the three roles, so this device/browser
-  /// stops being targeted as that identity once they've signed out.
-  static void logout() {
-    _runWhenReady((oneSignal) {
-      oneSignal.callMethod('logout'.toJS);
-    });
+    return completer.future;
   }
 }

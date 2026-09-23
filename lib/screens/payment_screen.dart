@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '/services/payment_service_factory.dart';
+import '/services/payment_service.dart' show PaymentResult;
 import 'home_screen.dart';
 import 'profile_screen.dart';
 import 'package:reperi_garage/services/address_service.dart';
@@ -435,6 +436,15 @@ class _PaymentScreenState extends State<PaymentScreen>
       isProcessing = true;
     });
 
+    // This try/catch covers only the steps BEFORE Razorpay has actually
+    // charged the customer — creating the order and opening checkout.
+    // EVENT_PAYMENT_SUCCESS (what makes `result.success` true, see
+    // PaymentServiceMobile) only fires once Razorpay has captured the
+    // charge, so nothing in this block can fail after money has moved —
+    // a failure here is safe to show generically and safe to retry by
+    // simply calling placeOnlineOrder() again, since no charge has
+    // happened yet.
+    PaymentResult result;
     try {
       // Package amount plus the doorstep pickup/drop fee if the customer
       // added it — falls back to the raw price string's digits when
@@ -466,7 +476,7 @@ class _PaymentScreenState extends State<PaymentScreen>
 
       // STEP 2: Open Razorpay checkout
       final paymentService = getPaymentService();
-      final result = await paymentService.openCheckout(
+      result = await paymentService.openCheckout(
         orderId: orderId,
         keyId: keyId,
         amountInPaise: amountInPaise,
@@ -485,7 +495,48 @@ class _PaymentScreenState extends State<PaymentScreen>
         );
         return;
       }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        isProcessing = false;
+      });
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not place your booking. Please try again.',
+      );
+      return;
+    }
 
+    // From here on the customer HAS been charged. Verification and saving
+    // the booking are isolated in their own try/catch (see
+    // _confirmAndSaveBooking) so a failure in either — verification
+    // returning unverified, or the onSuccess callback / bookings insert
+    // throwing for any reason (dropped network, RLS error, admin/delivery
+    // partner lookup failing) — is never mistaken for a failed charge and
+    // never retried by reopening Razorpay checkout, which would charge
+    // the customer a second time.
+    await _confirmAndSaveBooking(result);
+  }
+
+  /// Verifies the Razorpay signature and then saves the booking (via
+  /// [widget.onSuccess] or the default `bookings` insert). Only ever
+  /// called after Razorpay has already reported a successful charge —
+  /// see the call site in [placeOnlineOrder].
+  ///
+  /// Kept in its own try/catch, separate from the payment-charging flow,
+  /// so a failure here (verification coming back unverified — the charge
+  /// still happened on Razorpay's side, this call just confirms the
+  /// signature — or the save itself throwing) shows an honest "you were
+  /// charged, saving failed" message instead of the generic booking
+  /// error, with a retry that re-runs ONLY this method against the same
+  /// [result] (same orderId/paymentId/signature) rather than opening a
+  /// new Razorpay checkout and charging the customer again.
+  Future<void> _confirmAndSaveBooking(PaymentResult result) async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+
+    try {
       // STEP 3: Verify payment signature via Edge Function
       final verifyResponse = await supabase.functions.invoke(
         'verify-razorpay-payment',
@@ -503,8 +554,8 @@ class _PaymentScreenState extends State<PaymentScreen>
         throw Exception('Payment verification failed');
       }
 
-      // STEP 4: Only now record the payment, since it's confirmed real.
-      // Fleet payments use the custom callback; consumer bookings use the
+      // STEP 4: Record the payment, since it's confirmed real. Fleet
+      // payments use the custom callback; consumer bookings use the
       // default insert into `bookings`.
       if (widget.onSuccess != null) {
         await widget.onSuccess!(result.orderId!, result.paymentId!);
@@ -574,6 +625,7 @@ class _PaymentScreenState extends State<PaymentScreen>
 
       await _showSuccessAndGoHome();
     } catch (e) {
+      debugPrint('❌ Error confirming/saving booking after successful charge: $e');
       if (!mounted) return;
       setState(() {
         isProcessing = false;
@@ -581,7 +633,10 @@ class _PaymentScreenState extends State<PaymentScreen>
       ErrorDisplay.showPremiumError(
         context,
         error: e,
-        customMessage: 'Could not place your booking. Please try again.',
+        customMessage: 'Your payment was successful, but we couldn\'t save '
+            'your booking (ref: ${result.paymentId}). Tap retry — you will '
+            'NOT be charged again.',
+        onRetry: () => _confirmAndSaveBooking(result),
       );
     }
   }

@@ -402,7 +402,7 @@ class _InsuranceClaimDetailsScreenState
                   margin: const EdgeInsets.only(bottom: 12),
                 ),
               Text(
-                update['description'],
+                update['description'] ?? '',
                 style: TextStyle(
                   color: Colors.grey.withOpacity(0.9),
                   fontSize: 12,

@@ -224,7 +224,22 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
   }
 
   Future<void> _callExpert() async {
-    await launchUrl(Uri.parse('tel:9353094672'));
+    final uri = Uri.parse('tel:9353094672');
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open dialer. Please try again.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open dialer. Please try again.')),
+      );
+    }
   }
 
   /// This is a custom-quote request, not a fixed price — there is no

@@ -175,7 +175,21 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
     final uri = Uri.parse(
       'https://wa.me/919353094672?text=${Uri.encodeComponent("Hi, I have a question about the washing packages.")}',
     );
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open WhatsApp. Please try again.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open WhatsApp. Please try again.')),
+      );
+    }
   }
 
   // The doorstep pickup/drop add-on is now asked on PaymentScreen itself,

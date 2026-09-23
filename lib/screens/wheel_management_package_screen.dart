@@ -155,7 +155,21 @@ class _WheelManagementPackageScreenState
     final uri = Uri.parse(
       'https://wa.me/919353094672?text=${Uri.encodeComponent("Hi, I have a question about the wheel management packages.")}',
     );
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open WhatsApp. Please try again.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open WhatsApp. Please try again.')),
+      );
+    }
   }
 
   void _bookNow(_Tier tier) {

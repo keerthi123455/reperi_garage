@@ -1056,11 +1056,20 @@ class _FleetRequestDetailsScreenState
   Future<void> _pickAdminImage() async {
     final source = await _showImageSourceSheet();
     if (source == null) return;
-    final picked =
-        await _picker.pickImage(source: source, imageQuality: 70);
-    if (picked == null) return;
-    final bytes = await picked.readAsBytes();
-    setState(() => _adminImageBytes = bytes);
+    try {
+      final picked =
+          await _picker.pickImage(source: source, imageQuality: 70);
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      setState(() => _adminImageBytes = bytes);
+    } catch (e) {
+      if (!mounted) return;
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not access photos. Please try again.',
+      );
+    }
   }
 
   Future<ImageSource?> _showImageSourceSheet() {

@@ -291,7 +291,7 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
                   setDialogState(() => isLoading = false);
                   _showErrorDialog(
                     'Reset Failed',
-                    '${resetData?['error'] ?? 'Could not reset password'}',
+                    'Could not reset password. Please try again or contact support.',
                   );
                 }
               } catch (e) {

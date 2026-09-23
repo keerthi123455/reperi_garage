@@ -113,7 +113,7 @@ class _FleetDashboardScreenState
         backgroundColor: const Color(0xFF1C1C1C),
         centerTitle: true,
         title: Text(
-          widget.fleetUser['company_name'],
+          widget.fleetUser['company_name'] ?? 'Fleet',
         ),
         actions: [
           IconButton(
@@ -252,8 +252,7 @@ class _FleetDashboardScreenState
                             children: [
 
                               Text(
-                                request[
-                                    'vehicle_model'],
+                                request['vehicle_model'] ?? 'Vehicle',
                                 style:
                                     const TextStyle(
                                   color:
@@ -270,8 +269,7 @@ class _FleetDashboardScreenState
                                   height: 8),
 
                               Text(
-                                request[
-                                    'car_number'],
+                                request['car_number'] ?? 'N/A',
                                 style:
                                     const TextStyle(
                                   color: Color(

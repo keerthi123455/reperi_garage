@@ -56,7 +56,22 @@ class _PollutionScreenState extends State<PollutionScreen> {
   }
 
   Future<void> _callSupport() async {
-    await launchUrl(Uri(scheme: 'tel', path: '9353094672'));
+    final uri = Uri(scheme: 'tel', path: '9353094672');
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open dialer. Please try again.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open dialer. Please try again.')),
+      );
+    }
   }
 
   /// Records the completed booking in its own table rather than the

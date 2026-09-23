@@ -166,6 +166,10 @@ class _VehicleCarouselState extends State<VehicleCarousel> {
         )
         .then((_) {
       _isSnapping = false;
+      // The widget can be unmounted (e.g. navigating away mid-fling)
+      // before this 260ms animation completes — settle() calls setState,
+      // which throws if the State has already been disposed.
+      if (!mounted) return;
       settle();
     });
   }

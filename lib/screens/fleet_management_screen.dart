@@ -289,7 +289,21 @@ class _FleetManagementScreenState extends State<FleetManagementScreen> {
                         child: ElevatedButton.icon(
                           onPressed: () async {
                             final uri = Uri(scheme: 'tel', path: '9353094672');
-                            await launchUrl(uri);
+                            try {
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri);
+                              } else {
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Could not open dialer. Please try again.')),
+                                );
+                              }
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Could not open dialer. Please try again.')),
+                              );
+                            }
                           },
                           icon: Icon(Icons.call_rounded, color: AppColors.onAccentDark),
                           label: Text(

@@ -694,7 +694,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                 if (!mounted) return;
                 setSheetState(() {
                   saving = false;
-                  errorText = 'Could not update vehicle: $e';
+                  errorText = 'Could not update vehicle. Please try again.';
                 });
               }
             },
@@ -1139,7 +1139,21 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     final uri = Uri.parse(
       'https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude',
     );
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open maps. Please try again.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open maps. Please try again.')),
+      );
+    }
   }
 
   /// Opens the "why are you cancelling" dialog, then — only if the
@@ -1406,6 +1420,14 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       return days[date.weekday - 1];
     } catch (e) {
       return '';
+    }
+  }
+
+  String formatUpdateTimestamp(dynamic dateStr) {
+    try {
+      return DateTime.parse(dateStr).toString().split('.')[0];
+    } catch (e) {
+      return 'Unknown date';
     }
   }
 
@@ -1954,9 +1976,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                         ),
                                         const SizedBox(height: 8),
                                         Text(
-                                          DateTime.parse(update['created_at'])
-                                              .toString()
-                                              .split('.')[0],
+                                          formatUpdateTimestamp(update['created_at']),
                                           style: TextStyle(
                                             color: AppColors.mut,
                                             fontSize: 12,
@@ -2287,7 +2307,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                   record: booking,
                                   table: 'bookings',
                                   bookingType: 'service',
-                                  title: booking['package_name'] as String,
+                                  title: booking['package_name'] as String? ?? 'Package',
                                   price: booking['package_price'] as String?,
                                 ),
 

@@ -105,7 +105,10 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
       context: context,
       builder: (_) => FullscreenImageGallery(
         imageUrl: imageUrl,
-        allImages: photos.map((p) => p['photo_url'] as String).toList(),
+        allImages: photos
+            .where((p) => p['photo_url'] != null)
+            .map((p) => p['photo_url'] as String)
+            .toList(),
         initialIndex: index,
       ),
     );
@@ -409,6 +412,7 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
     String title,
     IconData icon,
   ) {
+    final validPhotos = photos.where((p) => p['photo_url'] != null).toList();
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -453,7 +457,7 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
           const SizedBox(height: 20),
 
           // ── PHOTOS SECTION ──
-          if (photos.isNotEmpty) ...[
+          if (validPhotos.isNotEmpty) ...[
             Row(
               children: [
                 Icon(
@@ -463,7 +467,7 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  'Photos (${photos.length})',
+                  'Photos (${validPhotos.length})',
                   style: const TextStyle(
                     color: Color(0xFFD4A017),
                     fontSize: 13,
@@ -481,14 +485,14 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
               ),
-              itemCount: photos.length,
+              itemCount: validPhotos.length,
               itemBuilder: (context, index) {
-                final photo = photos[index];
+                final photo = validPhotos[index];
                 return GestureDetector(
                   onTap: () => openFullscreenImage(
                     photo['photo_url'],
                     index,
-                    photos,
+                    validPhotos,
                   ),
                   child: Container(
                     decoration: BoxDecoration(

@@ -102,7 +102,21 @@ class _RoadsideAssistanceScreenState
 
   Future<void> _callSupport() async {
     final uri = Uri(scheme: 'tel', path: '9353094672');
-    await launchUrl(uri);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open dialer. Please try again.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open dialer. Please try again.')),
+      );
+    }
   }
 
   // Called when "BOOK NOW" is tapped — either from a specific service card,

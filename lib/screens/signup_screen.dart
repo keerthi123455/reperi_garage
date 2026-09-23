@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../widgets/error_display.dart';
 import 'home_screen.dart';
@@ -126,6 +127,22 @@ class _SignupScreenState extends State<SignupScreen>
       });
     } catch (e) {
       // Swallowed deliberately — see doc comment above.
+    }
+  }
+
+  /// Opens the Terms of Service / Privacy Policy pages linked in the
+  /// signup consent line below — same URLs and pattern HomeScreen's
+  /// drawer uses for these.
+  Future<void> _openExternalUrl(String url) async {
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (!mounted) return;
+      ErrorDisplay.showPremiumToast(
+        context,
+        message: 'Could not open link',
+        icon: Icons.error_outline_rounded,
+      );
     }
   }
 
@@ -355,7 +372,14 @@ class _SignupScreenState extends State<SignupScreen>
           /// PASSWORD
           _buildPasswordField(),
 
-          const SizedBox(height: 22),
+          const SizedBox(height: 18),
+
+          /// CONSENT — required disclosure before account creation collects
+          /// email/phone (App Store Guideline 5.1.1); kept as plain, low-
+          /// friction text rather than a mandatory checkbox.
+          _buildConsentText(),
+
+          const SizedBox(height: 18),
 
           /// SIGN UP BUTTON
           _buildSignUpButton(),
@@ -466,6 +490,41 @@ class _SignupScreenState extends State<SignupScreen>
           ),
         ],
       ),
+    );
+  }
+
+  /// "By signing up, you agree to our Terms of Service and Privacy
+  /// Policy." — small, muted disclaimer text matching the sizing/color of
+  /// other fine print in this card (e.g. the "secure sign up" divider
+  /// label below), with the two links tappable and opening the same
+  /// pages as the drawer's Privacy Policy / Terms & Conditions entries.
+  Widget _buildConsentText() {
+    const baseStyle = TextStyle(
+      color: Color(0xFF888888),
+      fontSize: 11.5,
+      height: 1.5,
+    );
+    const linkStyle = TextStyle(
+      color: Color(0xFFD4A017),
+      fontSize: 11.5,
+      fontWeight: FontWeight.w700,
+      height: 1.5,
+    );
+    return Wrap(
+      alignment: WrapAlignment.center,
+      children: [
+        const Text('By signing up, you agree to our ', style: baseStyle),
+        GestureDetector(
+          onTap: () => _openExternalUrl('https://reperi.in/terms.html'),
+          child: const Text('Terms of Service', style: linkStyle),
+        ),
+        const Text(' and ', style: baseStyle),
+        GestureDetector(
+          onTap: () => _openExternalUrl('https://reperi.in/privacy-policy.html'),
+          child: const Text('Privacy Policy', style: linkStyle),
+        ),
+        const Text('.', style: baseStyle),
+      ],
     );
   }
 

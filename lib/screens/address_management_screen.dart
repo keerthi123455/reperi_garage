@@ -312,9 +312,19 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
                                       value: true,
                                       groupValue: isSelected,
                                       onChanged: (_) async {
-                                        await _addressService
-                                            .setAsDefault(addr['id']);
-                                        await _loadAddresses();
+                                        try {
+                                          await _addressService
+                                              .setAsDefault(addr['id']);
+                                          await _loadAddresses();
+                                        } catch (e) {
+                                          if (!mounted) return;
+                                          ErrorDisplay.showPremiumError(
+                                            context,
+                                            error: e,
+                                            customMessage:
+                                                'Could not set default address. Please try again.',
+                                          );
+                                        }
                                       },
                                       fillColor: const MaterialStatePropertyAll(
                                         goldAccent,
@@ -409,14 +419,28 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
                                     );
 
                                     if (confirmed == true) {
-                                      final success = await _addressService
-                                          .deleteAddress(addr['id']);
-                                      if (success) {
-                                        await _loadAddresses();
+                                      try {
+                                        final success = await _addressService
+                                            .deleteAddress(addr['id']);
+                                        if (success) {
+                                          await _loadAddresses();
+                                          if (mounted) {
+                                            _showOverlayMessage(
+                                                'Address deleted successfully',
+                                                isError: false);
+                                          }
+                                        } else {
+                                          if (mounted) {
+                                            _showOverlayMessage(
+                                                'Could not delete address. Please try again.',
+                                                isError: true);
+                                          }
+                                        }
+                                      } catch (e) {
                                         if (mounted) {
                                           _showOverlayMessage(
-                                              'Address deleted successfully',
-                                              isError: false);
+                                              'Could not delete address. Please try again.',
+                                              isError: true);
                                         }
                                       }
                                     }

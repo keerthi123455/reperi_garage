@@ -11,25 +11,33 @@ class CatalogService {
   static Future<List<Map<String, dynamic>>> fetchByCategory(
     String category,
   ) async {
-    final response = await _client
-        .from('service_packages')
-        .select()
-        .eq('category', category)
-        .eq('active', true)
-        .order('sort_order', ascending: true);
+    try {
+      final response = await _client
+          .from('service_packages')
+          .select()
+          .eq('category', category)
+          .eq('active', true)
+          .order('sort_order', ascending: true);
 
-    return List<Map<String, dynamic>>.from(response);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Fetches every active package across every category — used by the
   /// AI advisor to compute "cheapest tier" prices live instead of guessing.
   static Future<List<Map<String, dynamic>>> fetchAll() async {
-    final response = await _client
-        .from('service_packages')
-        .select()
-        .eq('active', true);
+    try {
+      final response = await _client
+          .from('service_packages')
+          .select()
+          .eq('active', true);
 
-    return List<Map<String, dynamic>>.from(response);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Fetches every active package across all categories, useful for
@@ -37,15 +45,19 @@ class CatalogService {
   static Future<List<Map<String, dynamic>>> fetchByKeys(
     List<String> keys,
   ) async {
-    final response = await _client
-        .from('service_packages')
-        .select()
-        .inFilter('key', keys)
-        .eq('active', true);
+    try {
+      final response = await _client
+          .from('service_packages')
+          .select()
+          .inFilter('key', keys)
+          .eq('active', true);
 
-    final rows = List<Map<String, dynamic>>.from(response);
-    // Preserve the exact order of `keys` since Supabase doesn't guarantee it.
-    rows.sort((a, b) => keys.indexOf(a['key']).compareTo(keys.indexOf(b['key'])));
-    return rows;
+      final rows = List<Map<String, dynamic>>.from(response);
+      // Preserve the exact order of `keys` since Supabase doesn't guarantee it.
+      rows.sort((a, b) => keys.indexOf(a['key']).compareTo(keys.indexOf(b['key'])));
+      return rows;
+    } catch (_) {
+      return [];
+    }
   }
 }

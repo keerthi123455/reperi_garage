@@ -152,12 +152,11 @@ class _FleetOrderSheetState
             ),
           );
 
-      final imageUrl =
-          Supabase.instance.client.storage
-              .from('booking-images')
-              .getPublicUrl(
-                'fleet/$fileName',
-              );
+      // Store the storage PATH, not a permanent public URL — the
+      // booking-images bucket is private, so the display side mints a
+      // short-lived signed URL on demand (see fleet_request_details_screen
+      // .dart and fleet_request_view_screen.dart).
+      final imageUrl = 'fleet/$fileName';
 
       await Supabase.instance.client
           .from('fleet_pickup_requests')

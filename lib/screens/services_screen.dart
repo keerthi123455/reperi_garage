@@ -1133,9 +1133,19 @@ class _ServicesScreenState extends State<ServicesScreen> {
   // ── Actions ──────────────────────────────────────────────────────────
   Future<void> _callUs() async {
     final uri = Uri(scheme: 'tel', path: _expertPhone);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else if (mounted) {
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Could not open dialer. Please call +91 93530 94672'),
+            backgroundColor: AppColors.surfaceRaised,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Could not open dialer. Please call +91 93530 94672'),

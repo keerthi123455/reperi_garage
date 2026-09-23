@@ -21,41 +21,72 @@ class PushNotificationService {
     if (_initialized) return;
     _initialized = true;
 
-    if (kDebugMode) {
-      OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
-    }
+    // Swallow failures here: main() awaits this before runApp() is
+    // ever called, so an uncaught exception (e.g. the native OneSignal
+    // SDK missing/misconfigured in a particular build, or thrown before
+    // the platform channel is ready) would stop the whole app from
+    // launching. A push-notification setup failure should never take
+    // down app startup with it.
+    try {
+      if (kDebugMode) {
+        OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
+      }
 
-    OneSignal.initialize(_appId);
+      OneSignal.initialize(_appId);
+    } catch (_) {}
   }
 
   /// Prompts the OS-level notification permission dialog (Android 13+,
   /// iOS). Safe to call even on platforms/OS versions that don't need
   /// it — it's a no-op there.
   static Future<void> requestPermission() async {
-    await OneSignal.Notifications.requestPermission(true);
+    try {
+      await OneSignal.Notifications.requestPermission(true);
+    } catch (_) {
+      // Platform channel/SDK failure — leave permission unchanged rather
+      // than crashing whichever screen triggered the "soft ask".
+    }
   }
 
   /// Whether the OS has actually granted notification permission right
   /// now. The "soft ask" primer checks this — not a one-time "have we
   /// shown it" flag — so declining once doesn't permanently block every
   /// future notification for the life of the install.
-  static bool hasPermission() => OneSignal.Notifications.permission;
+  static bool hasPermission() {
+    try {
+      return OneSignal.Notifications.permission;
+    } catch (_) {
+      return false;
+    }
+  }
 
   static void loginAsCustomer(String supabaseUserId) {
-    OneSignal.login('customer_$supabaseUserId');
+    _safeLogin('customer_$supabaseUserId');
   }
 
   static void loginAsFleet(String fleetUserId) {
-    OneSignal.login('fleet_$fleetUserId');
+    _safeLogin('fleet_$fleetUserId');
   }
 
   static void loginAsAdmin() {
-    OneSignal.login('admin');
+    _safeLogin('admin');
+  }
+
+  static void _safeLogin(String externalId) {
+    // Called directly from screens' initState()/auth callbacks with no
+    // surrounding try/catch of their own — an unguarded platform-channel
+    // throw here (e.g. OneSignal not finished initializing yet) would
+    // crash whichever screen or auth listener called it.
+    try {
+      OneSignal.login(externalId);
+    } catch (_) {}
   }
 
   /// Call on logout for any of the three roles, so this device stops
   /// being targeted as that identity once they've signed out.
   static void logout() {
-    OneSignal.logout();
+    try {
+      OneSignal.logout();
+    } catch (_) {}
   }
 }

@@ -8,6 +8,7 @@ import 'profile_screen.dart';
 import '../services/ai_chat_session.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/error_display.dart';
 import 'services_screen.dart'
     show exportPackageCatalogForAi, buildPackageScreenFor, categoryAccentColor, categoryIconFor;
 
@@ -224,10 +225,11 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       _showPremiumToast('Reported — thanks for flagging this.');
     } catch (e) {
       if (!mounted) return;
-      _showPremiumToast(
-        'Could not submit report: $e',
-        icon: Icons.error_outline_rounded,
-        accent: const Color(0xFFE5484D),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not submit your report. Please try again.',
+        onRetry: () => _reportAiMessage(text),
       );
     }
   }
@@ -257,17 +259,27 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
   /// Opens the native phone dialer with the expert number.
   Future<void> _callExpert() async {
     final uri = Uri(scheme: 'tel', path: _expertPhone);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Could not open dialer. Please call +91 93530 94672'),
-            backgroundColor: _surfaceSunken,
-          ),
-        );
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Could not open dialer. Please call +91 93530 94672'),
+              backgroundColor: _surfaceSunken,
+            ),
+          );
+        }
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Could not open dialer. Please call +91 93530 94672'),
+          backgroundColor: _surfaceSunken,
+        ),
+      );
     }
   }
 

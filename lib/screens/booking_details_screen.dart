@@ -66,20 +66,25 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   }
 
   Future<void> checkUnreadMessages() async {
-    final supabase = Supabase.instance.client;
+    try {
+      final supabase = Supabase.instance.client;
 
-    final response = await supabase
-        .from('booking_chats')
-        .select()
-        .eq('booking_id', widget.booking['id'])
-        .eq('sender', 'consumer')
-        .eq('is_read_by_admin', false);
+      final response = await supabase
+          .from('booking_chats')
+          .select()
+          .eq('booking_id', widget.booking['id'])
+          .eq('sender', 'consumer')
+          .eq('is_read_by_admin', false);
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      hasUnreadMessages = (response as List).isNotEmpty;
-    });
+      setState(() {
+        hasUnreadMessages = (response as List).isNotEmpty;
+      });
+    } catch (e) {
+      // Non-fatal — worst case the unread badge doesn't show.
+      debugPrint('Error checking unread messages: $e');
+    }
   }
 
   void openChat() {
@@ -451,7 +456,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.booking['package_name'],
+                        widget.booking['package_name'] ?? 'Package',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 28,
@@ -460,7 +465,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                       ),
                       const SizedBox(height: 14),
                       Text(
-                        widget.booking['package_price'],
+                        widget.booking['package_price'] ?? '—',
                         style: const TextStyle(
                           color: Color(0xFFD4A017),
                           fontSize: 22,

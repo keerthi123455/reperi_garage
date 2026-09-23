@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../widgets/error_display.dart';
 
 class InspectionUploadScreen extends StatefulWidget {
   final Map booking;
@@ -58,25 +59,34 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
     // Calculate how many more photos we can add
     final remaining = 30 - selectedImages.length;
 
-    final images = await picker.pickMultiImage(
-      imageQuality: 75,
-      limit: remaining,
-    );
+    try {
+      final images = await picker.pickMultiImage(
+        imageQuality: 75,
+        limit: remaining,
+      );
 
-    if (images.isEmpty) return;
+      if (images.isEmpty) return;
 
-    for (var image in images) {
-      final bytes = await image.readAsBytes();
-      setState(() {
-        selectedImages.add(bytes);
-        imageNames.add(image.name);
-      });
+      for (var image in images) {
+        final bytes = await image.readAsBytes();
+        setState(() {
+          selectedImages.add(bytes);
+          imageNames.add(image.name);
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not access photos. Please try again.',
+      );
     }
   }
 
   Future<void> pickSingleImage() async {
     final picker = ImagePicker();
-    
+
     if (selectedImages.length >= 30) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Maximum 30 photos allowed')),
@@ -84,18 +94,27 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
       return;
     }
 
-    final image = await picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 75,
-    );
+    try {
+      final image = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 75,
+      );
 
-    if (image == null) return;
-    
-    final bytes = await image.readAsBytes();
-    setState(() {
-      selectedImages.add(bytes);
-      imageNames.add(image.name);
-    });
+      if (image == null) return;
+
+      final bytes = await image.readAsBytes();
+      setState(() {
+        selectedImages.add(bytes);
+        imageNames.add(image.name);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not access camera. Please try again.',
+      );
+    }
   }
 
   void removeImage(int index) {
@@ -176,8 +195,11 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not upload the inspection. Please try again.',
+        onRetry: uploadInspection,
       );
     }
 
@@ -263,7 +285,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '${widget.booking['vehicles']['car_number']}',
+                        '${(widget.booking['vehicles'] as Map?)?['car_number'] ?? 'N/A'}',
                         style: const TextStyle(
                           color: Color(0xFFD4A017),
                           fontSize: 14,

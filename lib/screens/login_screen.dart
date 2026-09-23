@@ -214,7 +214,7 @@ class _LoginScreenState extends State<LoginScreen>
                 } else {
                   ErrorDisplay.showPremiumToast(
                     context,
-                    message: '${resetData?['error'] ?? 'Could not reset password — please try again.'}',
+                    message: 'Could not reset password. Please try again.',
                     icon: Icons.error_outline_rounded,
                     accent: const Color(0xFFE5484D),
                   );

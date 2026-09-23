@@ -725,14 +725,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _pickAndUploadVehiclePhoto(Vehicle vehicle, ImageSource source) async {
-    final picked = await _imagePicker.pickImage(
-      source: source,
-      maxWidth: 1000,
-      imageQuality: 80,
-    );
-    if (picked == null) return;
-
     try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1000,
+        imageQuality: 80,
+      );
+      if (picked == null) return;
+
       final bytes = await picked.readAsBytes();
       final fileName = '${vehicle.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final supabase = Supabase.instance.client;

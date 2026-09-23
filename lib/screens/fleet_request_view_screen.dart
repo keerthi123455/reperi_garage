@@ -22,6 +22,8 @@ class FleetRequestViewScreen extends StatefulWidget {
 
 class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
     with TickerProviderStateMixin {
+  static const _signedUrlExpirySeconds = 300;
+
   // ── Approval state ──
   late String? _approvalState;
   bool _isSubmitting = false;
@@ -58,6 +60,19 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
   late Animation<double> _scaleAnim;
   late Animation<double> _fadeAnim;
 
+  /// booking-images is a private bucket — `storedValue` is normally just the
+  /// storage path (see fleet_order_sheet.dart / fleet_request_details_screen
+  /// .dart), but older rows may still hold a full public URL from before the
+  /// bucket was made private, so both are handled here.
+  Future<String> _resolveImageUrl(String storedValue) async {
+    final path = storedValue.contains('/booking-images/')
+        ? storedValue.split('/booking-images/').last
+        : storedValue;
+    return Supabase.instance.client.storage
+        .from('booking-images')
+        .createSignedUrl(path, _signedUrlExpirySeconds);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -89,9 +104,13 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
 
     Future.microtask(() async {
       if (widget.request['has_unread_update'] == true) {
-        await Supabase.instance.client
-            .from('fleet_pickup_requests')
-            .update({'has_unread_update': false}).eq('id', widget.request['id']);
+        try {
+          await Supabase.instance.client
+              .from('fleet_pickup_requests')
+              .update({'has_unread_update': false}).eq('id', widget.request['id']);
+        } catch (_) {
+          // Non-fatal — worst case the unread badge stays lit one extra visit.
+        }
       }
     });
 
@@ -415,9 +434,15 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
   void _openChatPopup() {
     // Clear fleet's unread flag locally and in DB
     setState(() => _hasUnreadChat = false);
-    Supabase.instance.client
-        .from('fleet_pickup_requests')
-        .update({'fleet_has_unread_chat': false}).eq('id', widget.request['id']);
+    () async {
+      try {
+        await Supabase.instance.client
+            .from('fleet_pickup_requests')
+            .update({'fleet_has_unread_chat': false}).eq('id', widget.request['id']);
+      } catch (_) {
+        // Non-fatal — worst case the unread badge stays lit one extra visit.
+      }
+    }();
 
     // Reset chat state before opening
     _chatMessages = [];
@@ -1213,11 +1238,29 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                 if (req['vehicle_photo_url'] != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      req['vehicle_photo_url'],
-                      height: 200,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
+                    child: FutureBuilder<String>(
+                      future: _resolveImageUrl(req['vehicle_photo_url']),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) {
+                          return Container(
+                            height: 200,
+                            width: double.infinity,
+                            color: const Color(0xFF141414),
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                color: Color(0xFFD4A017),
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          );
+                        }
+                        return Image.network(
+                          snapshot.data!,
+                          height: 200,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        );
+                      },
                     ),
                   ),
 
@@ -1310,14 +1353,18 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                                       billItems: List<Map<String, dynamic>>.from(req['bill_items'] ?? []),
                                       onlineOnly: true,
                                       onSuccess: (orderId, paymentId) async {
-                                        await Supabase.instance.client
-                                            .from('fleet_pickup_requests')
-                                            .update({
-                                              'payment_status': 'paid',
-                                              'razorpay_order_id': orderId,
-                                              'razorpay_payment_id': paymentId,
-                                            })
-                                            .eq('id', req['id']);
+                                        try {
+                                          await Supabase.instance.client
+                                              .from('fleet_pickup_requests')
+                                              .update({
+                                                'payment_status': 'paid',
+                                                'razorpay_order_id': orderId,
+                                                'razorpay_payment_id': paymentId,
+                                              })
+                                              .eq('id', req['id']);
+                                        } catch (e) {
+                                          debugPrint('Error updating fleet payment status: $e');
+                                        }
                                       },
                                     ),
                                   ),
@@ -1483,11 +1530,29 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                 if (req['admin_photo_url'] != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      req['admin_photo_url'],
-                      height: 200,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
+                    child: FutureBuilder<String>(
+                      future: _resolveImageUrl(req['admin_photo_url']),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) {
+                          return Container(
+                            height: 200,
+                            width: double.infinity,
+                            color: const Color(0xFF141414),
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                color: Color(0xFFD4A017),
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          );
+                        }
+                        return Image.network(
+                          snapshot.data!,
+                          height: 200,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        );
+                      },
                     ),
                   )
                 else
@@ -1526,11 +1591,29 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(16),
-                              child: Image.network(
-                                photo,
-                                height: 220,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
+                              child: FutureBuilder<String>(
+                                future: _resolveImageUrl(photo),
+                                builder: (context, snapshot) {
+                                  if (!snapshot.hasData) {
+                                    return Container(
+                                      height: 220,
+                                      width: double.infinity,
+                                      color: const Color(0xFF141414),
+                                      child: const Center(
+                                        child: CircularProgressIndicator(
+                                          color: Color(0xFFD4A017),
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  return Image.network(
+                                    snapshot.data!,
+                                    height: 220,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                  );
+                                },
                               ),
                             ),
                             Positioned(

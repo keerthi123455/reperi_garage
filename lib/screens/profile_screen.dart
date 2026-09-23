@@ -621,14 +621,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 return;
               }
 
+              final supabase = Supabase.instance.client;
+              final user = supabase.auth.currentUser;
+              if (user == null) return;
+
               setSheetState(() {
                 saving = true;
                 errorText = null;
               });
-
-              final supabase = Supabase.instance.client;
-              final user = supabase.auth.currentUser;
-              if (user == null) return;
 
               try {
                  final inserted = await supabase.from('vehicles').insert({

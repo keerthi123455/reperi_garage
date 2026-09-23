@@ -102,7 +102,21 @@ class _TwoWheelerServicingScreenState
     final uri = Uri.parse(
       'https://wa.me/919353094672?text=${Uri.encodeComponent("Hi, I have a question about the two-wheeler servicing packages.")}',
     );
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open WhatsApp. Please try again.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open WhatsApp. Please try again.')),
+      );
+    }
   }
 
   /// Shows the "Enhance Your Service?" sheet, then books with whichever

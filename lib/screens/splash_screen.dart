@@ -90,62 +90,74 @@ _navigate();
     // arrives while this screen is already mounted and alive.
     if (_handledRecovery || isPasswordRecoveryInProgress) return;
 
-    // Garage/fleet logins never touch Supabase Auth (they're checked
-    // against their own bcrypt-hashed tables via edge functions), so a
-    // Supabase session check alone would never see them. Checked BEFORE
-    // the customer session below on purpose: fleet login in particular is
-    // only ever reached from inside the customer-facing HomeScreen (see
-    // home_screen.dart's _openFleetLogin), so a device with a completed
-    // fleet login has an active customer session too almost every time —
-    // checking customer first would always win and land a fleet operator
-    // on HomeScreen instead of their own dashboard. Both screens' own
-    // _logout() clears these same keys, so a real sign-out still lands on
-    // LoginScreen as expected.
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
+    // Wrapped in try/catch: SharedPreferences.getInstance() talks to the
+    // platform layer and can fail (rare, but not impossible — a plugin
+    // hiccup, a locked storage file). Without a catch here, that exception
+    // would be unhandled and leave the app stuck on this splash screen
+    // forever with no way forward. Falling back to LoginScreen — the same
+    // place a signed-out user would land anyway — always gets the user
+    // moving again instead of stranding them.
+    try {
+      // Garage/fleet logins never touch Supabase Auth (they're checked
+      // against their own bcrypt-hashed tables via edge functions), so a
+      // Supabase session check alone would never see them. Checked BEFORE
+      // the customer session below on purpose: fleet login in particular is
+      // only ever reached from inside the customer-facing HomeScreen (see
+      // home_screen.dart's _openFleetLogin), so a device with a completed
+      // fleet login has an active customer session too almost every time —
+      // checking customer first would always win and land a fleet operator
+      // on HomeScreen instead of their own dashboard. Both screens' own
+      // _logout() clears these same keys, so a real sign-out still lands on
+      // LoginScreen as expected.
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
 
-    if (prefs.getBool('admin_logged_in') == true) {
-      final adminId = prefs.getString('admin_id');
-      if (adminId != null) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => AdminDashboardScreen(adminId: adminId)),
-        );
-        return;
+      if (prefs.getBool('admin_logged_in') == true) {
+        final adminId = prefs.getString('admin_id');
+        if (adminId != null) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => AdminDashboardScreen(adminId: adminId)),
+          );
+          return;
+        }
       }
-    }
 
-    if (prefs.getBool('fleet_logged_in') == true) {
-      final fleetUserId = prefs.getString('fleet_user_id');
-      if (fleetUserId != null) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => FleetDashboardScreen(
-              fleetUser: {
-                'id': fleetUserId,
-                'company_name': prefs.getString('fleet_company') ?? 'N/A',
-                'username': prefs.getString('fleet_username') ?? '',
-              },
+      if (prefs.getBool('fleet_logged_in') == true) {
+        final fleetUserId = prefs.getString('fleet_user_id');
+        if (fleetUserId != null) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => FleetDashboardScreen(
+                fleetUser: {
+                  'id': fleetUserId,
+                  'company_name': prefs.getString('fleet_company') ?? 'N/A',
+                  'username': prefs.getString('fleet_username') ?? '',
+                },
+              ),
             ),
-          ),
+          );
+          return;
+        }
+      }
+
+      // Customer login goes through Supabase Auth, which already persists
+      // its own session locally — currentUser is non-null here on a cold
+      // start as long as that session hasn't expired or been signed out.
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
         );
         return;
       }
+    } catch (e) {
+      // Fall through to LoginScreen below.
     }
 
-    // Customer login goes through Supabase Auth, which already persists
-    // its own session locally — currentUser is non-null here on a cold
-    // start as long as that session hasn't expired or been signed out.
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user != null) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
-      return;
-    }
-
+    if (!mounted) return;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => const LoginScreen()),
