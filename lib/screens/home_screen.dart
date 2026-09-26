@@ -988,7 +988,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 18),
                           // 1269x301 native size — a wide, short banner.
                           child: PromoBanner(
-                            assetPath: kSubscriptionBanner,
+                            assetPath: kMonthlyWashBanner,
                             aspectRatio: 1269 / 301,
                             onTap: _openSubscriptions,
                           ),

@@ -31,7 +31,7 @@ const List<String> kServiceBanners = [
 
 /// The single promo banner shown under "Keep your car showroom-new
 /// everyday :", below the 2-up scroll row.
-const String kSubscriptionBanner = 'assets/images/subscription.jpeg';
+const String kMonthlyWashBanner = 'assets/images/monthlywash.jpeg';
 
 /// Shown under "Get your paint protected :", below the services grid.
 const String kPpfBanner = 'assets/images/PPFbanner.jpeg';
