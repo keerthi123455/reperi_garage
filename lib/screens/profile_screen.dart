@@ -274,12 +274,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return true;
     }
 
-    // Subscriptions have no cancel option in this app — a subscribed
-    // vehicle is always "in use" until the subscription itself ends, so
-    // its mere existence blocks deletion.
+    // Wash plans have no cancel option in this app — a vehicle enrolled
+    // in one is always "in use" until the plan itself ends, so its mere
+    // existence blocks deletion.
     try {
       final subscriptionRows = await supabase
-          .from('subscriptions')
+          .from('monthlywash_table')
           .select('id')
           .eq('vehicle_id', vehicleId)
           .limit(1);

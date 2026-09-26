@@ -516,7 +516,7 @@
                 console.log('🔍 Fetching subscriptions for washer_id:', washerId);
 
                 const { data: subscriptions, error } = await sbClient
-                    .from('subscriptions')
+                    .from('monthlywash_table')
                     .select('*')
                     .eq('washer_id', washerId)
                     .order('created_at', { ascending: false });
@@ -660,7 +660,7 @@
                 showUploadStatus(statusDiv, 'success', '⏳ Updating counter...');
 
                 const { data: currentSub, error: fetchError } = await sbClient
-                    .from('subscriptions')
+                    .from('monthlywash_table')
                     .select('total_services_completed')
                     .eq('id', subscriptionId)
                     .single();
@@ -676,7 +676,7 @@
                 console.log('🔢 Updating count to:', newCount);
 
                 const { error: updateError, data: updateData } = await sbClient
-                    .from('subscriptions')
+                    .from('monthlywash_table')
                     .update({ total_services_completed: newCount })
                     .eq('id', subscriptionId)
                     .select();

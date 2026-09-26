@@ -147,8 +147,28 @@ class InspectionScreen extends StatefulWidget {
   State<InspectionScreen> createState() => _InspectionScreenState();
 }
 
+/// Vehicle-type tiers offered in the PLAN INSPECTION flow, each with its
+/// own fixed price — shown as selectable cards in step 2 of
+/// [_PlanInspectionSheet].
+const Map<String, int> kInspectionVehicleTypePrices = {
+  'SUV': 1599,
+  'Hatchback': 1299,
+  'EV': 1999,
+  'Luxury': 3999,
+};
+
 class _InspectionScreenState extends State<InspectionScreen> {
   final Set<int> _expanded = {};
+
+  // Captured from the PLAN INSPECTION popup flow just before handing off
+  // to PaymentScreen — read back by _saveInspectionBooking once payment
+  // succeeds, rather than threading them through PaymentScreen's fixed
+  // (orderId, paymentId) onSuccess signature.
+  String? _selectedCondition;
+  String? _selectedVehicleType;
+  int? _selectedPrice;
+  DateTime? _selectedSlotDate;
+  String? _selectedSlotTime;
 
   @override
   void initState() {
@@ -242,7 +262,8 @@ class _InspectionScreenState extends State<InspectionScreen> {
 
     try {
       final defaultAddr = await AddressService().getDefaultAddress();
-      // Alternates between delivery partner 1 and 2 for every booking.
+      // Delivery partner 3 handles every inspection/pollution booking —
+      // see DeliveryPartnerAssignmentService's dedicated-partner branch.
       final deliveryPartnerId =
           await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('inspection_booking');
 
@@ -264,6 +285,18 @@ class _InspectionScreenState extends State<InspectionScreen> {
         // nature, no opt-out toggle for this service.
         'pickupdrop': 'yes',
         'status': 'booked',
+        // From the PLAN INSPECTION popup — see _PlanInspectionSheet.
+        'vehicle_condition': _selectedCondition,
+        'vehicle_type': _selectedVehicleType,
+        'package_price': _selectedPrice != null ? '₹$_selectedPrice' : null,
+        'slot_date': _selectedSlotDate?.toIso8601String().split('T').first,
+        'slot_time': _selectedSlotTime,
+        // Snapshotted here rather than joined later — the delivery
+        // dashboard runs on the anon key and has no route to auth.users,
+        // so this is what lets it show/call the customer directly (see
+        // web/deliverydashboard.html).
+        'customer_name': user.userMetadata?['full_name'],
+        'customer_phone': user.phone,
       });
     } catch (e) {
       // The payment already succeeded by this point — swallowing this
@@ -274,13 +307,34 @@ class _InspectionScreenState extends State<InspectionScreen> {
     }
   }
 
-  void _planInspection() {
+  /// Walks the customer through the condition -> vehicle type -> slot
+  /// popup before ever touching PaymentScreen — that's what turns the
+  /// old fixed "Get Quote" placeholder (which PaymentScreen couldn't
+  /// actually charge — see _totalAmountRupees) into a real price.
+  Future<void> _planInspection() async {
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _PlanInspectionSheet(),
+    );
+    if (result == null || !mounted) return;
+
+    setState(() {
+      _selectedCondition = result['condition'] as String;
+      _selectedVehicleType = result['vehicleType'] as String;
+      _selectedPrice = result['price'] as int;
+      _selectedSlotDate = result['slotDate'] as DateTime;
+      _selectedSlotTime = result['slotTime'] as String;
+    });
+
+    if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: 'Vehicle Health Check',
-          price: 'Get Quote',
+          price: '₹$_selectedPrice',
           duration: 'Quick turnaround',
           vehicleId: widget.vehicleId,
           showPickupDropOption: false,
@@ -1048,6 +1102,528 @@ class _StickyPlanBar extends StatelessWidget {
               style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.5),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── PLAN INSPECTION POPUP (condition -> vehicle type -> slot) ───────────
+/// A 3-step premium bottom sheet: vehicle condition, then vehicle type
+/// (each its own fixed price), then a pickup slot — starting tomorrow,
+/// never today. Pops with `{condition, vehicleType, price, slotDate,
+/// slotTime}` once all three are chosen, or null if dismissed early.
+class _PlanInspectionSheet extends StatefulWidget {
+  const _PlanInspectionSheet();
+
+  @override
+  State<_PlanInspectionSheet> createState() => _PlanInspectionSheetState();
+}
+
+class _PlanInspectionSheetState extends State<_PlanInspectionSheet> {
+  int _step = 0;
+  String? _condition;
+  String? _vehicleType;
+  DateTime? _slotDate;
+  String? _slotTime;
+
+  static const _stepTitles = [
+    'Tell us about your vehicle',
+    'Choose your vehicle type',
+    'Pick a slot',
+  ];
+
+  static const _timeSlots = [
+    '09:00 AM - 11:00 AM',
+    '11:00 AM - 01:00 PM',
+    '01:00 PM - 03:00 PM',
+    '03:00 PM - 05:00 PM',
+    '05:00 PM - 07:00 PM',
+  ];
+
+  void _selectCondition(String condition) {
+    setState(() {
+      _condition = condition;
+      _step = 1;
+    });
+  }
+
+  void _selectVehicleType(String type) {
+    setState(() {
+      _vehicleType = type;
+      _step = 2;
+    });
+  }
+
+  void _confirm() {
+    if (_slotDate == null || _slotTime == null || _vehicleType == null || _condition == null) return;
+    Navigator.pop(context, {
+      'condition': _condition,
+      'vehicleType': _vehicleType,
+      'price': kInspectionVehicleTypePrices[_vehicleType],
+      'slotDate': _slotDate,
+      'slotTime': _slotTime,
+    });
+  }
+
+  void _back() {
+    if (_step == 0) {
+      Navigator.pop(context);
+    } else {
+      setState(() => _step -= 1);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.86),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.line,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 4),
+              child: Row(
+                children: [
+                  Semantics(
+                    button: true,
+                    label: _step == 0 ? 'Close' : 'Back',
+                    child: GestureDetector(
+                      onTap: _back,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceSunken,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          _step == 0 ? Icons.close_rounded : Icons.arrow_back_rounded,
+                          color: AppColors.txt,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      child: Text(
+                        _stepTitles[_step],
+                        key: ValueKey(_step),
+                        style: GoogleFonts.manrope(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.txt,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(3, (i) {
+                      final active = i == _step;
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        margin: const EdgeInsets.only(left: 5),
+                        width: active ? 18 : 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: active ? AppColors.accent : AppColors.line,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0.06, 0),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  ),
+                  child: KeyedSubtree(
+                    key: ValueKey(_step),
+                    child: _step == 0
+                        ? _conditionStep()
+                        : (_step == 1 ? _vehicleTypeStep() : _slotStep()),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _conditionStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _ChoiceCard(
+          icon: Symbols.history,
+          title: 'Pre-Owned',
+          subtitle: 'Buying or already own a used vehicle',
+          selected: _condition == 'Pre-Owned',
+          onTap: () => _selectCondition('Pre-Owned'),
+        ),
+        const SizedBox(height: 12),
+        _ChoiceCard(
+          icon: Symbols.new_releases,
+          title: 'New',
+          subtitle: 'Fresh off the showroom floor',
+          selected: _condition == 'New',
+          onTap: () => _selectCondition('New'),
+        ),
+      ],
+    );
+  }
+
+  Widget _vehicleTypeStep() {
+    const icons = {
+      'SUV': Symbols.directions_car,
+      'Hatchback': Symbols.directions_car,
+      'EV': Symbols.electric_car,
+      'Luxury': Symbols.diamond,
+    };
+    const subtitles = {
+      'SUV': 'Sport utility & crossovers',
+      'Hatchback': 'Compact & city cars',
+      'EV': 'Electric vehicles',
+      'Luxury': 'Audi, BMW, Mercedes, Porsche & more',
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final type in kInspectionVehicleTypePrices.keys)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _ChoiceCard(
+              icon: icons[type]!,
+              title: type,
+              subtitle: subtitles[type]!,
+              trailing: '₹${kInspectionVehicleTypePrices[type]}',
+              selected: _vehicleType == type,
+              onTap: () => _selectVehicleType(type),
+            ),
+          ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.accent.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.accent.withOpacity(0.3)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Symbols.info, size: 18, color: AppColors.accent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'OBD scanning for internal faults will only be carried out with '
+                  'permission granted by the previous owner or the showroom.',
+                  style: GoogleFonts.manrope(fontSize: 12, height: 1.5, color: AppColors.txt.withOpacity(0.85)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _slotStep() {
+    // Tomorrow onward only — today is never offered, whatever time this
+    // is booked at.
+    final today = DateTime.now();
+    final dates = List.generate(
+      14,
+      (i) => DateTime(today.year, today.month, today.day + 1 + i),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'SELECT A DATE',
+          style: GoogleFonts.manrope(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.4,
+            color: AppColors.mut,
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          // Tall enough for the chip's 3-line weekday/day/month text even
+          // at the app's clamped max text scale (1.15x — see main.dart) —
+          // 78 was cutting it exactly at the edge even at 1.0x, which is
+          // what caused the bottom-overflow warning here.
+          height: 96,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: dates.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, i) {
+              final d = dates[i];
+              final selected = _slotDate != null &&
+                  _slotDate!.year == d.year &&
+                  _slotDate!.month == d.month &&
+                  _slotDate!.day == d.day;
+              return _DateChip(
+                date: d,
+                selected: selected,
+                onTap: () => setState(() => _slotDate = d),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 22),
+        Text(
+          'SELECT A TIME SLOT',
+          style: GoogleFonts.manrope(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.4,
+            color: AppColors.mut,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: _timeSlots.map((slot) {
+            final selected = _slotTime == slot;
+            return GestureDetector(
+              onTap: () => setState(() => _slotTime = slot),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: selected ? AppColors.accent : AppColors.surfaceSunken,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: selected ? AppColors.accent : AppColors.line,
+                  ),
+                ),
+                child: Text(
+                  slot,
+                  style: GoogleFonts.manrope(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? AppColors.onAccentDark : AppColors.txt,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 26),
+        SizedBox(
+          width: double.infinity,
+          height: 54,
+          child: ElevatedButton(
+            onPressed: (_slotDate != null && _slotTime != null) ? _confirm : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: AppColors.onAccentDark,
+              disabledBackgroundColor: AppColors.line,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            child: Text(
+              'CONFIRM & CONTINUE',
+              style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A large selectable card used for both the condition step and the
+/// vehicle-type step — icon, title, subtitle, and an optional price
+/// trailing. Selecting one animates the border/background into the
+/// accent color rather than relying on a separate checkmark.
+class _ChoiceCard extends StatelessWidget {
+  const _ChoiceCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+  final String? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.accent.withOpacity(0.1) : AppColors.surfaceSunken,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? AppColors.accent : AppColors.line,
+              width: selected ? 1.6 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: AppColors.accent, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.manrope(fontSize: 15.5, fontWeight: FontWeight.w800, color: AppColors.txt),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.manrope(fontSize: 12, color: AppColors.mut),
+                    ),
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: 10),
+                Text(
+                  trailing!,
+                  style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.accent),
+                ),
+              ],
+              const SizedBox(width: 8),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: selected
+                    ? Icon(Symbols.check_circle, key: const ValueKey('sel'), color: AppColors.accent, size: 22)
+                    : Icon(Symbols.chevron_right, key: const ValueKey('unsel'), color: AppColors.mut, size: 20),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A single day in the slot picker's horizontal date strip — weekday,
+/// day number, and month abbreviation, matching the selectable-card
+/// visual language used elsewhere in this sheet.
+class _DateChip extends StatelessWidget {
+  const _DateChip({required this.date, required this.selected, required this.onTap});
+
+  final DateTime date;
+  final bool selected;
+  final VoidCallback onTap;
+
+  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: 62,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accent : AppColors.surfaceSunken,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: selected ? AppColors.accent : AppColors.line),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              _weekdays[date.weekday - 1],
+              style: GoogleFonts.manrope(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: selected ? AppColors.onAccentDark.withOpacity(0.8) : AppColors.mut,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${date.day}',
+              style: GoogleFonts.manrope(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: selected ? AppColors.onAccentDark : AppColors.txt,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              _months[date.month - 1],
+              style: GoogleFonts.manrope(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: selected ? AppColors.onAccentDark.withOpacity(0.8) : AppColors.mut,
+              ),
+            ),
+          ],
         ),
       ),
     );

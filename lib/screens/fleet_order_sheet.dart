@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../utils/secure_storage_path.dart';
 import '../widgets/error_display.dart';
 
 class FleetOrderSheet extends StatefulWidget {
@@ -138,7 +139,7 @@ class _FleetOrderSheetState
     try {
 
       final fileName =
-          '${DateTime.now().millisecondsSinceEpoch}.jpg';
+          '${DateTime.now().millisecondsSinceEpoch}-${secureStorageToken()}.jpg';
 
       // uploadBinary works with raw bytes on every platform,
       // unlike upload() which expects a dart:io File (web-incompatible).

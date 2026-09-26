@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -214,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen>
                 } else {
                   ErrorDisplay.showPremiumToast(
                     context,
-                    message: 'Could not reset password. Please try again.',
+                    message: '${resetData?['error'] ?? 'Could not reset password — please try again.'}',
                     icon: Icons.error_outline_rounded,
                     accent: const Color(0xFFE5484D),
                   );
@@ -341,63 +343,60 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _forgotPassword() async {
-  final emailController = TextEditingController();
+    final emailController = TextEditingController();
 
-  await showDialog(
-    context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: const Text('Reset Password'),
-        content: TextField(
-          controller: emailController,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            hintText: 'Enter your email',
+    InputDecoration fieldDecoration(String hint) => InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: Color(0xFF6B6B6B)),
+          filled: true,
+          fillColor: const Color(0xFF1C1C1C),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF333333)),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              // Dropping focus before popping avoids a rare Flutter crash
-              // ('_dependents.isEmpty' assertion) that can fire if this
-              // dialog's TextField still has focus (and the keyboard is
-              // mid-animation) when its route gets torn down.
-              FocusManager.instance.primaryFocus?.unfocus();
-              Navigator.pop(context);
-            },
-            child: const Text('Cancel'),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF333333)),
           ),
-          ElevatedButton(
-            child: const Text('Send'),
-            onPressed: () async {
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFD4A017), width: 1.4),
+          ),
+        );
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        bool isLoading = false;
+        bool sent = false;
+        String? error;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> send() async {
+              final email = emailController.text.trim();
+
+              if (email.isEmpty) {
+                setDialogState(() => error = 'Enter the email you signed up with.');
+                return;
+              }
+              if (!email.contains('@')) {
+                setDialogState(() => error = 'That doesn\'t look like a valid email address.');
+                return;
+              }
+
+              setDialogState(() {
+                isLoading = true;
+                error = null;
+              });
+
               try {
-                final email = emailController.text.trim();
-
-                // Validate email
-                if (email.isEmpty) {
-                  ErrorDisplay.showPremiumToast(
-                    context,
-                    message: 'Enter the email you signed up with.',
-                    icon: Icons.alternate_email_rounded,
-                  );
-                  return;
-                }
-
-                if (!email.contains('@')) {
-                  ErrorDisplay.showPremiumToast(
-                    context,
-                    message: 'That doesn\'t look like a valid email address.',
-                    icon: Icons.alternate_email_rounded,
-                  );
-                  return;
-                }
-
                 final redirectUrl = kIsWeb
                     ? 'https://reperi.in/reset-password'
                     : 'reperi://reset-password';
 
-                await Supabase.instance.client.auth
-                    .resetPasswordForEmail(
+                await Supabase.instance.client.auth.resetPasswordForEmail(
                   email,
                   redirectTo: redirectUrl,
                 );
@@ -406,29 +405,211 @@ class _LoginScreenState extends State<LoginScreen>
                 // this dialog can be cancelled mid-request without
                 // LoginScreen itself going anywhere.
                 if (!context.mounted) return;
-
-                FocusManager.instance.primaryFocus?.unfocus();
-                Navigator.pop(context);
-
-                ErrorDisplay.showPremiumToast(
-                  context,
-                  message: 'Reset link sent — check your inbox to pick a new password.',
-                  icon: Icons.mark_email_read_rounded,
-                  accent: const Color(0xFF3DD68C),
-                  duration: const Duration(milliseconds: 3200),
-                );
+                setDialogState(() {
+                  isLoading = false;
+                  sent = true;
+                });
               } catch (e) {
                 if (!context.mounted) return;
-
-                ErrorDisplay.showPremiumError(context, error: e);
+                setDialogState(() {
+                  isLoading = false;
+                  error = 'Could not send the reset link. Please try again.';
+                });
               }
-            },
-          )
-        ],
-      );
-    },
-  );
-}
+            }
+
+            void close() {
+              FocusManager.instance.primaryFocus?.unfocus();
+              Navigator.pop(context);
+            }
+
+            return Dialog(
+              backgroundColor: const Color(0xFF262626),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+                side: BorderSide(color: const Color(0xFFD4A017).withOpacity(0.25)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      transitionBuilder: (child, anim) => FadeTransition(
+                        opacity: anim,
+                        child: ScaleTransition(scale: anim, child: child),
+                      ),
+                      child: Container(
+                        key: ValueKey(sent),
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: sent
+                              ? const Color(0xFF3DD68C).withOpacity(0.12)
+                              : const Color(0xFFD4A017).withOpacity(0.12),
+                        ),
+                        child: Icon(
+                          sent ? Icons.mark_email_read_rounded : Icons.lock_reset_rounded,
+                          color: sent ? const Color(0xFF3DD68C) : const Color(0xFFD4A017),
+                          size: 30,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      child: sent
+                          ? Column(
+                              key: const ValueKey('sent-text'),
+                              children: [
+                                const Text(
+                                  'Check Your Email',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'We sent a reset link to ${emailController.text.trim()} — '
+                                  'tap it to choose a new password.',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.white60,
+                                    fontSize: 13.5,
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Column(
+                              key: const ValueKey('form-text'),
+                              children: [
+                                const Text(
+                                  'Reset Your Password',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                const Text(
+                                  'Enter the email you signed up with and we\'ll '
+                                  'send you a link to pick a new password.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white60,
+                                    fontSize: 13,
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                    const SizedBox(height: 22),
+                    if (!sent) ...[
+                      TextField(
+                        controller: emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        enabled: !isLoading,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: fieldDecoration('your@email.com'),
+                      ),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: error == null
+                            ? const SizedBox.shrink(key: ValueKey('no-error'))
+                            : Padding(
+                                key: const ValueKey('error'),
+                                padding: const EdgeInsets.only(top: 10),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.error_outline_rounded, color: Color(0xFFE5484D), size: 16),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        error!,
+                                        style: const TextStyle(color: Color(0xFFE5484D), fontSize: 12.5),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: isLoading ? null : close,
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                side: const BorderSide(color: Color(0xFF3A3A3A)),
+                              ),
+                              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: isLoading ? null : send,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFD4A017),
+                                disabledBackgroundColor: const Color(0xFFD4A017).withOpacity(0.5),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              child: isLoading
+                                  ? const SizedBox(
+                                      height: 18,
+                                      width: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Send Link',
+                                      style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800),
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: close,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFD4A017),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text(
+                            'GOT IT',
+                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    emailController.dispose();
+  }
 
   @override
   void initState() {
@@ -505,7 +686,7 @@ class _LoginScreenState extends State<LoginScreen>
         await supabase.auth.signInWithPassword(
           email: email,
           password: password,
-        );
+        ).timeout(const Duration(seconds: 15));
 
         if (!mounted) return;
 
@@ -528,7 +709,7 @@ class _LoginScreenState extends State<LoginScreen>
         final result = await supabase.functions.invoke(
           'admin-login',
           body: {'username': email, 'password': password},
-        );
+        ).timeout(const Duration(seconds: 15));
 
         if (!mounted) return;
 
@@ -563,6 +744,17 @@ class _LoginScreenState extends State<LoginScreen>
           setState(() => _isLoading = false);
         }
       }
+    } on TimeoutException {
+      if (!context.mounted) return;
+
+      ErrorDisplay.showPremiumError(
+        context,
+        error: 'timeout',
+        customMessage: 'That took too long — check your internet connection and try again.',
+        onRetry: _handleLogin,
+      );
+
+      setState(() => _isLoading = false);
     } catch (e) {
       if (!context.mounted) return;
 
@@ -606,44 +798,17 @@ class _LoginScreenState extends State<LoginScreen>
                         // everything below it too far down.
                         const SizedBox(height: 32),
 
-                        /// ── BRAND ────────────────────────────────────
-                        const Text(
-                          'REPERI',
-                          style: TextStyle(
-                            color: Color(0xFFD4A017),
-                            fontSize: 40,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.2,
+                        /// ── HERO IMAGE ────────────────────────────────
+                        SizedBox(
+                          height: 180,
+                          width: double.infinity,
+                          child: Image.asset(
+                            'assets/images/login.jpeg',
+                            fit: BoxFit.contain,
                           ),
                         ),
 
-                        const SizedBox(height: 14),
-
-                        /// ── TAGLINE ──────────────────────────────────
-                        const Text(
-                          'PREMIUM VEHICLE CARE',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFFD4A017),
-                            fontSize: 11,
-                            letterSpacing: 2.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-
-                        const SizedBox(height: 10),
-
-                        const Text(
-                          "Your vehicle's next service\nis just a tap away.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFF888888),
-                            fontSize: 15,
-                            height: 1.55,
-                          ),
-                        ),
-
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 12),
 
                         /// ── LOGIN CARD ──────────────────────────────
                         Padding(
@@ -651,9 +816,10 @@ class _LoginScreenState extends State<LoginScreen>
                           child: _buildLoginCard(),
                         ),
 
+                        if (isClient) ...[
                         const SizedBox(height: 16),
 
-                        /// ── REGISTER LINK ───────────────────────────
+                        /// ── REGISTER LINK (CLIENT ONLY) ──────────────
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -693,6 +859,7 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                           ],
                         ),
+                        ],
 
                         const SizedBox(height: 16),
                   ],

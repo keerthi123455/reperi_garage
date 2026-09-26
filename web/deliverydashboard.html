@@ -392,6 +392,58 @@
             text-align: center;
         }
 
+        .cod-pill {
+            display: inline-block;
+            background: rgba(255, 152, 0, 0.15);
+            border: 1px solid rgba(255, 152, 0, 0.5);
+            color: #ffb74d;
+            padding: 3px 9px;
+            border-radius: 6px;
+            font-weight: 800;
+            font-size: 10.5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 6px;
+        }
+
+        .call-link {
+            color: #D4A017;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .call-link:hover {
+            text-decoration: underline;
+        }
+
+        .cash-box {
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid rgba(255, 152, 0, 0.5);
+            border-radius: 10px;
+            padding: 14px;
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .cash-box-title {
+            color: #ffb74d;
+            font-weight: 900;
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+
+        .cash-box-hint {
+            color: #ccc;
+            font-size: 12px;
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+
+        .cash-confirm-btn {
+            background: #ff9800;
+            color: #1a1a1a;
+        }
+
         .otp-box-label {
             color: #999;
             font-size: 12px;
@@ -506,20 +558,29 @@
 
         const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        // 'bookings' and 'insurance_claims' (insurance_claim_screen.dart's
+        // paid doorstep pickup/garage/return claim) both have a real
+        // garage-wait leg — the garage's own MARK AS DONE gates the
+        // return trip. pollution_booking/inspection_booking don't have an
+        // admin app of their own, so they skip straight from 'to_garage'
+        // to 'delivered' with no such gate.
+        const hasGarageLeg = (b) => b.sourceTable === 'bookings' || b.sourceTable === 'insurance_claims';
+
         // The fixed pickup/drop stage sequence a delivery partner drives a
         // booking through. null (not in this list) means "booked, nothing
         // done yet" — shown to the customer as "Initiating Pickup".
         //
-        // 'bookings' rows get the full round trip: customer -> garage ->
-        // customer, with an extra 'out_for_delivery' leg pollution_booking/
-        // inspection_booking don't have — those have no garage-wait step
-        // of their own, so they keep the original, shorter sequence
-        // unchanged (still ending 'to_garage' -> 'delivered' directly).
-        // Keeping two separate orders (rather than one shared one) is
-        // what stops that extra leg from silently applying to them too.
+        // hasGarageLeg tables get the full round trip: customer -> garage
+        // -> customer, with an extra 'out_for_delivery' leg
+        // pollution_booking/inspection_booking don't have — those have no
+        // garage-wait step of their own, so they keep the original,
+        // shorter sequence unchanged (still ending 'to_garage' ->
+        // 'delivered' directly). Keeping two separate orders (rather than
+        // one shared one) is what stops that extra leg from silently
+        // applying to them too.
         const STAGE_ORDER_BOOKINGS = ['pickup_started', 'picked_up', 'to_garage', 'out_for_delivery', 'delivered'];
         const STAGE_ORDER_SIMPLE = ['pickup_started', 'picked_up', 'to_garage', 'delivered'];
-        const stageOrderFor = (b) => b.sourceTable === 'bookings' ? STAGE_ORDER_BOOKINGS : STAGE_ORDER_SIMPLE;
+        const stageOrderFor = (b) => hasGarageLeg(b) ? STAGE_ORDER_BOOKINGS : STAGE_ORDER_SIMPLE;
 
         const STAGE_COLUMN = {
             pickup_started: 'stage_pickup_started_at',
@@ -536,6 +597,20 @@
             out_for_delivery: 'Out For Delivery',
             delivered: 'Vehicle Delivered',
         };
+        // Pollution-certificate bookings show different wording for the
+        // same underlying stage values (no new stages, just display) —
+        // mirrors vehicle_bookings_screen.dart's _DeliveryStageTracker
+        // isPollutionCertificate branch on the customer side. Left out of
+        // inspection_booking, which keeps the generic labels above.
+        const STAGE_LABEL_POLLUTION = {
+            null: 'Initiating Pickup',
+            pickup_started: 'Car Pickup',
+            picked_up: 'Getting Certificate',
+            to_garage: 'Out For Delivery',
+            delivered: 'Delivered',
+        };
+        const stageLabelFor = (b) =>
+            (b.sourceTable === 'pollution_booking' ? STAGE_LABEL_POLLUTION : STAGE_LABEL)[b.deliveryStage];
         // What the button says to move OUT of the given current stage —
         // 'to_garage' differs by sourceTable (bookings' own version of
         // this text is never actually read; renderGarageWaitBlock always
@@ -554,8 +629,17 @@
             picked_up: 'Vehicle To Garage',
             to_garage: 'Vehicle Delivered',
         };
-        const nextButtonLabelFor = (b) =>
-            (b.sourceTable === 'bookings' ? NEXT_BUTTON_LABEL_BOOKINGS : NEXT_BUTTON_LABEL_SIMPLE)[b.deliveryStage];
+        const NEXT_BUTTON_LABEL_POLLUTION = {
+            null: 'Start Pickup',
+            pickup_started: 'Car Picked Up',
+            picked_up: 'Out For Delivery',
+            to_garage: 'Delivered',
+        };
+        const nextButtonLabelFor = (b) => {
+            if (hasGarageLeg(b)) return NEXT_BUTTON_LABEL_BOOKINGS[b.deliveryStage];
+            if (b.sourceTable === 'pollution_booking') return NEXT_BUTTON_LABEL_POLLUTION[b.deliveryStage];
+            return NEXT_BUTTON_LABEL_SIMPLE[b.deliveryStage];
+        };
 
         function nextStage(b) {
             const order = stageOrderFor(b);
@@ -567,6 +651,7 @@
         }
 
         let currentPartnerId = null;
+        let autoRefreshTimer = null;
         // Keyed by "sourceTable::id" so the inline onclick handlers below
         // don't need to smuggle a JSON blob through an HTML attribute.
         let bookingsIndex = {};
@@ -634,6 +719,16 @@
                 document.getElementById('dashboardScreen').style.display = 'block';
 
                 await fetchAssignedBookings(partner.id);
+
+                // Nothing pushes a change the garage or customer makes
+                // (MARK AS DONE, entering a return code) into this
+                // dashboard on its own — poll instead of leaving the
+                // partner to keep tapping "Check Again" themselves.
+                if (!autoRefreshTimer) {
+                    autoRefreshTimer = setInterval(() => {
+                        fetchAssignedBookings(currentPartnerId);
+                    }, 15000);
+                }
             } catch (err) {
                 showErrorScreen(err.message);
             }
@@ -648,22 +743,31 @@
             const bookingsContent = document.getElementById('bookingsContent');
 
             try {
-                const [bookingsRes, pollutionRes, inspectionRes] = await Promise.all([
-                    // Only 'bookings' joins the assigned garage's own
-                    // location — that's what the return trip (picking
-                    // the finished car back up FROM the garage) navigates
-                    // to. pollution_booking/inspection_booking don't
-                    // carry assigned_to_admin_id, so they're left as-is.
+                const [bookingsRes, pollutionRes, inspectionRes, insuranceRes] = await Promise.all([
+                    // 'bookings' and 'insurance_claims' both join the
+                    // assigned garage's own location — that's what the
+                    // return trip (picking the finished car back up FROM
+                    // the garage) navigates to. pollution_booking/
+                    // inspection_booking don't carry assigned_to_admin_id,
+                    // so they're left as-is.
                     sbClient.from('bookings')
                         .select('*, admin:assigned_to_admin_id(username, latitude, longitude)')
                         .eq('delivery_partner_id', partnerId),
                     sbClient.from('pollution_booking').select('*').eq('delivery_partner_id', partnerId),
                     sbClient.from('inspection_booking').select('*').eq('delivery_partner_id', partnerId),
+                    // insurance_claims (insurance_claim_screen.dart) is now
+                    // a full doorstep pickup/garage/return trip just like
+                    // 'bookings', driven the same way here — see
+                    // stageOrderFor/renderStageBlock/navigateTargetFor.
+                    sbClient.from('insurance_claims')
+                        .select('*, admin:assigned_to_admin_id(username, latitude, longitude)')
+                        .eq('delivery_partner_id', partnerId),
                 ]);
 
                 if (bookingsRes.error) throw bookingsRes.error;
                 if (pollutionRes.error) throw pollutionRes.error;
                 if (inspectionRes.error) throw inspectionRes.error;
+                if (insuranceRes.error) throw insuranceRes.error;
 
                 const normalize = (rows, typeLabel, defaultTitle, sourceTable) => (rows || []).map((r) => ({
                     sourceTable,
@@ -672,6 +776,7 @@
                     title: r.package_name || defaultTitle,
                     price: r.package_price || r.price || null,
                     status: r.payment_status || r.status || 'unknown',
+                    isCod: (r.payment_status || '').toLowerCase() === 'cod',
                     pickupAddress: r.pickup_address,
                     pickupAddressName: r.pickup_address_name,
                     pickupLat: r.pickup_latitude,
@@ -692,19 +797,32 @@
                     pickupOtpVerifiedAt: r.pickup_otp_verified_at || null,
                     returnOtpCode: r.return_otp_code || null,
                     returnOtpVerifiedAt: r.return_otp_verified_at || null,
-                    // Only ever set on 'bookings' — see booking_details_screen.dart's
-                    // MARK AS DONE button, which is what flips this to
-                    // 'Ready for Pickup' once the garage finishes the service.
-                    bookingStatus: r.booking_status || null,
+                    // Set on 'bookings' (booking_status) or 'insurance_claims'
+                    // (claim_status, via insurance_claim_details_screen.dart's
+                    // own MARK AS DONE) — both flip to 'Ready for Pickup'
+                    // once the garage finishes the work.
+                    bookingStatus: r.booking_status || r.claim_status || null,
                     garageName: r.admin?.username || null,
                     garageLat: r.admin?.latitude ?? null,
                     garageLng: r.admin?.longitude ?? null,
+                    // Only set on inspection_booking — snapshotted at
+                    // booking time by inspection_screen.dart's PLAN
+                    // INSPECTION popup, since these rows have no in-app
+                    // OTP/timeline flow (see renderStageBlock's skipOtp)
+                    // and coordination happens by phone instead.
+                    vehicleCondition: r.vehicle_condition || null,
+                    vehicleType: r.vehicle_type || null,
+                    slotDate: r.slot_date || null,
+                    slotTime: r.slot_time || null,
+                    customerName: r.customer_name || null,
+                    customerPhone: r.customer_phone || null,
                 }));
 
                 const all = [
                     ...normalize(bookingsRes.data, 'Service Booking', 'Service Booking', 'bookings'),
                     ...normalize(pollutionRes.data, 'Pollution Certificate', 'Pollution Certificate Check', 'pollution_booking'),
                     ...normalize(inspectionRes.data, 'Vehicle Health Check', 'Vehicle Health Check', 'inspection_booking'),
+                    ...normalize(insuranceRes.data, 'Insurance Claim', 'Insurance Claim', 'insurance_claims'),
                 ];
 
                 all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
@@ -755,6 +873,18 @@
             });
         }
 
+        // Date-only formatter for inspection_booking's slot_date (a plain
+        // DATE column, no time component) — formatFullDateTime always
+        // includes a time, which would show a spurious midnight here.
+        function formatSlotDate(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(`${dateStr}T00:00:00`);
+            if (isNaN(d.getTime())) return '';
+            return d.toLocaleDateString(undefined, {
+                weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+            });
+        }
+
         // Only bookings actually being picked up/dropped off ever get a
         // delivery_partner_id assigned in the first place (see
         // payment_screen.dart's _pickupDropYes), so every card here has
@@ -764,7 +894,7 @@
             if ((b.pickupDrop || '').toLowerCase() !== 'yes') return '';
 
             const stage = b.deliveryStage;
-            const label = STAGE_LABEL[stage];
+            const label = stageLabelFor(b);
             const updatedAt = stage ? b.stageTimestamps[stage] : b.createdAt;
             const nextLabel = nextButtonLabelFor(b);
 
@@ -772,20 +902,27 @@
                 ? `<div class="stage-updated">Updated: ${escapeHtml(formatFullDateTime(updatedAt))}</div>`
                 : '';
 
+            // Pre-delivery inspection has no in-app OTP exchange at all —
+            // it's a pre-scheduled slot booking (see renderInspectionDetails'
+            // customer phone number) rather than a spontaneous doorstep
+            // pickup, so there's no customer waiting in the app to verify a
+            // code either. Plain advance buttons throughout instead.
+            const skipOtp = b.sourceTable === 'inspection_booking';
+
             let actionHtml;
             if (stage === 'delivered') {
                 actionHtml = `<span class="delivered-pill">✅ Trip Completed</span>`;
-            } else if (stage === 'pickup_started') {
+            } else if (stage === 'pickup_started' && !skipOtp) {
                 // Gate "Vehicle Picked Up" on the customer verifying this
                 // partner by OTP first — see generateOtpByKey/renderStageBlock's
                 // OTP block below, and _PickupOtpVerification in
                 // vehicle_bookings_screen.dart on the customer side.
                 actionHtml = renderPickupOtpBlock(b);
-            } else if (b.sourceTable === 'bookings' && stage === 'to_garage') {
+            } else if (hasGarageLeg(b) && stage === 'to_garage') {
                 // Gate "Picked Up" (from the garage) on the garage's own
                 // MARK AS DONE — see renderGarageWaitBlock below.
                 actionHtml = renderGarageWaitBlock(b);
-            } else if (nextStage(b) === 'delivered') {
+            } else if (nextStage(b) === 'delivered' && !skipOtp) {
                 // Final leg back to the customer — 'out_for_delivery' for
                 // 'bookings', 'to_garage' for pollution/inspection (they
                 // skip the out_for_delivery leg). Gate it on a return OTP,
@@ -810,9 +947,10 @@
         // "Vehicle Picked Up" button becomes available at all.
         function renderPickupOtpBlock(b) {
             if (b.pickupOtpVerifiedAt) {
+                const pickedUpLabel = b.sourceTable === 'pollution_booking' ? 'Car Picked Up' : 'Vehicle Picked Up';
                 return `
                     <div class="otp-verified">✅ Customer verified you — go ahead and take the vehicle.</div>
-                    <button class="advance-btn" onclick="advanceStageByKey('${keyFor(b)}')">Vehicle Picked Up</button>
+                    <button class="advance-btn" onclick="advanceStageByKey('${keyFor(b)}')">${pickedUpLabel}</button>
                 `;
             }
 
@@ -835,11 +973,12 @@
             `;
         }
 
-        // Shown only for 'bookings' rows sitting at stage === 'to_garage' —
-        // the partner already dropped the vehicle off; this is the wait
-        // for the garage itself to finish the service (booking_status
-        // becomes 'Ready for Pickup' via booking_details_screen.dart's
-        // MARK AS DONE) before "Picked Up" (from the garage) unlocks.
+        // Shown only for hasGarageLeg rows sitting at stage === 'to_garage'
+        // — the partner already dropped the vehicle off; this is the wait
+        // for the garage itself to finish the work (bookingStatus becomes
+        // 'Ready for Pickup' via booking_details_screen.dart's or
+        // insurance_claim_details_screen.dart's own MARK AS DONE) before
+        // "Picked Up" (from the garage) unlocks.
         function renderGarageWaitBlock(b) {
             if (b.bookingStatus === 'Ready for Pickup') {
                 return `
@@ -861,6 +1000,16 @@
         // against the return_otp_* columns instead of pickup_otp_*.
         function renderReturnOtpBlock(b) {
             if (b.returnOtpVerifiedAt) {
+                if (b.isCod) {
+                    return `
+                        <div class="otp-verified">✅ Customer confirmed receiving the vehicle.</div>
+                        <div class="cash-box">
+                            <div class="cash-box-title">💰 TAKE CASH${b.price ? `: ${escapeHtml(String(b.price))}` : ''}</div>
+                            <div class="cash-box-hint">This is a Cash on Pickup booking — collect payment from the customer before completing the trip.</div>
+                            <button class="advance-btn cash-confirm-btn" onclick="confirmCashAndDeliver('${keyFor(b)}')">Cash Collected — Complete Delivery</button>
+                        </div>
+                    `;
+                }
                 return `
                     <div class="otp-verified">✅ Customer confirmed receiving the vehicle.</div>
                     <button class="advance-btn" onclick="advanceStageByKey('${keyFor(b)}')">Vehicle Delivered</button>
@@ -889,11 +1038,11 @@
         // The Navigate button's destination changes with the trip leg:
         // heading to collect the vehicle from the customer, from the
         // garage (once dropped off there), or back out to the customer
-        // for the final drop-off. Only 'bookings' rows have a garage leg
+        // for the final drop-off. Only hasGarageLeg rows have a garage leg
         // at all — pollution_booking/inspection_booking just navigate to
         // the pickup address throughout, same as before this feature.
         function navigateTargetFor(b) {
-            if (b.sourceTable === 'bookings') {
+            if (hasGarageLeg(b)) {
                 const stage = b.deliveryStage;
                 if (stage === 'picked_up' || stage === 'to_garage') {
                     return (b.garageLat != null && b.garageLng != null)
@@ -926,16 +1075,43 @@
                             <div class="booking-title">${escapeHtml(b.title)}</div>
                             <div class="booking-type">${escapeHtml(b.typeLabel)}</div>
                         </div>
-                        ${b.price ? `<div class="booking-price">${escapeHtml(String(b.price))}</div>` : ''}
+                        <div>
+                            ${b.price ? `<div class="booking-price">${escapeHtml(String(b.price))}</div>` : ''}
+                            ${b.isCod ? `<div class="cod-pill">💰 Collect Cash</div>` : ''}
+                        </div>
                     </div>
                     <div class="booking-detail-row"><strong>Booked:</strong> ${escapeHtml(formatFullDateTime(b.createdAt))}</div>
                     <div class="booking-detail-row"><strong>Status:</strong> ${escapeHtml(b.status)}</div>
                     <div class="booking-detail-row"><strong>Pickup${b.pickupAddressName ? ` (${escapeHtml(b.pickupAddressName)})` : ''}:</strong> ${escapeHtml(b.pickupAddress || 'Not specified')}</div>
+                    ${renderInspectionDetails(b)}
                     <div class="booking-footer">
                         ${b.pickupDrop ? `<span class="pickupdrop-pill">Pickup &amp; Drop: ${escapeHtml(b.pickupDrop)}</span>` : '<span></span>'}
                         ${navigateHtml}
                     </div>
                     ${renderStageBlock(b)}
+                </div>
+            `;
+        }
+
+        // Pre-delivery inspection has no in-app timeline/OTP — the details
+        // the customer chose in inspection_screen.dart's PLAN INSPECTION
+        // popup, plus a tap-to-call link, are what the partner needs
+        // instead to actually coordinate the pickup and return.
+        function renderInspectionDetails(b) {
+            if (b.sourceTable !== 'inspection_booking') return '';
+
+            const slot = b.slotDate
+                ? `${escapeHtml(formatSlotDate(b.slotDate))}${b.slotTime ? ` • ${escapeHtml(b.slotTime)}` : ''}`
+                : null;
+
+            return `
+                <div class="booking-detail-row"><strong>Vehicle:</strong> ${escapeHtml(b.vehicleCondition || '—')} ${escapeHtml(b.vehicleType || '')}</div>
+                ${slot ? `<div class="booking-detail-row"><strong>Scheduled Slot:</strong> ${slot}</div>` : ''}
+                <div class="booking-detail-row">
+                    <strong>Customer:</strong> ${escapeHtml(b.customerName || 'Not specified')}
+                    ${b.customerPhone
+                        ? ` — <a class="call-link" href="tel:${escapeHtml(b.customerPhone)}">📞 ${escapeHtml(b.customerPhone)}</a>`
+                        : ' — no phone on file'}
                 </div>
             `;
         }
@@ -949,6 +1125,22 @@
         async function advanceStageByKey(key) {
             const booking = bookingsIndex[key];
             if (booking) await advanceStage(booking);
+        }
+
+        // COD equivalent of advanceStageByKey for the final "Vehicle
+        // Delivered" tap — makes sure the partner explicitly confirms cash
+        // was actually collected (rather than just tapping through) before
+        // the trip is closed out. See renderReturnOtpBlock's b.isCod branch.
+        async function confirmCashAndDeliver(key) {
+            const booking = bookingsIndex[key];
+            if (!booking) return;
+
+            const confirmed = confirm(
+                `Confirm you have collected ${booking.price || 'the cash payment'} from the customer before completing this delivery.`
+            );
+            if (!confirmed) return;
+
+            await advanceStage(booking);
         }
 
         // Generates a fresh 4-digit pickup code and saves it — the render
@@ -1011,7 +1203,7 @@
             // Same idea for the return leg — "Picked Up" (from the
             // garage) shouldn't render until the garage has marked the
             // service done, but guard the write too.
-            if (booking.sourceTable === 'bookings' &&
+            if (hasGarageLeg(booking) &&
                 booking.deliveryStage === 'to_garage' &&
                 booking.bookingStatus !== 'Ready for Pickup') {
                 alert('Waiting for the garage to mark this service as done first.');

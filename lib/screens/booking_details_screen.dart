@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -7,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'booking_tracking_screen.dart'; // imports ChatSheet
 import 'inspection_upload_screen.dart';
+import '../utils/secure_storage_path.dart';
 import '../widgets/error_display.dart';
 
 class BookingDetailsScreen extends StatefulWidget {
@@ -33,6 +35,9 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   bool markingDone = false;
   bool checkingReturnOtp = false;
   bool generatingReturnOtp = false;
+  bool confirmingPayment = false;
+  bool checkingPickupOtp = false;
+  bool generatingPickupOtp = false;
 
   /// This 'bookings' row has no delivery-partner trip — the customer comes
   /// to collect the vehicle in person, so MARK AS DONE below is what
@@ -40,6 +45,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   /// from web/deliverydashboard.html at the out_for_delivery leg).
   bool get hasPickupDrop =>
       (widget.booking['pickupdrop'] ?? '').toString().toLowerCase() == 'yes';
+
+  /// Cash on Pickup — for a no-pickup-drop booking, this is what gates the
+  /// COLLECT PAYMENT step below on the return OTP being confirmed, instead
+  /// of closing the booking out immediately the way a prepaid one does.
+  bool get isCod =>
+      (widget.booking['payment_status'] ?? '').toString().toLowerCase() == 'cod';
 
   final stages = [
     'Car Picked Up',
@@ -50,6 +61,14 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     'Delivered',
   ];
 
+  // Neither the drop-off/return OTP boxes nor the MARK AS DONE/COLLECT
+  // PAYMENT buttons above have any way to hear about a change the
+  // *customer* makes (entering a code, say) while this screen is already
+  // open — there's no Realtime subscription wired up here, just the
+  // manual CHECK AGAIN buttons. Polling picks those up automatically
+  // instead of leaving staff to keep tapping CHECK AGAIN themselves.
+  Timer? _autoRefreshTimer;
+
   @override
   void initState() {
     super.initState();
@@ -57,18 +76,55 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     if (widget.autoOpenChat) {
       WidgetsBinding.instance.addPostFrameCallback((_) => openChat());
     }
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted) return;
+      _autoRefreshBooking();
+      checkUnreadMessages();
+    });
+  }
+
+  /// Silently re-pulls this booking's own live status/OTP columns —
+  /// unlike _refreshReturnOtpStatus/_refreshPickupOtpStatus (kept as-is
+  /// for the manual CHECK AGAIN buttons), this doesn't toggle their
+  /// loading flags, so the periodic poll above doesn't flicker those
+  /// buttons' spinners every 15 seconds.
+  Future<void> _autoRefreshBooking() async {
+    try {
+      final row = await Supabase.instance.client
+          .from('bookings')
+          .select(
+            'booking_status, marked_done_at, pickup_otp_code, pickup_otp_verified_at, return_otp_code, return_otp_verified_at',
+          )
+          .eq('id', widget.booking['id'])
+          .single();
+
+      if (!mounted) return;
+      setState(() {
+        widget.booking['booking_status'] = row['booking_status'];
+        widget.booking['marked_done_at'] = row['marked_done_at'];
+        widget.booking['pickup_otp_code'] = row['pickup_otp_code'];
+        widget.booking['pickup_otp_verified_at'] = row['pickup_otp_verified_at'];
+        widget.booking['return_otp_code'] = row['return_otp_code'];
+        widget.booking['return_otp_verified_at'] = row['return_otp_verified_at'];
+      });
+    } catch (e) {
+      // Silent — this is a background poll, not a user-initiated action;
+      // the manual CHECK AGAIN buttons still surface errors if staff
+      // explicitly ask for a refresh.
+    }
   }
 
   @override
   void dispose() {
     descController.dispose();
+    _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
   Future<void> checkUnreadMessages() async {
-    try {
-      final supabase = Supabase.instance.client;
+    final supabase = Supabase.instance.client;
 
+    try {
       final response = await supabase
           .from('booking_chats')
           .select()
@@ -82,8 +138,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
         hasUnreadMessages = (response as List).isNotEmpty;
       });
     } catch (e) {
-      // Non-fatal — worst case the unread badge doesn't show.
-      debugPrint('Error checking unread messages: $e');
+      // Non-fatal — the unread badge just won't show if this fails.
     }
   }
 
@@ -127,21 +182,20 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       final supabase = Supabase.instance.client;
 
       final fileName =
-          DateTime.now().millisecondsSinceEpoch.toString();
+          '${DateTime.now().millisecondsSinceEpoch}-${secureStorageToken()}';
 
       await supabase.storage
           .from('booking-images')
           .uploadBinary(fileName, selectedImageBytes!);
 
-      final imageUrl = supabase.storage
-          .from('booking-images')
-          .getPublicUrl(fileName);
-
+      // Store the storage PATH, not a permanent public URL — the
+      // booking-images bucket is private, so the display side mints a
+      // short-lived signed URL on demand (see booking_tracking_screen.dart).
       await supabase.from('booking_updates').insert({
         'booking_id': widget.booking['id'],
         'stage': selectedStage,
         'description': descController.text,
-        'image_url': imageUrl,
+        'image_url': fileName,
       });
 
       await supabase.from('bookings').update({
@@ -291,13 +345,139 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     if (mounted) setState(() => generatingReturnOtp = false);
   }
 
-  /// Shown in place of the plain "MARKED DONE" pill once this booking has
-  /// no pickup/drop trip — displays the return code for staff to read to
-  /// the customer, then a "customer confirmed" state once they've entered
-  /// it correctly in their app.
-  Widget _buildReturnOtpBox() {
-    final verified = widget.booking['return_otp_verified_at'] != null;
-    final code = widget.booking['return_otp_code'] as String?;
+  /// The "COLLECT PAYMENT" pop-up — shown once the customer has confirmed
+  /// the return OTP on a Cash on Pickup booking with no delivery partner
+  /// (see _buildReturnOtpBox's isCod branch below). Confirming here is
+  /// what finally flips booking_status to 'Delivered', closing the
+  /// booking out — notify-on-db-change/index.ts's justDelivered case
+  /// notifies the customer once this write lands.
+  Future<void> _confirmPaymentReceived() async {
+    final price = widget.booking['package_price']?.toString();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1C),
+        title: const Text(
+          'COLLECT PAYMENT',
+          style: TextStyle(color: Color(0xFFD4A017), fontWeight: FontWeight.w900),
+        ),
+        content: Text(
+          'This is a Cash on Pickup booking${price != null ? ' — $price' : ''}. '
+          'Confirm you have collected payment from the customer before closing this booking out.',
+          style: const TextStyle(color: Colors.white70, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD4A017)),
+            child: const Text(
+              'PAYMENT RECEIVED',
+              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => confirmingPayment = true);
+
+    try {
+      await Supabase.instance.client
+          .from('bookings')
+          .update({'booking_status': 'Delivered'})
+          .eq('id', widget.booking['id']);
+
+      if (!mounted) return;
+      widget.booking['booking_status'] = 'Delivered';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Payment confirmed — booking closed out')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not confirm payment. Please try again.',
+      );
+    }
+
+    if (mounted) setState(() => confirmingPayment = false);
+  }
+
+  /// Generates a drop-off code for a no-pickup-drop booking — the customer
+  /// is driving themselves to the garage, so this is the garage-side half
+  /// of the same OTP exchange a delivery partner would otherwise do from
+  /// web/deliverydashboard.html at pickup. Reuses the pickup_otp_* columns,
+  /// which otherwise sit unused for a booking with no delivery trip.
+  Future<void> _generatePickupOtpNow() async {
+    setState(() => generatingPickupOtp = true);
+
+    try {
+      final code = (1000 + math.Random().nextInt(9000)).toString();
+      final nowIso = DateTime.now().toIso8601String();
+
+      await Supabase.instance.client
+          .from('bookings')
+          .update({'pickup_otp_code': code, 'pickup_otp_generated_at': nowIso})
+          .eq('id', widget.booking['id']);
+
+      if (!mounted) return;
+      widget.booking['pickup_otp_code'] = code;
+      widget.booking['pickup_otp_generated_at'] = nowIso;
+    } catch (e) {
+      if (!mounted) return;
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not generate the drop-off code. Please try again.',
+      );
+    }
+
+    if (mounted) setState(() => generatingPickupOtp = false);
+  }
+
+  /// Re-pulls just the verification timestamp so the drop-off box below can
+  /// flip to its "customer checked in" state without leaving this screen —
+  /// mirrors _refreshReturnOtpStatus for the return leg.
+  Future<void> _refreshPickupOtpStatus() async {
+    setState(() => checkingPickupOtp = true);
+
+    try {
+      final row = await Supabase.instance.client
+          .from('bookings')
+          .select('pickup_otp_verified_at')
+          .eq('id', widget.booking['id'])
+          .single();
+
+      if (!mounted) return;
+      widget.booking['pickup_otp_verified_at'] = row['pickup_otp_verified_at'];
+    } catch (e) {
+      if (!mounted) return;
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not check the drop-off confirmation status. Please try again.',
+      );
+    }
+
+    if (mounted) setState(() => checkingPickupOtp = false);
+  }
+
+  /// Shown for a no-pickup-drop booking, above the stage dropdown — lets
+  /// staff generate a drop-off code and confirm the customer checked in
+  /// with their vehicle before any service work is logged. Mirrors
+  /// _buildReturnOtpBox's code-display/waiting/verified states.
+  Widget _buildDropOffOtpBox() {
+    final verified = widget.booking['pickup_otp_verified_at'] != null;
+    final code = widget.booking['pickup_otp_code'] as String?;
 
     if (verified) {
       return Container(
@@ -313,8 +493,201 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
             Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
             SizedBox(width: 10),
             Text(
-              'CUSTOMER CONFIRMED PICKUP',
+              'VEHICLE CHECKED IN',
               style: TextStyle(
+                color: Colors.green,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.8,
+                fontSize: 15,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (code == null) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1C1C1C),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+        ),
+        child: Column(
+          children: [
+            const Text(
+              'Customer at the counter? Generate a code and read it to them before checking their vehicle in.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: generatingPickupOtp ? null : _generatePickupOtpNow,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4A017),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: generatingPickupOtp
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                      )
+                    : const Text(
+                        'GENERATE DROP-OFF CODE',
+                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1C),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'Read this code to the customer before checking their vehicle in:',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            code,
+            style: const TextStyle(
+              color: Color(0xFFD4A017),
+              fontSize: 34,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 10,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Waiting for the customer to enter it in their app…',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          TextButton(
+            onPressed: checkingPickupOtp ? null : _refreshPickupOtpStatus,
+            child: checkingPickupOtp
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Color(0xFFD4A017)),
+                  )
+                : const Text(
+                    'CHECK AGAIN',
+                    style: TextStyle(
+                      color: Color(0xFFD4A017),
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shown in place of the plain "MARKED DONE" pill once this booking has
+  /// no pickup/drop trip — displays the return code for staff to read to
+  /// the customer, then a "customer confirmed" state once they've entered
+  /// it correctly in their app.
+  Widget _buildReturnOtpBox() {
+    final verified = widget.booking['return_otp_verified_at'] != null;
+    final code = widget.booking['return_otp_code'] as String?;
+
+    if (verified) {
+      final paymentDone = widget.booking['booking_status'] == 'Delivered';
+
+      // Cash on Pickup and payment not yet confirmed — the booking isn't
+      // actually finished (vehicle_bookings_screen.dart's
+      // _ReturnOtpVerification deliberately withheld booking_status:
+      // 'Delivered' for this exact case), so this is where staff collect
+      // cash and close it out themselves instead of the usual pill.
+      if (isCod && !paymentDone) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.orange.withOpacity(0.4)),
+          ),
+          child: Column(
+            children: [
+              const Icon(Icons.currency_rupee_rounded, color: Colors.orange, size: 28),
+              const SizedBox(height: 8),
+              const Text(
+                'COLLECT PAYMENT',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Customer confirmed pickup — collect '
+                '${widget.booking['package_price'] ?? 'the cash payment'} before closing this booking out.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.4),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: confirmingPayment ? null : _confirmPaymentReceived,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: confirmingPayment
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                        )
+                      : const Text(
+                          'PAYMENT RECEIVED',
+                          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      return Container(
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.green.withOpacity(0.4)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
+            const SizedBox(width: 10),
+            Text(
+              isCod ? 'PAYMENT RECEIVED — BOOKING COMPLETE' : 'CUSTOMER CONFIRMED PICKUP',
+              style: const TextStyle(
                 color: Colors.green,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0.8,
@@ -456,7 +829,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.booking['package_name'] ?? 'Package',
+                        widget.booking['package_name']?.toString() ?? 'Service',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 28,
@@ -465,7 +838,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                       ),
                       const SizedBox(height: 14),
                       Text(
-                        widget.booking['package_price'] ?? '—',
+                        widget.booking['package_price']?.toString() ?? '',
                         style: const TextStyle(
                           color: Color(0xFFD4A017),
                           fontSize: 22,
@@ -622,6 +995,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                 ),
 
                 const SizedBox(height: 28),
+
+                // ── DROP-OFF OTP (no pickup/drop trip only) ──
+                if (!hasPickupDrop) ...[
+                  _buildDropOffOtpBox(),
+                  const SizedBox(height: 28),
+                ],
 
                 // ── STAGE TITLE ──
                 const Text(

@@ -62,7 +62,7 @@ class VehicleUpdateTracker {
     // Washer — a new completed-wash entry in service_history.
     try {
       final sub = await supabase
-          .from('subscriptions')
+          .from('monthlywash_table')
           .select('id')
           .eq('vehicle_id', vehicleId)
           .maybeSingle();

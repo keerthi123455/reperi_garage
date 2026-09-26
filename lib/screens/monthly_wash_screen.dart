@@ -6,7 +6,7 @@ import '../theme/theme_controller.dart';
 import '../services/address_service.dart';
 import '../widgets/error_display.dart';
 
-class SubscriptionsScreen extends StatefulWidget {
+class MonthlyWashScreen extends StatefulWidget {
   final String vehicleId;
 
   /// This screen represents a single service with no sub-packages to
@@ -14,17 +14,17 @@ class SubscriptionsScreen extends StatefulWidget {
   /// only so callers that pass it (see buildPackageScreenFor) compile.
   final String? highlightPackage;
 
-  const SubscriptionsScreen({
+  const MonthlyWashScreen({
     super.key,
     required this.vehicleId,
     this.highlightPackage,
   });
 
   @override
-  State<SubscriptionsScreen> createState() => _SubscriptionsScreenState();
+  State<MonthlyWashScreen> createState() => _MonthlyWashScreenState();
 }
 
-class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
+class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
   String? selectedPlan;
 
   @override
@@ -59,7 +59,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Car Wash Subscriptions',
+          'Monthly Wash Plans',
           style: TextStyle(
             color: AppColors.txt,
             fontSize: 22,
@@ -125,7 +125,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   ),
                   const SizedBox(height: 40),
 
-                  // Subscribe Button
+                  // Enroll Button
                   GestureDetector(
                     onTap: () => _showPlanSelectionDialog(),
                     child: Container(
@@ -151,7 +151,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                       ),
                       child: Center(
                         child: Text(
-                          'SUBSCRIBE',
+                          'ENROLL',
                           style: TextStyle(
                             color: AppColors.onAccentDark,
                             fontSize: 18,
@@ -169,17 +169,17 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     ));
   }
 
-  /// Save subscription to database after successful payment.
+  /// Save the enrolled wash plan to the database after successful payment.
   ///
   /// This runs as PaymentScreen's onSuccess callback — Razorpay has
   /// already charged the customer by the time this is called, so a
-  /// failure here used to mean they were charged with no subscription
-  /// record ever created and no indication anything went wrong (this
-  /// caught its own error and only printed it). It now surfaces an
-  /// honest message — payment succeeded, saving the record didn't — with
-  /// a retry that re-attempts just this insert using the same
-  /// orderId/paymentId, rather than charging them again.
-  Future<void> _saveSubscriptionToDatabase(
+  /// failure here used to mean they were charged with no plan record
+  /// ever created and no indication anything went wrong (this caught its
+  /// own error and only printed it). It now surfaces an honest message —
+  /// payment succeeded, saving the record didn't — with a retry that
+  /// re-attempts just this insert using the same orderId/paymentId,
+  /// rather than charging them again.
+  Future<void> _savePlanToDatabase(
     String orderId,
     String paymentId,
   ) async {
@@ -194,7 +194,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       final endDate = DateTime.now().add(const Duration(days: 30));
       final defaultAddr = await AddressService().getDefaultAddress();
 
-      await Supabase.instance.client.from('subscriptions').insert({
+      await Supabase.instance.client.from('monthlywash_table').insert({
         'user_id': user.id,
         'vehicle_id': widget.vehicleId,
         'plan_type': selectedPlan,
@@ -211,16 +211,16 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         'pickup_address_name': defaultAddr?['name'],
       });
 
-      debugPrint('✅ Subscription saved to database');
+      debugPrint('✅ Wash plan saved to database');
     } catch (e) {
-      debugPrint('❌ Error saving subscription: $e');
+      debugPrint('❌ Error saving wash plan: $e');
       if (!mounted) return;
       ErrorDisplay.showPremiumError(
         context,
         error: e,
         customMessage:
-            'Your payment went through, but we couldn\'t save your subscription (ref: $paymentId). Tap retry, or contact support with that reference if it keeps failing.',
-        onRetry: () => _saveSubscriptionToDatabase(orderId, paymentId),
+            'Your payment went through, but we couldn\'t save your wash plan (ref: $paymentId). Tap retry, or contact support with that reference if it keeps failing.',
+        onRetry: () => _savePlanToDatabase(orderId, paymentId),
       );
     }
   }
@@ -298,7 +298,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Column(
                           children: [
-                            _buildSubscriptionCard(
+                            _buildPlanCard(
                               title: 'Hatchback / Small Cars',
                               price: '₹600',
                               vehicles:
@@ -308,7 +308,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                                   setDialogState(() => selectedPlan = 'hatchback'),
                             ),
                             const SizedBox(height: 16),
-                            _buildSubscriptionCard(
+                            _buildPlanCard(
                               title: 'SUV / XUV / SEDAN',
                               price: '₹1000',
                               vehicles:
@@ -318,7 +318,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                                   setDialogState(() => selectedPlan = 'suv'),
                             ),
                             const SizedBox(height: 16),
-                            _buildSubscriptionCard(
+                            _buildPlanCard(
                               title: 'Luxury Cars',
                               price: '₹1200',
                               vehicles: 'Audi, BMW, Mercedes-Benz, etc',
@@ -327,7 +327,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                                   setDialogState(() => selectedPlan = 'luxury'),
                             ),
                             const SizedBox(height: 16),
-                            _buildSubscriptionCard(
+                            _buildPlanCard(
                               title: 'Bike',
                               price: '₹500',
                               vehicles: 'All bikes & scooters',
@@ -357,7 +357,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                                       price: planDetails['price']!,
                                       duration: '1 Month',
                                       vehicleId: widget.vehicleId,
-                                      onSuccess: _saveSubscriptionToDatabase,
+                                      onSuccess: _savePlanToDatabase,
                                       showPickupDropOption: false,
                                     ),
                                   ),
@@ -400,7 +400,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                           child: Center(
                             child: Text(
                               selectedPlan != null
-                                  ? 'SUBSCRIBE NOW'
+                                  ? 'ENROLL NOW'
                                   : 'SELECT A PLAN',
                               style: TextStyle(
                                 color: selectedPlan != null
@@ -430,33 +430,33 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     switch (selectedPlan) {
       case 'hatchback':
         return {
-          'title': 'Car Wash Subscription - Hatchback / Small Cars',
+          'title': 'Monthly Wash Plan - Hatchback / Small Cars',
           'price': '600',
         };
       case 'suv':
         return {
-          'title': 'Car Wash Subscription - SUV / XUV / SEDAN',
+          'title': 'Monthly Wash Plan - SUV / XUV / SEDAN',
           'price': '1000',
         };
       case 'luxury':
         return {
-          'title': 'Car Wash Subscription - Luxury Cars',
+          'title': 'Monthly Wash Plan - Luxury Cars',
           'price': '1200',
         };
       case 'bike':
         return {
-          'title': 'Car Wash Subscription - Bike',
+          'title': 'Monthly Wash Plan - Bike',
           'price': '500',
         };
       default:
         return {
-          'title': 'Car Wash Subscription',
+          'title': 'Monthly Wash Plan',
           'price': '0',
         };
     }
   }
 
-  Widget _buildSubscriptionCard({
+  Widget _buildPlanCard({
     required String title,
     required String price,
     required String vehicles,

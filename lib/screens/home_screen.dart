@@ -59,7 +59,7 @@ import 'servicing_package_screen.dart';
 import 'spares_screen.dart';
 import 'two_wheeler_servicing_screen.dart';
 import 'two_wheeler_washing_screen.dart';
-import 'subscriptions_screen.dart';
+import 'monthly_wash_screen.dart';
 import 'tyre_care_screen.dart';
 import 'vehicle_bookings_screen.dart';
 import 'washing_package_screen.dart';
@@ -332,7 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final rows = List<Map<String, dynamic>>.from(
         await Supabase.instance.client
-            .from('subscriptions')
+            .from('monthlywash_table')
             .select('id')
             .eq('vehicle_id', vehicleId)
             .eq('status', 'active')
@@ -515,12 +515,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openSubscriptions() {
-    // Browsing subscription plans doesn't need a vehicle — only actually
-    // subscribing does, which SubscriptionsScreen's own booking step
+    // Browsing wash plans doesn't need a vehicle — only actually
+    // enrolling does, which MonthlyWashScreen's own booking step
     // gates via PaymentScreen.
     Navigator.push(
       context,
-      premiumPageRoute((_) => SubscriptionsScreen(vehicleId: _activeVehicle?.id ?? '')),
+      premiumPageRoute((_) => MonthlyWashScreen(vehicleId: _activeVehicle?.id ?? '')),
     );
   }
 
@@ -725,14 +725,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _pickAndUploadVehiclePhoto(Vehicle vehicle, ImageSource source) async {
-    try {
-      final picked = await _imagePicker.pickImage(
-        source: source,
-        maxWidth: 1000,
-        imageQuality: 80,
-      );
-      if (picked == null) return;
+    final picked = await _imagePicker.pickImage(
+      source: source,
+      maxWidth: 1000,
+      imageQuality: 80,
+    );
+    if (picked == null) return;
 
+    try {
       final bytes = await picked.readAsBytes();
       final fileName = '${vehicle.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final supabase = Supabase.instance.client;

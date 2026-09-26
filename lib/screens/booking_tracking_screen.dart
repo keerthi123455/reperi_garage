@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../theme/app_colors.dart';
 import '../widgets/inspection_view_widget.dart';
 import '../widgets/error_display.dart';
 
@@ -23,6 +24,8 @@ class BookingTrackingScreen extends StatefulWidget {
 }
 
 class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
+  static const _signedUrlExpirySeconds = 300;
+
   List updates = [];
   bool loading = true;
   // Set when fetchUpdates() fails — drives a retry screen instead of
@@ -39,6 +42,19 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     if (widget.autoOpenChat) {
       WidgetsBinding.instance.addPostFrameCallback((_) => openChat());
     }
+  }
+
+  /// booking-images is a private bucket — `storedValue` is normally just the
+  /// storage path (see booking_details_screen.dart's uploadUpdate()), but
+  /// older rows may still hold a full public URL from before the bucket was
+  /// made private, so both are handled here.
+  Future<String> _resolveImageUrl(String storedValue) async {
+    final path = storedValue.contains('/booking-images/')
+        ? storedValue.split('/booking-images/').last
+        : storedValue;
+    return Supabase.instance.client.storage
+        .from('booking-images')
+        .createSignedUrl(path, _signedUrlExpirySeconds);
   }
 
   Future<void> _markUpdateAsRead() async {
@@ -121,11 +137,11 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF262626),
+      backgroundColor: AppColors.ink,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1C1C1C),
+        backgroundColor: AppColors.surfaceRaised,
         title: Text(
-          widget.booking['package_name'] ?? 'Package',
+          widget.booking['package_name']?.toString() ?? 'Service',
           style: const TextStyle(color: Color(0xFFD4A017)),
         ),
       ),
@@ -140,18 +156,18 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.cloud_off_rounded, color: Colors.white38, size: 40),
+                        Icon(Icons.cloud_off_rounded, color: AppColors.mut, size: 40),
                         const SizedBox(height: 16),
-                        const Text(
+                        Text(
                           "Couldn't load this booking's updates",
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+                          style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w700, fontSize: 15),
                         ),
                         const SizedBox(height: 6),
-                        const Text(
+                        Text(
                           'Check your connection and try again.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white38, fontSize: 13),
+                          style: TextStyle(color: AppColors.mut, fontSize: 13),
                         ),
                         const SizedBox(height: 20),
                         ElevatedButton(
@@ -163,8 +179,8 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                             backgroundColor: const Color(0xFFD4A017),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           ),
-                          child: const Text('RETRY',
-                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800)),
+                          child: Text('RETRY',
+                              style: TextStyle(color: AppColors.onAccentDark, fontWeight: FontWeight.w800)),
                         ),
                       ],
                     ),
@@ -185,7 +201,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Text(
-                        widget.booking['booking_status'] ?? 'PENDING',
+                        widget.booking['booking_status']?.toString() ?? 'PENDING',
                         style: const TextStyle(
                           color: Color(0xFFD4A017),
                           fontWeight: FontWeight.bold,
@@ -203,10 +219,10 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
 
                     const SizedBox(height: 30),
 
-                    const Text(
+                    Text(
                       'Service Timeline',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.txt,
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
                       ),
@@ -219,7 +235,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                         margin: const EdgeInsets.only(bottom: 24),
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1C1C1C),
+                          color: AppColors.surfaceRaised,
                           borderRadius: BorderRadius.circular(26),
                         ),
                         child: Column(
@@ -238,9 +254,9 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    u['stage'] ?? 'Update',
-                                    style: const TextStyle(
-                                      color: Colors.white,
+                                    u['stage'],
+                                    style: TextStyle(
+                                      color: AppColors.txt,
                                       fontSize: 20,
                                       fontWeight: FontWeight.w900,
                                     ),
@@ -248,45 +264,61 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                                 ),
                               ],
                             ),
-                            if (u['image_url'] != null) ...[
-                              const SizedBox(height: 20),
-                              RepaintBoundary(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(22),
-                                  child: CachedNetworkImage(
-                                    imageUrl: u['image_url'],
-                                    height: 220,
-                                    width: double.infinity,
-                                    fit: BoxFit.cover,
-                                    fadeInDuration: Duration.zero,
-                                    fadeOutDuration: Duration.zero,
-                                    useOldImageOnUrlChange: false,
-                                    placeholder: (context, url) => Container(
-                                      color: const Color(0xFF111111),
-                                      child: const Center(
-                                        child: CircularProgressIndicator(
-                                          color: Color(0xFFD4A017),
-                                          strokeWidth: 2,
+                            const SizedBox(height: 20),
+                            RepaintBoundary(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(22),
+                                child: FutureBuilder<String>(
+                                  future: _resolveImageUrl(u['image_url']),
+                                  builder: (context, snapshot) {
+                                    if (!snapshot.hasData) {
+                                      return Container(
+                                        height: 220,
+                                        width: double.infinity,
+                                        color: AppColors.surfaceSunken,
+                                        child: const Center(
+                                          child: CircularProgressIndicator(
+                                            color: Color(0xFFD4A017),
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    return CachedNetworkImage(
+                                      imageUrl: snapshot.data!,
+                                      height: 220,
+                                      width: double.infinity,
+                                      fit: BoxFit.cover,
+                                      fadeInDuration: Duration.zero,
+                                      fadeOutDuration: Duration.zero,
+                                      useOldImageOnUrlChange: false,
+                                      placeholder: (context, url) => Container(
+                                        color: AppColors.surfaceSunken,
+                                        child: const Center(
+                                          child: CircularProgressIndicator(
+                                            color: Color(0xFFD4A017),
+                                            strokeWidth: 2,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    errorWidget: (context, url, error) =>
-                                        Container(
-                                      color: const Color(0xFF111111),
-                                      child: const Icon(
-                                        Icons.broken_image_rounded,
-                                        color: Colors.white38,
+                                      errorWidget: (context, url, error) =>
+                                          Container(
+                                        color: AppColors.surfaceSunken,
+                                        child: Icon(
+                                          Icons.broken_image_rounded,
+                                          color: AppColors.mut,
+                                        ),
                                       ),
-                                    ),
-                                  ),
+                                    );
+                                  },
                                 ),
                               ),
-                            ],
+                            ),
                             const SizedBox(height: 20),
                             Text(
                               u['description'] ?? '',
-                              style: const TextStyle(
-                                color: Colors.white70,
+                              style: TextStyle(
+                                color: AppColors.txt.withOpacity(0.7),
                                 height: 1.5,
                                 fontSize: 15,
                               ),
@@ -307,22 +339,22 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                           Container(
                             height: 68,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1C1C1C),
+                              color: AppColors.surfaceRaised,
                               borderRadius: BorderRadius.circular(24),
                               border: Border.all(
                                 color: const Color(0xFFD4A017).withOpacity(0.3),
                               ),
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.chat_bubble_outline_rounded,
+                                const Icon(Icons.chat_bubble_outline_rounded,
                                     color: Color(0xFFD4A017), size: 22),
-                                SizedBox(width: 10),
+                                const SizedBox(width: 10),
                                 Text(
                                   'CHAT WITH GARAGE',
                                   style: TextStyle(
-                                    color: Colors.white,
+                                    color: AppColors.txt,
                                     fontWeight: FontWeight.bold,
                                     letterSpacing: 1,
                                   ),
@@ -359,22 +391,8 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                     GestureDetector(
                       onTap: () async {
                         final uri = Uri(scheme: 'tel', path: '9353094672');
-                        try {
-                          if (await canLaunchUrl(uri)) {
-                            // ignore: deprecated_member_use
-                            await launchUrl(uri);
-                          } else {
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Could not open dialer. Please try again.')),
-                            );
-                          }
-                        } catch (e) {
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Could not open dialer. Please try again.')),
-                          );
-                        }
+                        // ignore: deprecated_member_use
+                        await launchUrl(uri);
                       },
                       child: Container(
                         height: 68,
@@ -384,11 +402,11 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                           ),
                           borderRadius: BorderRadius.circular(24),
                         ),
-                        child: const Center(
+                        child: Center(
                           child: Text(
                             'CALL GARAGE',
                             style: TextStyle(
-                              color: Colors.black,
+                              color: AppColors.onAccentDark,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 1,
                             ),
@@ -639,16 +657,16 @@ class _ChatSheetState extends State<ChatSheet> {
   }
 
   Future<void> markMessagesRead() async {
+    final supabase = Supabase.instance.client;
+
+    final otherSender =
+        widget.sender == 'consumer' ? 'admin' : 'consumer';
+
+    final readField = widget.sender == 'consumer'
+        ? 'is_read_by_consumer'
+        : 'is_read_by_admin';
+
     try {
-      final supabase = Supabase.instance.client;
-
-      final otherSender =
-          widget.sender == 'consumer' ? 'admin' : 'consumer';
-
-      final readField = widget.sender == 'consumer'
-          ? 'is_read_by_consumer'
-          : 'is_read_by_admin';
-
       await supabase
           .from('booking_chats')
           .update({readField: true})
@@ -739,9 +757,9 @@ class _ChatSheetState extends State<ChatSheet> {
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.75 + bottomPadding,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F0F0F),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSunken,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       ),
       child: Column(
         children: [
@@ -751,7 +769,7 @@ class _ChatSheetState extends State<ChatSheet> {
             width: 44,
             height: 4,
             decoration: BoxDecoration(
-              color: const Color(0xFF333333),
+              color: AppColors.txt.withOpacity(0.3),
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -777,10 +795,10 @@ class _ChatSheetState extends State<ChatSheet> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Text(
+                    Text(
                       'Garage Chat',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.txt,
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
                       ),
@@ -790,7 +808,7 @@ class _ChatSheetState extends State<ChatSheet> {
                 // 🔒 SAFETY MENU
                 if (blockingLoaded)
                   IconButton(
-                    icon: const Icon(Icons.more_vert, color: Colors.white54),
+                    icon: Icon(Icons.more_vert, color: AppColors.mut),
                     onPressed: () {
                       final otherSender = widget.sender == 'consumer' ? 'admin' : 'consumer';
                       _showSafetyMenu(otherSender);
@@ -800,7 +818,7 @@ class _ChatSheetState extends State<ChatSheet> {
             ),
           ),
 
-          const Divider(color: Color(0xFF1E1E1E), height: 1),
+          Divider(color: AppColors.line, height: 1),
 
           // ── Messages ──
           Expanded(
@@ -816,20 +834,20 @@ class _ChatSheetState extends State<ChatSheet> {
                           children: [
                             const Icon(Icons.block, color: Colors.red, size: 48),
                             const SizedBox(height: 16),
-                            const Text(
+                            Text(
                               'You are blocked',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: AppColors.txt,
                                 fontSize: 18,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                             const SizedBox(height: 8),
-                            const Text(
+                            Text(
                               'You cannot send or receive messages from this user',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: Colors.white54,
+                                color: AppColors.mut,
                                 fontSize: 14,
                               ),
                             ),
@@ -837,12 +855,12 @@ class _ChatSheetState extends State<ChatSheet> {
                         ),
                       )
                     : messages.isEmpty
-                        ? const Center(
+                        ? Center(
                             child: Text(
                               'No messages yet.\nSend the first one!',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                  color: Colors.white38, fontSize: 15, height: 1.6),
+                                  color: AppColors.mut, fontSize: 15, height: 1.6),
                             ),
                           )
                         : ListView.builder(
@@ -885,7 +903,7 @@ class _ChatSheetState extends State<ChatSheet> {
                                   decoration: BoxDecoration(
                                     color: isMe
                                         ? const Color(0xFFD4A017)
-                                        : const Color(0xFF1E1E1E),
+                                        : AppColors.surfaceRaised,
                                     borderRadius: BorderRadius.only(
                                       topLeft: const Radius.circular(18),
                                       topRight: const Radius.circular(18),
@@ -898,7 +916,7 @@ class _ChatSheetState extends State<ChatSheet> {
                                   child: Text(
                                     msg['message'],
                                     style: TextStyle(
-                                      color: isMe ? Colors.black : Colors.white,
+                                      color: isMe ? AppColors.onAccentDark : AppColors.txt,
                                       fontSize: 15,
                                       fontWeight: isMe
                                           ? FontWeight.w600
@@ -920,7 +938,7 @@ class _ChatSheetState extends State<ChatSheet> {
                                           size: 12,
                                           color: seen
                                               ? const Color(0xFFD4A017)
-                                              : Colors.white24,
+                                              : AppColors.mut,
                                         ),
                                         const SizedBox(width: 4),
                                         Text(
@@ -929,7 +947,7 @@ class _ChatSheetState extends State<ChatSheet> {
                                             fontSize: 11,
                                             color: seen
                                                 ? const Color(0xFFD4A017)
-                                                : Colors.white24,
+                                                : AppColors.mut,
                                           ),
                                         ),
                                       ],
@@ -964,8 +982,8 @@ class _ChatSheetState extends State<ChatSheet> {
                     widget.sender == 'consumer'
                         ? 'Garage is typing…'
                         : 'Customer is typing…',
-                    style: const TextStyle(
-                      color: Colors.white38,
+                    style: TextStyle(
+                      color: AppColors.mut,
                       fontSize: 12,
                       fontStyle: FontStyle.italic,
                     ),
@@ -977,9 +995,9 @@ class _ChatSheetState extends State<ChatSheet> {
           // ── Input ──
           Container(
             padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + bottomPadding),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(
-                  top: BorderSide(color: Color(0xFF1E1E1E))),
+                  top: BorderSide(color: AppColors.line)),
             ),
             child: Row(
               children: [
@@ -988,17 +1006,17 @@ class _ChatSheetState extends State<ChatSheet> {
                     controller: _controller,
                     onChanged: _handleTyping,
                     enabled: !isBlockedByOther && blockingLoaded,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppColors.txt),
                     maxLines: null,
                     textCapitalization: TextCapitalization.sentences,
                     decoration: InputDecoration(
                       hintText: isBlockedByOther ? 'You are blocked' : 'Type a message...',
                       hintStyle:
-                          const TextStyle(color: Colors.white54),
+                          TextStyle(color: AppColors.mut),
                       filled: true,
-                      fillColor: isBlockedByOther 
+                      fillColor: isBlockedByOther
                           ? const Color(0xFF2A1A1A)
-                          : const Color(0xFF262626),
+                          : AppColors.surfaceSunken,
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 18, vertical: 14),
                       border: OutlineInputBorder(
@@ -1019,16 +1037,16 @@ class _ChatSheetState extends State<ChatSheet> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: sending
-                        ? const Padding(
-                            padding: EdgeInsets.all(12),
+                        ? Padding(
+                            padding: const EdgeInsets.all(12),
                             child: CircularProgressIndicator(
-                              color: Colors.black,
+                              color: AppColors.onAccentDark,
                               strokeWidth: 2,
                             ),
                           )
-                        : const Icon(
+                        : Icon(
                             Icons.send_rounded,
-                            color: Colors.black,
+                            color: AppColors.onAccentDark,
                             size: 22,
                           ),
                   ),
@@ -1047,9 +1065,9 @@ class _ChatSheetState extends State<ChatSheet> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1059,7 +1077,7 @@ class _ChatSheetState extends State<ChatSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFF333333),
+                color: AppColors.txt.withOpacity(0.3),
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
@@ -1110,7 +1128,7 @@ class _ChatSheetState extends State<ChatSheet> {
               },
             ),
             ListTile(
-              title: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              title: Text('Cancel', style: TextStyle(color: AppColors.mut)),
               onTap: () => Navigator.pop(context),
             ),
             const SizedBox(height: 16),
@@ -1124,7 +1142,7 @@ class _ChatSheetState extends State<ChatSheet> {
   Future<void> _blockUser(String sender) async {
     try {
       final supabase = Supabase.instance.client;
-      
+
       await supabase.from('blocked_chats').insert({
         'booking_id': widget.bookingId,
         'blocked_by': widget.sender,
@@ -1156,7 +1174,7 @@ class _ChatSheetState extends State<ChatSheet> {
   Future<void> _unblockUser(String sender) async {
     try {
       final supabase = Supabase.instance.client;
-      
+
       await supabase
           .from('blocked_chats')
           .delete()
@@ -1192,12 +1210,12 @@ class _ChatSheetState extends State<ChatSheet> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: AppColors.surfaceRaised,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           'Report User',
           style: TextStyle(
-            color: Colors.white,
+            color: AppColors.txt,
             fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
@@ -1208,8 +1226,8 @@ class _ChatSheetState extends State<ChatSheet> {
               .map((reason) => RadioListTile<String>(
                 title: Text(
                   reason,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppColors.txt,
                     fontSize: 15,
                   ),
                 ),
@@ -1234,7 +1252,7 @@ class _ChatSheetState extends State<ChatSheet> {
   Future<void> _submitReport(String sender, String reason) async {
     try {
       final supabase = Supabase.instance.client;
-      
+
       await supabase.from('chat_reports').insert({
         'booking_id': widget.bookingId,
         'reported_sender': sender,

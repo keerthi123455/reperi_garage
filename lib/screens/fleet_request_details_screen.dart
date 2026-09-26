@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../utils/secure_storage_path.dart';
 import '../widgets/error_display.dart';
 
 class FleetRequestDetailsScreen extends StatefulWidget {
@@ -22,6 +23,8 @@ class FleetRequestDetailsScreen extends StatefulWidget {
 
 class _FleetRequestDetailsScreenState
     extends State<FleetRequestDetailsScreen> {
+  static const _signedUrlExpirySeconds = 300;
+
   late String _currentStatus;
   late String _pendingStatus;
 
@@ -68,6 +71,19 @@ class _FleetRequestDetailsScreenState
   List<Map<String, dynamic>>? _billItems;
   num? _totalAmount;
 
+  /// booking-images is a private bucket — `storedValue` is normally just the
+  /// storage path (see fleet_order_sheet.dart / _uploadAdminPhoto() above),
+  /// but older rows may still hold a full public URL from before the bucket
+  /// was made private, so both are handled here.
+  Future<String> _resolveImageUrl(String storedValue) async {
+    final path = storedValue.contains('/booking-images/')
+        ? storedValue.split('/booking-images/').last
+        : storedValue;
+    return Supabase.instance.client.storage
+        .from('booking-images')
+        .createSignedUrl(path, _signedUrlExpirySeconds);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -81,10 +97,14 @@ class _FleetRequestDetailsScreenState
     _totalAmount = widget.fleetRequest['total_amount'];
 
     Future.microtask(() async {
-      await Supabase.instance.client
-          .from('fleet_pickup_requests')
-          .update({'has_unread_update': false}).eq(
-              'id', widget.fleetRequest['id']);
+      try {
+        await Supabase.instance.client
+            .from('fleet_pickup_requests')
+            .update({'has_unread_update': false}).eq(
+                'id', widget.fleetRequest['id']);
+      } catch (_) {
+        // Non-fatal — worst case the unread badge stays lit one extra visit.
+      }
     });
 
     _watchRequestForUnreadChat();
@@ -390,10 +410,16 @@ class _FleetRequestDetailsScreenState
   void _openChatPopup() {
     // Mark admin unread as cleared locally and in DB
     setState(() => _hasUnreadChat = false);
-    Supabase.instance.client
-        .from('fleet_pickup_requests')
-        .update({'admin_has_unread_chat': false}).eq(
-            'id', widget.fleetRequest['id']);
+    () async {
+      try {
+        await Supabase.instance.client
+            .from('fleet_pickup_requests')
+            .update({'admin_has_unread_chat': false}).eq(
+                'id', widget.fleetRequest['id']);
+      } catch (_) {
+        // Non-fatal — worst case the unread badge stays lit one extra visit.
+      }
+    }();
 
     // Reset chat state before opening
     _chatMessages = [];
@@ -1056,20 +1082,11 @@ class _FleetRequestDetailsScreenState
   Future<void> _pickAdminImage() async {
     final source = await _showImageSourceSheet();
     if (source == null) return;
-    try {
-      final picked =
-          await _picker.pickImage(source: source, imageQuality: 70);
-      if (picked == null) return;
-      final bytes = await picked.readAsBytes();
-      setState(() => _adminImageBytes = bytes);
-    } catch (e) {
-      if (!mounted) return;
-      ErrorDisplay.showPremiumError(
-        context,
-        error: e,
-        customMessage: 'Could not access photos. Please try again.',
-      );
-    }
+    final picked =
+        await _picker.pickImage(source: source, imageQuality: 70);
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    setState(() => _adminImageBytes = bytes);
   }
 
   Future<ImageSource?> _showImageSourceSheet() {
@@ -1131,7 +1148,7 @@ class _FleetRequestDetailsScreenState
     setState(() => _updating = true);
     try {
       final fileName =
-          'garage_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          'garage_${DateTime.now().millisecondsSinceEpoch}-${secureStorageToken()}.jpg';
 
       await Supabase.instance.client.storage
           .from('booking-images')
@@ -1142,9 +1159,11 @@ class _FleetRequestDetailsScreenState
                 const FileOptions(contentType: 'image/jpeg'),
           );
 
-      final imageUrl = Supabase.instance.client.storage
-          .from('booking-images')
-          .getPublicUrl('garage/$fileName');
+      // Store the storage PATH, not a permanent public URL — the
+      // booking-images bucket is private, so the display side mints a
+      // short-lived signed URL on demand (see the FutureBuilder-wrapped
+      // Image.network calls below and in fleet_request_view_screen.dart).
+      final imageUrl = 'garage/$fileName';
 
       final currentRequest = await Supabase.instance.client
           .from('fleet_pickup_requests')
@@ -1324,11 +1343,30 @@ class _FleetRequestDetailsScreenState
                             const SizedBox(height: 12),
                             ClipRRect(
                               borderRadius: BorderRadius.circular(16),
-                              child: Image.network(
-                                fleet['vehicle_photo_url'],
-                                height: 220,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
+                              child: FutureBuilder<String>(
+                                future: _resolveImageUrl(
+                                    fleet['vehicle_photo_url']),
+                                builder: (context, snapshot) {
+                                  if (!snapshot.hasData) {
+                                    return Container(
+                                      height: 220,
+                                      width: double.infinity,
+                                      color: const Color(0xFF141414),
+                                      child: const Center(
+                                        child: CircularProgressIndicator(
+                                          color: Color(0xFFD4A017),
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  return Image.network(
+                                    snapshot.data!,
+                                    height: 220,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                  );
+                                },
                               ),
                             ),
                           ],

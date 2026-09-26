@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -26,11 +28,48 @@ class _InsuranceClaimDetailsScreenState
   List updates = [];
   bool loading = true;
   bool _descriptionExpanded = false;
+  bool markingDone = false;
+
+  // This claim now has a live delivery_stage/OTP flow just like a regular
+  // booking (see insurance_claim_screen.dart), but nothing pushes the
+  // customer's pickup-OTP entry or the delivery partner's stage taps into
+  // this screen on its own — poll instead of leaving staff to keep
+  // re-opening it themselves.
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     _fetchClaimDetails();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted) return;
+      _silentRefresh();
+    });
+  }
+
+  /// Same fetch as _fetchClaimDetails, but silent — a background poll
+  /// shouldn't pop an error dialog over a transient network hiccup the
+  /// way a user-initiated retry should.
+  Future<void> _silentRefresh() async {
+    try {
+      final claimResponse = await _supabase
+          .from('insurance_claims')
+          .select('*')
+          .eq('id', widget.claimId)
+          .single();
+
+      final updatesResponse = await _supabase
+          .from('insurance_claims_updates')
+          .select('*')
+          .eq('claim_id', widget.claimId)
+          .order('created_at', ascending: false);
+
+      if (!mounted) return;
+      setState(() {
+        claim = claimResponse;
+        updates = updatesResponse;
+      });
+    } catch (_) {}
   }
 
   Future<void> _fetchClaimDetails() async {
@@ -101,6 +140,46 @@ class _InsuranceClaimDetailsScreenState
     }
   }
 
+  /// One-tap "the repair work is physically finished" signal — mirrors
+  /// booking_details_screen.dart's MARK AS DONE exactly, just against
+  /// insurance_claims/claim_status instead of bookings/booking_status.
+  /// This is a full doorstep pickup/drop claim now (see
+  /// insurance_claim_screen.dart), so — like a 'bookings' row with
+  /// pickup/drop on — the delivery partner is the one who generates the
+  /// return OTP from web/deliverydashboard.html, not this screen.
+  Future<void> _markAsDone() async {
+    setState(() => markingDone = true);
+
+    try {
+      final nowIso = DateTime.now().toIso8601String();
+
+      await _supabase.from('insurance_claims').update({
+        'claim_status': 'Ready for Pickup',
+        'marked_done_at': nowIso,
+      }).eq('id', widget.claimId);
+
+      if (!mounted) return;
+      setState(() {
+        claim!['claim_status'] = 'Ready for Pickup';
+        claim!['marked_done_at'] = nowIso;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Marked done — delivery partner & customer notified')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not mark this claim as done. Please try again.',
+        );
+      }
+    }
+
+    if (mounted) setState(() => markingDone = false);
+  }
+
   Future<void> _addUpdate() async {
     if (_updateController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -140,6 +219,7 @@ class _InsuranceClaimDetailsScreenState
   @override
   void dispose() {
     _updateController.dispose();
+    _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -188,6 +268,10 @@ class _InsuranceClaimDetailsScreenState
                 Tab(text: 'Updates'),
               ],
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: _buildMarkAsDoneSection(),
+            ),
             Expanded(
               child: TabBarView(
                 children: [
@@ -212,6 +296,76 @@ class _InsuranceClaimDetailsScreenState
           ),
         ),
         icon: const Icon(Icons.add, color: Colors.black),
+      ),
+    );
+  }
+
+  /// MARK AS DONE for a claim, or its "already done"/"delivered" states —
+  /// sits above the Documents/Updates tabs so it's always visible
+  /// regardless of which one is open. Mirrors booking_details_screen.dart.
+  Widget _buildMarkAsDoneSection() {
+    final status = (claim!['claim_status'] ?? 'submitted').toString();
+
+    if (status == 'Delivered') {
+      return Container(
+        height: 64,
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.green.withOpacity(0.4)),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.check_circle_rounded, color: Colors.green, size: 20),
+            SizedBox(width: 10),
+            Text(
+              'DELIVERED — CLAIM COMPLETE',
+              style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, letterSpacing: 0.6, fontSize: 13.5),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (claim!['marked_done_at'] != null) {
+      return Container(
+        height: 64,
+        decoration: BoxDecoration(
+          color: const Color(0xFFD4A017).withOpacity(0.12),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.local_shipping_rounded, color: Color(0xFFD4A017), size: 20),
+            SizedBox(width: 10),
+            Text(
+              'READY — WAITING FOR PICKUP',
+              style: TextStyle(color: Color(0xFFD4A017), fontWeight: FontWeight.w900, letterSpacing: 0.6, fontSize: 13.5),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: markingDone ? null : _markAsDone,
+      child: Container(
+        height: 64,
+        decoration: BoxDecoration(
+          color: Colors.green.shade600.withOpacity(markingDone ? 0.6 : 1),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Center(
+          child: markingDone
+              ? const CircularProgressIndicator(color: Colors.white)
+              : const Text(
+                  'MARK AS DONE',
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
+                ),
+        ),
       ),
     );
   }
@@ -402,7 +556,7 @@ class _InsuranceClaimDetailsScreenState
                   margin: const EdgeInsets.only(bottom: 12),
                 ),
               Text(
-                update['description'] ?? '',
+                update['description'],
                 style: TextStyle(
                   color: Colors.grey.withOpacity(0.9),
                   fontSize: 12,

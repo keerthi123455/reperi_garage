@@ -2,6 +2,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../theme/app_colors.dart';
+
 class InspectionViewWidget extends StatefulWidget {
   final String bookingId;
   final bool showBothTypes;
@@ -105,10 +107,7 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
       context: context,
       builder: (_) => FullscreenImageGallery(
         imageUrl: imageUrl,
-        allImages: photos
-            .where((p) => p['photo_url'] != null)
-            .map((p) => p['photo_url'] as String)
-            .toList(),
+        allImages: photos.map((p) => (p['photo_url'] as String?) ?? '').toList(),
         initialIndex: index,
       ),
     );
@@ -129,7 +128,7 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFF111111),
+          color: AppColors.surfaceSunken,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Center(
@@ -137,10 +136,10 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
               ? Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
+                    Text(
                       'Could not load inspection reports',
                       style: TextStyle(
-                        color: Colors.white54,
+                        color: AppColors.mut,
                         fontSize: 14,
                       ),
                     ),
@@ -159,10 +158,10 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
                     ),
                   ],
                 )
-              : const Text(
+              : Text(
                   'No inspection reports yet',
                   style: TextStyle(
-                    color: Colors.white54,
+                    color: AppColors.mut,
                     fontSize: 14,
                   ),
                 ),
@@ -183,7 +182,7 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFF1C1C1C),
+              color: AppColors.surfaceRaised,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: const Color(0xFFD4A017).withOpacity(0.3),
@@ -194,9 +193,9 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
               children: [
                 Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.document_scanner_rounded,
-                      color: const Color(0xFFD4A017),
+                      color: Color(0xFFD4A017),
                       size: 20,
                     ),
                     const SizedBox(width: 10),
@@ -240,10 +239,10 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F0F0F),
+                  color: AppColors.surfaceSunken,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: const Color(0xFF2A2A2A),
+                    color: AppColors.line,
                   ),
                 ),
                 child: Row(
@@ -251,9 +250,9 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
                   children: [
                     Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.directions_car_rounded,
-                          color: const Color(0xFFD4A017),
+                          color: Color(0xFFD4A017),
                           size: 18,
                         ),
                         const SizedBox(width: 10),
@@ -293,17 +292,17 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
                     : Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
+                          color: AppColors.surfaceSunken,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: const Color(0xFF2A2A2A),
+                            color: AppColors.line,
                           ),
                         ),
-                        child: const Center(
+                        child: Center(
                           child: Text(
                             'No updates here',
                             style: TextStyle(
-                              color: Colors.white54,
+                              color: AppColors.mut,
                               fontSize: 13,
                             ),
                           ),
@@ -329,10 +328,10 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F0F0F),
+                  color: AppColors.surfaceSunken,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: const Color(0xFF2A2A2A),
+                    color: AppColors.line,
                   ),
                 ),
                 child: Row(
@@ -340,9 +339,9 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
                   children: [
                     Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.local_shipping_rounded,
-                          color: const Color(0xFFD4A017),
+                          color: Color(0xFFD4A017),
                           size: 18,
                         ),
                         const SizedBox(width: 10),
@@ -382,17 +381,17 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
                     : Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
+                          color: AppColors.surfaceSunken,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: const Color(0xFF2A2A2A),
+                            color: AppColors.line,
                           ),
                         ),
-                        child: const Center(
+                        child: Center(
                           child: Text(
                             'No updates here',
                             style: TextStyle(
-                              color: Colors.white54,
+                              color: AppColors.mut,
                               fontSize: 13,
                             ),
                           ),
@@ -412,11 +411,10 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
     String title,
     IconData icon,
   ) {
-    final validPhotos = photos.where((p) => p['photo_url'] != null).toList();
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF111111),
+        color: AppColors.surfaceSunken,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: const Color(0xFFD4A017).withOpacity(0.2),
@@ -428,9 +426,9 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
           // ── INSPECTION NOTES ──
           Row(
             children: [
-              Icon(
+              const Icon(
                 Icons.description_rounded,
-                color: const Color(0xFFD4A017),
+                color: Color(0xFFD4A017),
                 size: 20,
               ),
               const SizedBox(width: 10),
@@ -447,8 +445,8 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
           const SizedBox(height: 12),
           Text(
             inspection['description'] ?? 'No notes added',
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: AppColors.txt.withOpacity(0.7),
               fontSize: 13,
               height: 1.6,
             ),
@@ -457,17 +455,17 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
           const SizedBox(height: 20),
 
           // ── PHOTOS SECTION ──
-          if (validPhotos.isNotEmpty) ...[
+          if (photos.isNotEmpty) ...[
             Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.photo_library_rounded,
-                  color: const Color(0xFFD4A017),
+                  color: Color(0xFFD4A017),
                   size: 20,
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  'Photos (${validPhotos.length})',
+                  'Photos (${photos.length})',
                   style: const TextStyle(
                     color: Color(0xFFD4A017),
                     fontSize: 13,
@@ -485,21 +483,25 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
               ),
-              itemCount: validPhotos.length,
+              itemCount: photos.length,
               itemBuilder: (context, index) {
-                final photo = validPhotos[index];
+                final photo = photos[index];
+                final photoUrl = photo['photo_url'] as String?;
+                final hasUrl = photoUrl != null && photoUrl.isNotEmpty;
                 return GestureDetector(
-                  onTap: () => openFullscreenImage(
-                    photo['photo_url'],
-                    index,
-                    validPhotos,
-                  ),
+                  onTap: hasUrl
+                      ? () => openFullscreenImage(
+                            photoUrl,
+                            index,
+                            photos,
+                          )
+                      : null,
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(10),
-                      color: const Color(0xFF1A1A1A),
+                      color: AppColors.surfaceRaised,
                       border: Border.all(
-                        color: const Color(0xFF2A2A2A),
+                        color: AppColors.line,
                       ),
                     ),
                     child: Stack(
@@ -508,35 +510,44 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
                         RepaintBoundary(
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(10),
-                            child: CachedNetworkImage(
-                              imageUrl: photo['photo_url'],
-                              fit: BoxFit.cover,
-                              fadeInDuration: Duration.zero,
-                              fadeOutDuration: Duration.zero,
-                              useOldImageOnUrlChange: false,
-                              placeholder: (context, url) => Container(
-                                color: const Color(0xFF111111),
-                                child: const Center(
-                                  child: SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      color: Color(0xFFD4A017),
-                                      strokeWidth: 1,
+                            child: !hasUrl
+                                ? Container(
+                                    color: AppColors.surfaceSunken,
+                                    child: Icon(
+                                      Icons.broken_image_rounded,
+                                      color: AppColors.mut,
+                                      size: 20,
+                                    ),
+                                  )
+                                : CachedNetworkImage(
+                                    imageUrl: photoUrl,
+                                    fit: BoxFit.cover,
+                                    fadeInDuration: Duration.zero,
+                                    fadeOutDuration: Duration.zero,
+                                    useOldImageOnUrlChange: false,
+                                    placeholder: (context, url) => Container(
+                                      color: AppColors.surfaceSunken,
+                                      child: const Center(
+                                        child: SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            color: Color(0xFFD4A017),
+                                            strokeWidth: 1,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    errorWidget: (context, url, error) =>
+                                        Container(
+                                      color: AppColors.surfaceSunken,
+                                      child: Icon(
+                                        Icons.broken_image_rounded,
+                                        color: AppColors.mut,
+                                        size: 20,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              errorWidget: (context, url, error) =>
-                                  Container(
-                                color: const Color(0xFF111111),
-                                child: const Icon(
-                                  Icons.broken_image_rounded,
-                                  color: Colors.white38,
-                                  size: 20,
-                                ),
-                              ),
-                            ),
                           ),
                         ),
                         Positioned(
@@ -551,9 +562,9 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
                                 topLeft: Radius.circular(8),
                               ),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.zoom_in_rounded,
-                              color: Colors.black,
+                              color: AppColors.onAccentDark,
                               size: 12,
                             ),
                           ),
@@ -572,6 +583,9 @@ class _InspectionViewWidgetState extends State<InspectionViewWidget> {
 }
 
 // ── FULLSCREEN IMAGE GALLERY ──
+// Kept as a fixed black lightbox regardless of app theme — a photo
+// viewer/gallery, not page chrome, so it deliberately doesn't follow
+// AppColors the way the rest of this widget now does.
 class FullscreenImageGallery extends StatefulWidget {
   final String imageUrl;
   final List<String> allImages;
@@ -658,9 +672,9 @@ class _FullscreenImageGalleryState extends State<FullscreenImageGallery> {
                       fadeInDuration: Duration.zero,
                       fadeOutDuration: Duration.zero,
                       useOldImageOnUrlChange: false,
-                      placeholder: (context, url) => Center(
+                      placeholder: (context, url) => const Center(
                         child: CircularProgressIndicator(
-                          color: const Color(0xFFD4A017),
+                          color: Color(0xFFD4A017),
                         ),
                       ),
                       errorWidget: (context, url, error) => Container(

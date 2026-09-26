@@ -119,6 +119,25 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   static const Duration _cancelWindow = Duration(minutes: 2);
   Timer? _cancelTicker;
 
+  // ── Auto-refresh ─────────────────────────────────────────────────────
+  // The delivery-stage tracker, OTP boxes, and "Ready for Pickup"/cash
+  // reminders above all depend on live delivery_stage/booking_status/
+  // return_otp_verified_at columns, but nothing pushes those changes into
+  // this screen on its own — Supabase Realtime isn't wired up here, so a
+  // push notification landing while this screen is already open wouldn't
+  // otherwise be reflected until the customer manually backed out and
+  // back in. Polling every 15s picks those up without needing Realtime.
+  Timer? _autoRefreshTimer;
+
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted) return;
+      fetchBookings();
+      fetchPollutionBookings();
+      fetchInspectionBookings();
+    });
+  }
+
   bool _isCancellable(Map record) {
     final createdAt = DateTime.tryParse((record['created_at'] ?? '').toString());
     if (createdAt == null) return false;
@@ -177,6 +196,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     // — re-pulls just this vehicle's row so the header above reflects the
     // change immediately too.
     vehicleChangeBus.addListener(_refreshVehicleInfo);
+    _startAutoRefresh();
   }
 
   void _onThemeChanged() {
@@ -206,6 +226,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     themeController.removeListener(_onThemeChanged);
     vehicleChangeBus.removeListener(_refreshVehicleInfo);
     _cancelTicker?.cancel();
+    _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -303,7 +324,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
     try {
       final subscriptionRows = await supabase
-          .from('subscriptions')
+          .from('monthlywash_table')
           .select('id')
           .eq('vehicle_id', vehicleId)
           .limit(1);
@@ -694,7 +715,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                 if (!mounted) return;
                 setSheetState(() {
                   saving = false;
-                  errorText = 'Could not update vehicle. Please try again.';
+                  errorText = 'Could not update vehicle: $e';
                 });
               }
             },
@@ -971,7 +992,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       final supabase = Supabase.instance.client;
 
       final response = await supabase
-          .from('subscriptions')
+          .from('monthlywash_table')
           .select('*')
           .eq('vehicle_id', widget.vehicleId)
           .single();
@@ -991,7 +1012,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       final supabase = Supabase.instance.client;
 
       final subResponse = await supabase
-          .from('subscriptions')
+          .from('monthlywash_table')
           .select('id')
           .eq('vehicle_id', widget.vehicleId)
           .single();
@@ -1139,21 +1160,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     final uri = Uri.parse(
       'https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude',
     );
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open maps. Please try again.')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open maps. Please try again.')),
-      );
-    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   /// Opens the "why are you cancelling" dialog, then — only if the
@@ -1423,14 +1430,6 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     }
   }
 
-  String formatUpdateTimestamp(dynamic dateStr) {
-    try {
-      return DateTime.parse(dateStr).toString().split('.')[0];
-    } catch (e) {
-      return 'Unknown date';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1617,7 +1616,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                     const SizedBox(height: 34),
 
                     const Text(
-                      'Washing Subscription',
+                      'Monthly Wash Plan',
                       style: TextStyle(
                         color: Color(0xFFD4A017),
                         fontSize: 24,
@@ -1656,7 +1655,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                     children: [
                                       Text(
                                         subscription['plan_title'] ??
-                                            'Car Wash Subscription',
+                                            'Monthly Wash Plan',
                                         style: const TextStyle(
                                           color: Color(0xFFD4A017),
                                           fontSize: 18,
@@ -1802,16 +1801,53 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                                         onTap: () {
                                                           _showImageViewer(context, wash['before_photo_url'], 'Before Photo');
                                                         },
-                                                        child: ClipRRect(
-                                                          borderRadius: BorderRadius.circular(8),
-                                                          child: Image.network(
-                                                            wash['before_photo_url'],
-                                                            height: 70,
-                                                            fit: BoxFit.cover,
-                                                            errorBuilder: (_, __, ___) => Container(
-                                                              height: 70,
-                                                              color: AppColors.photoPlaceholder,
-                                                              child: Icon(Icons.image_not_supported, color: AppColors.mut),
+                                                        child: Container(
+                                                          decoration: BoxDecoration(
+                                                            borderRadius: BorderRadius.circular(10),
+                                                            border: Border.all(
+                                                              color: AppColors.accent.withOpacity(0.35),
+                                                              width: 1.2,
+                                                            ),
+                                                            boxShadow: [
+                                                              BoxShadow(
+                                                                color: Colors.black.withOpacity(0.18),
+                                                                blurRadius: 6,
+                                                                offset: const Offset(0, 3),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                          child: ClipRRect(
+                                                            borderRadius: BorderRadius.circular(9),
+                                                            child: Stack(
+                                                              children: [
+                                                                Image.network(
+                                                                  wash['before_photo_url'],
+                                                                  height: 70,
+                                                                  width: double.infinity,
+                                                                  fit: BoxFit.cover,
+                                                                  errorBuilder: (_, __, ___) => Container(
+                                                                    height: 70,
+                                                                    color: AppColors.photoPlaceholder,
+                                                                    child: Icon(Icons.image_not_supported, color: AppColors.mut),
+                                                                  ),
+                                                                ),
+                                                                Positioned(
+                                                                  right: 4,
+                                                                  bottom: 4,
+                                                                  child: Container(
+                                                                    padding: const EdgeInsets.all(3),
+                                                                    decoration: BoxDecoration(
+                                                                      color: Colors.black.withOpacity(0.45),
+                                                                      shape: BoxShape.circle,
+                                                                    ),
+                                                                    child: const Icon(
+                                                                      Icons.zoom_in_rounded,
+                                                                      color: Colors.white,
+                                                                      size: 13,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ],
                                                             ),
                                                           ),
                                                         ),
@@ -1836,16 +1872,53 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                                         onTap: () {
                                                           _showImageViewer(context, wash['after_photo_url'], 'After Photo');
                                                         },
-                                                        child: ClipRRect(
-                                                          borderRadius: BorderRadius.circular(8),
-                                                          child: Image.network(
-                                                            wash['after_photo_url'],
-                                                            height: 70,
-                                                            fit: BoxFit.cover,
-                                                            errorBuilder: (_, __, ___) => Container(
-                                                              height: 70,
-                                                              color: AppColors.photoPlaceholder,
-                                                              child: Icon(Icons.image_not_supported, color: AppColors.mut),
+                                                        child: Container(
+                                                          decoration: BoxDecoration(
+                                                            borderRadius: BorderRadius.circular(10),
+                                                            border: Border.all(
+                                                              color: AppColors.accent.withOpacity(0.35),
+                                                              width: 1.2,
+                                                            ),
+                                                            boxShadow: [
+                                                              BoxShadow(
+                                                                color: Colors.black.withOpacity(0.18),
+                                                                blurRadius: 6,
+                                                                offset: const Offset(0, 3),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                          child: ClipRRect(
+                                                            borderRadius: BorderRadius.circular(9),
+                                                            child: Stack(
+                                                              children: [
+                                                                Image.network(
+                                                                  wash['after_photo_url'],
+                                                                  height: 70,
+                                                                  width: double.infinity,
+                                                                  fit: BoxFit.cover,
+                                                                  errorBuilder: (_, __, ___) => Container(
+                                                                    height: 70,
+                                                                    color: AppColors.photoPlaceholder,
+                                                                    child: Icon(Icons.image_not_supported, color: AppColors.mut),
+                                                                  ),
+                                                                ),
+                                                                Positioned(
+                                                                  right: 4,
+                                                                  bottom: 4,
+                                                                  child: Container(
+                                                                    padding: const EdgeInsets.all(3),
+                                                                    decoration: BoxDecoration(
+                                                                      color: Colors.black.withOpacity(0.45),
+                                                                      shape: BoxShape.circle,
+                                                                    ),
+                                                                    child: const Icon(
+                                                                      Icons.zoom_in_rounded,
+                                                                      color: Colors.white,
+                                                                      size: 13,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ],
                                                             ),
                                                           ),
                                                         ),
@@ -1976,7 +2049,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                         ),
                                         const SizedBox(height: 8),
                                         Text(
-                                          formatUpdateTimestamp(update['created_at']),
+                                          DateTime.parse(update['created_at'])
+                                              .toString()
+                                              .split('.')[0],
                                           style: TextStyle(
                                             color: AppColors.mut,
                                             fontSize: 12,
@@ -2023,14 +2098,15 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       final garageAddress = adminData?['address'] ?? '';
                       final garageLat = (adminData?['latitude'] as num?)?.toDouble();
                       final garageLong = (adminData?['longitude'] as num?)?.toDouble();
-                      // Cash on Pickup is the one payment path where the
-                      // customer themselves is the one going to the garage
-                      // in person, so that's the only case worth a
-                      // navigate button — everything else is either
-                      // doorstep pickup/drop (a delivery partner's job) or
-                      // already paid online with no pickup implied.
-                      final isCashOnPickup =
-                          (booking['payment_status'] ?? '').toString().toLowerCase() == 'cod';
+                      // No pickup/drop selected means the customer
+                      // themselves is the one going to the garage in
+                      // person (to drop off and later collect the
+                      // vehicle), so that's the case worth a navigate
+                      // button — doorstep pickup/drop is a delivery
+                      // partner's job instead, regardless of how the
+                      // booking was paid for.
+                      final needsGarageVisit =
+                          (booking['pickupdrop'] ?? '').toString().toLowerCase() != 'yes';
 
                       return GestureDetector(
                         onTap: () {
@@ -2247,7 +2323,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                         ),
                                       ],
                                     ),
-                                    if (isCashOnPickup &&
+                                    if (needsGarageVisit &&
                                         garageLat != null &&
                                         garageLong != null) ...[
                                       const SizedBox(height: 12),
@@ -2307,7 +2383,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                   record: booking,
                                   table: 'bookings',
                                   bookingType: 'service',
-                                  title: booking['package_name'] as String? ?? 'Package',
+                                  title: booking['package_name'] as String,
                                   price: booking['package_price'] as String?,
                                 ),
 
@@ -2346,23 +2422,49 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                     otpCode: booking['return_otp_code'] as String?,
                                     verifiedAt: booking['return_otp_verified_at'],
                                     partnerLabel: 'your delivery partner',
+                                    isCod: (booking['payment_status'] ?? '')
+                                            .toString()
+                                            .toLowerCase() ==
+                                        'cod',
+                                    amount: booking['package_price'] as String?,
                                     onVerified: fetchBookings,
                                   ),
-                              ] else if (booking['booking_status'] ==
-                                  'Ready for Pickup')
-                                // No pickup/drop — the customer collects the
-                                // vehicle in person, so the garage itself
-                                // (booking_details_screen.dart's MARK AS
-                                // DONE) generates this code instead of a
-                                // delivery partner.
-                                _ReturnOtpVerification(
-                                  table: 'bookings',
-                                  bookingId: booking['id'],
-                                  otpCode: booking['return_otp_code'] as String?,
-                                  verifiedAt: booking['return_otp_verified_at'],
-                                  partnerLabel: 'the garage',
-                                  onVerified: fetchBookings,
-                                ),
+                              ] else ...[
+                                // No pickup/drop — the customer drives to
+                                // the garage themselves, so there's a
+                                // drop-off OTP exchange with the garage
+                                // directly (booking_details_screen.dart
+                                // generates it) instead of a delivery
+                                // partner's pickup OTP. Reuses the same
+                                // pickup_otp_* columns, which otherwise sit
+                                // unused for a booking with no delivery trip.
+                                if (booking['booking_status'] !=
+                                        'Ready for Pickup' &&
+                                    booking['booking_status'] != 'Delivered')
+                                  _PickupOtpVerification(
+                                    table: 'bookings',
+                                    bookingId: booking['id'],
+                                    otpCode: booking['pickup_otp_code'] as String?,
+                                    verifiedAt: booking['pickup_otp_verified_at'],
+                                    partnerLabel: 'the garage',
+                                    onVerified: fetchBookings,
+                                  ),
+                                if (booking['booking_status'] ==
+                                    'Ready for Pickup')
+                                  _ReturnOtpVerification(
+                                    table: 'bookings',
+                                    bookingId: booking['id'],
+                                    otpCode: booking['return_otp_code'] as String?,
+                                    verifiedAt: booking['return_otp_verified_at'],
+                                    partnerLabel: 'the garage',
+                                    isCod: (booking['payment_status'] ?? '')
+                                            .toString()
+                                            .toLowerCase() ==
+                                        'cod',
+                                    amount: booking['package_price'] as String?,
+                                    onVerified: fetchBookings,
+                                  ),
+                              ],
 
                               const SizedBox(height: 22),
 
@@ -2465,8 +2567,15 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     required String bookingType,
   }) {
     final status = (booking['status'] ?? 'booked').toString();
-    final price = booking['price']?.toString();
+    final price = (booking['price'] ?? booking['package_price'])?.toString();
     final dateStr = formatFullDateTime(booking['created_at']);
+    // Pre-delivery inspection deliberately skips the delivery-stage
+    // timeline/OTP flow shown for pollution certificates — coordination
+    // happens by phone instead (see customer_phone below and
+    // web/deliverydashboard.html), since it's a scheduled-slot booking
+    // rather than a spontaneous doorstep pickup. The customer just needs
+    // to see the booking went through with the right details.
+    final showTimeline = table != 'inspection_booking';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 22),
@@ -2518,43 +2627,46 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
               ),
             ),
           ),
-          // Pollution/inspection bookings are always doorstep pickup+drop
-          // (see supabase_pollution_inspection_tables.sql), so this tracker
-          // always applies here — no pickupdrop check needed.
-          _DeliveryStageTracker(
-            stage: booking['delivery_stage'],
-            stageTimestamps: {
-              'pickup_started': booking['stage_pickup_started_at'],
-              'picked_up': booking['stage_picked_up_at'],
-              'to_garage': booking['stage_to_garage_at'],
-              'delivered': booking['stage_delivered_at'],
-            },
-            createdAt: booking['created_at'],
-          ),
-          if (booking['delivery_stage'] == 'pickup_started')
-            _PickupOtpVerification(
-              table: table,
-              bookingId: booking['id'],
-              otpCode: booking['pickup_otp_code'] as String?,
-              verifiedAt: booking['pickup_otp_verified_at'],
-              onVerified: table == 'pollution_booking'
-                  ? fetchPollutionBookings
-                  : fetchInspectionBookings,
+          // Pollution bookings are always doorstep pickup+drop (see
+          // supabase_pollution_inspection_tables.sql), so this tracker
+          // always applies here — no pickupdrop check needed. Inspection
+          // bookings skip it entirely (see showTimeline above).
+          if (showTimeline) ...[
+            _DeliveryStageTracker(
+              stage: booking['delivery_stage'],
+              stageTimestamps: {
+                'pickup_started': booking['stage_pickup_started_at'],
+                'picked_up': booking['stage_picked_up_at'],
+                'to_garage': booking['stage_to_garage_at'],
+                'delivered': booking['stage_delivered_at'],
+              },
+              createdAt: booking['created_at'],
+              isPollutionCertificate: table == 'pollution_booking',
             ),
-          // Final leg back to the customer — these tables skip the
-          // out_for_delivery stage, so 'to_garage' is the one immediately
-          // before 'delivered' here.
-          if (booking['delivery_stage'] == 'to_garage')
-            _ReturnOtpVerification(
-              table: table,
-              bookingId: booking['id'],
-              otpCode: booking['return_otp_code'] as String?,
-              verifiedAt: booking['return_otp_verified_at'],
-              partnerLabel: 'your delivery partner',
-              onVerified: table == 'pollution_booking'
-                  ? fetchPollutionBookings
-                  : fetchInspectionBookings,
-            ),
+            if (booking['delivery_stage'] == 'pickup_started')
+              _PickupOtpVerification(
+                table: table,
+                bookingId: booking['id'],
+                otpCode: booking['pickup_otp_code'] as String?,
+                verifiedAt: booking['pickup_otp_verified_at'],
+                onVerified: fetchPollutionBookings,
+              ),
+            // Final leg back to the customer — these tables skip the
+            // out_for_delivery stage, so 'to_garage' is the one immediately
+            // before 'delivered' here.
+            if (booking['delivery_stage'] == 'to_garage')
+              _ReturnOtpVerification(
+                table: table,
+                bookingId: booking['id'],
+                otpCode: booking['return_otp_code'] as String?,
+                verifiedAt: booking['return_otp_verified_at'],
+                partnerLabel: 'your delivery partner',
+                isCod: (booking['payment_status'] ?? '').toString().toLowerCase() == 'cod',
+                amount: price,
+                onVerified: fetchPollutionBookings,
+              ),
+          ] else
+            _InspectionBookingSummary(booking: booking),
           if (_isCancellable(booking))
             _buildCancelWindow(
               record: booking,
@@ -2641,21 +2753,16 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   void _showImageViewer(BuildContext context, String imageUrl, String title) {
     showDialog(
       context: context,
+      barrierColor: Colors.black.withOpacity(0.9),
       builder: (context) => Dialog(
-        backgroundColor: AppColors.ink,
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(0),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
             // Header
             Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceRaised,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(12),
-                  topRight: Radius.circular(12),
-                ),
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              color: Colors.black.withOpacity(0.85),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -2669,26 +2776,29 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                   ),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
-                    child: Icon(
-                      Icons.close,
-                      color: AppColors.txt,
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 26,
                     ),
                   ),
                 ],
               ),
             ),
-            // Image
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Image.network(
-                imageUrl,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Container(
-                  color: AppColors.photoPlaceholder,
-                  child: Icon(
-                    Icons.image_not_supported,
-                    color: AppColors.mut,
-                    size: 64,
+            // Pinch-to-zoom image
+            Expanded(
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 5,
+                child: Center(
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Icon(
+                      Icons.image_not_supported,
+                      color: AppColors.mut,
+                      size: 64,
+                    ),
                   ),
                 ),
               ),
@@ -2842,6 +2952,92 @@ String formatFullDateTime(dynamic iso) {
   }
 }
 
+/// Shown in place of the delivery-stage timeline for a pre-delivery
+/// inspection booking — just confirms the slot booking went through with
+/// the details the customer picked in inspection_screen.dart's PLAN
+/// INSPECTION popup. No stepper, no OTP: the delivery partner coordinates
+/// pickup/return by phone (see customer_phone on the delivery dashboard)
+/// rather than an in-app code exchange, since this is a pre-scheduled
+/// slot rather than a spontaneous doorstep pickup.
+class _InspectionBookingSummary extends StatelessWidget {
+  const _InspectionBookingSummary({required this.booking});
+
+  final Map booking;
+
+  @override
+  Widget build(BuildContext context) {
+    final condition = booking['vehicle_condition']?.toString();
+    final vehicleType = booking['vehicle_type']?.toString();
+    final slotDateRaw = booking['slot_date']?.toString();
+    final slotTime = booking['slot_time']?.toString();
+
+    String? slotDateLabel;
+    if (slotDateRaw != null) {
+      final parsed = DateTime.tryParse(slotDateRaw);
+      if (parsed != null) {
+        const months = [
+          'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+        ];
+        slotDateLabel = '${parsed.day} ${months[parsed.month - 1]} ${parsed.year}';
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.green.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.green.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.green, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Booking Confirmed',
+                style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w800, fontSize: 14),
+              ),
+            ],
+          ),
+          if (condition != null || vehicleType != null || slotDateLabel != null) ...[
+            const SizedBox(height: 12),
+            Container(height: 1, color: Colors.green.withOpacity(0.2)),
+            const SizedBox(height: 12),
+            if (condition != null) _row('Vehicle', condition),
+            if (vehicleType != null) _row('Type', vehicleType),
+            if (slotDateLabel != null)
+              _row('Scheduled', slotTime != null ? '$slotDateLabel • $slotTime' : slotDateLabel),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _row(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(color: AppColors.mut, fontSize: 12.5)),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: TextStyle(color: AppColors.txt, fontSize: 12.5, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// An Amazon-style horizontal stepper showing where a booking's doorstep
 /// pickup/drop currently stands, driven by the delivery partner from
 /// web/deliverydashboard.html. `stage` is null until the partner taps
@@ -2855,6 +3051,7 @@ class _DeliveryStageTracker extends StatelessWidget {
     required this.stageTimestamps,
     required this.createdAt,
     this.hasGarageLeg = false,
+    this.isPollutionCertificate = false,
   });
 
   final String? stage;
@@ -2874,6 +3071,14 @@ class _DeliveryStageTracker extends StatelessWidget {
   /// never produce that stage value at all.
   final bool hasGarageLeg;
 
+  /// True only for the pollution-certificate card ('pollution_booking') —
+  /// swaps in wording that matches what's actually happening on that
+  /// booking (getting the certificate processed, not "at a garage") for
+  /// the same underlying pickup_started/picked_up/to_garage/delivered
+  /// stage values inspection_booking still shows generically. Display
+  /// only — no new stage values or DB columns involved.
+  final bool isPollutionCertificate;
+
   static const _stageKeysWithGarageLeg = [
     'booked', 'pickup_started', 'picked_up', 'to_garage', 'out_for_delivery', 'delivered',
   ];
@@ -2889,6 +3094,17 @@ class _DeliveryStageTracker extends StatelessWidget {
     'delivered': 'Delivered',
   };
 
+  static const _nodeLabelsPollution = {
+    'booked': 'Initiating\nPickup',
+    'pickup_started': 'Car\nPickup',
+    'picked_up': 'Getting\nCertificate',
+    'to_garage': 'Out For\nDelivery',
+    'delivered': 'Delivered',
+  };
+
+  Map<String, String> get _activeNodeLabels =>
+      isPollutionCertificate ? _nodeLabelsPollution : _nodeLabels;
+
   static const _statusText = {
     'booked': 'Initiating Pickup',
     'pickup_started': 'Pickup Started',
@@ -2897,6 +3113,17 @@ class _DeliveryStageTracker extends StatelessWidget {
     'out_for_delivery': 'Out For Delivery',
     'delivered': 'Vehicle Delivered',
   };
+
+  static const _statusTextPollution = {
+    'booked': 'Initiating Pickup',
+    'pickup_started': 'Car Pickup',
+    'picked_up': 'Getting Certificate',
+    'to_garage': 'Out For Delivery',
+    'delivered': 'Delivered',
+  };
+
+  Map<String, String> get _activeStatusText =>
+      isPollutionCertificate ? _statusTextPollution : _statusText;
 
   static const Color _gold = Color(0xFFD4A017);
 
@@ -2924,7 +3151,7 @@ class _DeliveryStageTracker extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _statusText[stage ?? 'booked']!,
+            _activeStatusText[stage ?? 'booked'] ?? 'Status Unavailable',
             style: const TextStyle(color: _gold, fontWeight: FontWeight.w900, fontSize: 15),
           ),
           if (timestamp.isNotEmpty) ...[
@@ -2971,7 +3198,7 @@ class _DeliveryStageTracker extends StatelessWidget {
               final reached = i <= activeIndex;
               return Expanded(
                 child: Text(
-                  _nodeLabels[key]!,
+                  _activeNodeLabels[key]!,
                   textAlign: i == 0
                       ? TextAlign.start
                       : (i == _stageKeys.length - 1 ? TextAlign.end : TextAlign.center),
@@ -3005,6 +3232,7 @@ class _PickupOtpVerification extends StatefulWidget {
     required this.otpCode,
     required this.verifiedAt,
     required this.onVerified,
+    this.partnerLabel = 'your delivery partner',
   });
 
   /// 'bookings' | 'pollution_booking' | 'inspection_booking'.
@@ -3021,6 +3249,11 @@ class _PickupOtpVerification extends StatefulWidget {
   /// Re-fetches this card's booking list so the tracker/verification state
   /// above picks up the fresh `pickup_otp_verified_at`.
   final VoidCallback onVerified;
+
+  /// Who generated the code — 'your delivery partner' (default, doorstep
+  /// pickup) or 'the garage' (drop-off verification for a booking with no
+  /// pickup/drop trip) — filled into the copy below.
+  final String partnerLabel;
 
   @override
   State<_PickupOtpVerification> createState() => _PickupOtpVerificationState();
@@ -3046,7 +3279,7 @@ class _PickupOtpVerificationState extends State<_PickupOtpVerification> {
     final entered = _controller.text.trim();
     if (entered.isEmpty) {
       setState(() {
-        _error = 'Enter the code your delivery partner told you.';
+        _error = 'Enter the code ${widget.partnerLabel} told you.';
         _shakeToken++;
       });
       return;
@@ -3069,7 +3302,7 @@ class _PickupOtpVerificationState extends State<_PickupOtpVerification> {
 
       if ((rows as List).isEmpty) {
         setState(() {
-          _error = "That code doesn't match — check with your delivery partner and try again.";
+          _error = "That code doesn't match — check with ${widget.partnerLabel} and try again.";
           _submitting = false;
           _shakeToken++;
         });
@@ -3102,7 +3335,7 @@ class _PickupOtpVerificationState extends State<_PickupOtpVerification> {
     return showGeneralDialog(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'Verified delivery partner',
+      barrierLabel: 'Verified',
       barrierColor: Colors.black54,
       transitionDuration: const Duration(milliseconds: 320),
       pageBuilder: (context, animation, secondaryAnimation) => Center(
@@ -3127,12 +3360,12 @@ class _PickupOtpVerificationState extends State<_PickupOtpVerification> {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Verified delivery partner',
+                  'Verified',
                   style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w900, fontSize: 17),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'You can hand over the keys now.',
+                  'Give your keys to ${widget.partnerLabel} now.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.mut, fontSize: 13),
                 ),
@@ -3186,7 +3419,7 @@ class _PickupOtpVerificationState extends State<_PickupOtpVerification> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Verified delivery partner — waiting for them to take the vehicle.',
+                'Verified — this step is complete.',
                 style: TextStyle(color: AppColors.txt.withOpacity(0.85), fontSize: 12.5, height: 1.4),
               ),
             ),
@@ -3210,7 +3443,7 @@ class _PickupOtpVerificationState extends State<_PickupOtpVerification> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Your delivery partner will share a pickup code when they arrive — enter it here before handing over the keys.',
+                '${_capitalize(widget.partnerLabel)} will share a code when you arrive — enter it here before handing over the keys.',
                 style: TextStyle(color: AppColors.mut, fontSize: 12.5, height: 1.4),
               ),
             ),
@@ -3233,12 +3466,12 @@ class _PickupOtpVerificationState extends State<_PickupOtpVerification> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Verify your delivery partner',
+              'Verify ${widget.partnerLabel}',
               style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w800, fontSize: 13.5),
             ),
             const SizedBox(height: 4),
             Text(
-              'Ask them for the pickup code and enter it below before handing over the keys.',
+              'Ask ${widget.partnerLabel} for the code and enter it below before handing over the keys.',
               style: TextStyle(color: AppColors.mut, fontSize: 11.5, height: 1.4),
             ),
             const SizedBox(height: 12),
@@ -3379,6 +3612,8 @@ class _ReturnOtpVerification extends StatefulWidget {
     required this.verifiedAt,
     required this.onVerified,
     required this.partnerLabel,
+    this.isCod = false,
+    this.amount,
   });
 
   /// 'bookings' | 'pollution_booking' | 'inspection_booking'.
@@ -3398,6 +3633,15 @@ class _ReturnOtpVerification extends StatefulWidget {
   /// Who's handing the vehicle back — e.g. 'your delivery partner' or
   /// 'the garage' — filled into the copy below.
   final String partnerLabel;
+
+  /// Whether this booking was paid Cash on Pickup — when true, a cash
+  /// reminder is shown alongside the return code so the customer knows to
+  /// have payment ready for [partnerLabel], not just the vehicle handover.
+  final bool isCod;
+
+  /// The amount to show in that reminder — whatever [amount] format the
+  /// caller already has on hand (a plain string, may be null).
+  final String? amount;
 
   @override
   State<_ReturnOtpVerification> createState() => _ReturnOtpVerificationState();
@@ -3442,10 +3686,20 @@ class _ReturnOtpVerificationState extends State<_ReturnOtpVerification> {
       // delete this vehicle afterwards; see _checkActiveService below,
       // which also treats return_otp_verified_at alone as "done" as a
       // fallback for rows verified before this existed.
+      //
+      // Exception: a COD, in-person-collection booking (no delivery
+      // partner) isn't actually finished yet — the vehicle handover is
+      // confirmed, but the garage still needs to collect cash and tap
+      // COLLECT PAYMENT in booking_details_screen.dart before this counts
+      // as truly done. _checkActiveService's return_otp_verified_at
+      // fallback still lets the vehicle be deleted in the meantime, so
+      // deferring this doesn't strand anyone.
+      final deferToPaymentConfirmation =
+          widget.table == 'bookings' && widget.isCod && widget.partnerLabel == 'the garage';
       final updatePayload = <String, dynamic>{
         'return_otp_verified_at': DateTime.now().toIso8601String(),
       };
-      if (widget.table == 'bookings') {
+      if (widget.table == 'bookings' && !deferToPaymentConfirmation) {
         updatePayload['booking_status'] = 'Delivered';
       }
 
@@ -3734,21 +3988,60 @@ class _ReturnOtpVerificationState extends State<_ReturnOtpVerification> {
       );
     }
 
+    final switcher = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SizeTransition(
+          sizeFactor: animation,
+          axisAlignment: -1,
+          child: child,
+        ),
+      ),
+      child: content,
+    );
+
+    if (!widget.isCod) {
+      return _VehicleEditFadeIn(index: 0, child: switcher);
+    }
+
+    final verified = widget.verifiedAt != null || _justVerified;
+    final amountText = widget.amount != null && widget.amount!.isNotEmpty
+        ? ' of ${widget.amount}'
+        : '';
+
     return _VehicleEditFadeIn(
       index: 0,
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 320),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: SizeTransition(
-            sizeFactor: animation,
-            axisAlignment: -1,
-            child: child,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          switcher,
+          Container(
+            margin: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange.withOpacity(0.35)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.currency_rupee_rounded, color: Colors.orange, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    verified
+                        ? "Don't forget to pay${amountText.isEmpty ? ' the cash amount' : amountText} in cash to ${widget.partnerLabel}."
+                        : 'This booking is Cash on Pickup — please pay${amountText.isEmpty ? ' the cash amount' : amountText} to ${widget.partnerLabel} when they arrive.',
+                    style: TextStyle(color: AppColors.txt.withOpacity(0.85), fontSize: 12.5, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        child: content,
+        ],
       ),
     );
   }

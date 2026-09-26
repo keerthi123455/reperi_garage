@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
+import '../services/address_service.dart';
+import '../services/delivery_partner_assignment_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../utils/secure_storage_path.dart';
 import '../widgets/error_display.dart';
+import 'payment_screen.dart';
 
 class InsuranceClaimScreen extends StatefulWidget {
   final String vehicleId;
@@ -44,12 +49,27 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
   File? insuranceCopyFile;
   File? damagePhotoFile;
 
-  // Upload state
+  // Upload state — drives the full-screen progress overlay shown only
+  // after payment succeeds, while the picked files are actually uploaded.
   bool isUploading = false;
   String uploadStatus = '';
 
+  // Explicit consent for sharing sensitive ID documents (Aadhaar, PAN,
+  // driving license, RC copy) with the insurer/garage partner — required
+  // at the point of collection, not just covered by the privacy policy
+  // elsewhere in the app.
+  bool _consentGiven = false;
+
   // Constant for insurance admin
   static const String INSURANCE_ADMIN_USERNAME = 'newexpert_care';
+
+  // Fixed fee for the full doorstep pickup -> garage -> return service —
+  // same 3-partner-pool/online-only pattern as pollution/inspection.
+  static const String _price = '₹3999';
+
+  // Same support number home_screen.dart's _callSupport already calls —
+  // reused here for the circular call button below.
+  static const String _supportPhone = '9353094672';
 
   @override
   void initState() {
@@ -71,12 +91,31 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
     super.dispose();
   }
 
+  Future<void> _callSupport() async {
+    try {
+      await launchUrl(Uri.parse('tel:$_supportPhone'));
+    } catch (e) {
+      if (mounted) {
+        ErrorDisplay.showPremiumError(
+          context,
+          error: e,
+          customMessage: 'Could not start the call. Please try again.',
+        );
+      }
+    }
+  }
+
   /// Pick PDF file for documents using file_selector
-  Future<void> _pickPdfFile(String documentType) async {
+  Future<void> _pickPdfFile(String documentType, void Function(void Function()) setSheetState) async {
     try {
       const XTypeGroup pdfTypeGroup = XTypeGroup(
         label: 'PDFs',
         extensions: <String>['pdf'],
+        // iOS's document picker filters by UTType, not file extension —
+        // without this, file_selector_ios can fail to resolve a type
+        // filter at all and throw. com.adobe.pdf is Apple's own built-in
+        // UTI for PDF, so this doesn't need any Info.plist declaration.
+        uniformTypeIdentifiers: <String>['com.adobe.pdf'],
       );
 
       final XFile? file = await openFile(
@@ -85,8 +124,8 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
 
       if (file != null) {
         final pickedFile = File(file.path);
-        
-        setState(() {
+
+        setSheetState(() {
           if (documentType == 'rc') {
             rcCopyFile = pickedFile;
           } else if (documentType == 'license') {
@@ -111,18 +150,74 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
     }
   }
 
+  Future<ImageSource?> _showDamagePhotoSourceSheet() {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: const Color(0xFF262626),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Add Damage Photo',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_rounded,
+                    color: Color(0xFFD4A017)),
+                title: const Text('Take Photo',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () =>
+                    Navigator.pop(sheetContext, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_rounded,
+                    color: Color(0xFFD4A017)),
+                title: const Text('Choose from Gallery',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () =>
+                    Navigator.pop(sheetContext, ImageSource.gallery),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// Pick image file for damage photo using image_picker
-  Future<void> _pickImageFile() async {
+  Future<void> _pickImageFile(void Function(void Function()) setSheetState) async {
     try {
+      final source = await _showDamagePhotoSourceSheet();
+      if (source == null) return;
+
       final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
+        source: source,
         imageQuality: 85,
       );
 
       if (image != null) {
-        setState(() {
-          damagePhotoFile = File(image.path);
-        });
+        setSheetState(() => damagePhotoFile = File(image.path));
       }
     } catch (e) {
       if (mounted) {
@@ -159,24 +254,67 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
     }
   }
 
-  /// Submit insurance claim
-  Future<void> _submitClaim() async {
-    // Validation
-    if (rcCopyFile == null ||
-        drivingLicenseFile == null ||
-        aadhaarFile == null ||
-        panFile == null ||
-        insuranceCopyFile == null ||
-        damagePhotoFile == null ||
-        _damageDescriptionController.text.trim().isEmpty) {
+  bool get _allDocsReady =>
+      rcCopyFile != null &&
+      drivingLicenseFile != null &&
+      aadhaarFile != null &&
+      panFile != null &&
+      insuranceCopyFile != null &&
+      damagePhotoFile != null &&
+      _damageDescriptionController.text.trim().isNotEmpty;
+
+  /// Validates everything's in place, then hands off to PaymentScreen —
+  /// the actual upload + claim insert only happens in
+  /// _saveInsuranceClaim, once payment actually succeeds. Mirrors
+  /// pollution_screen.dart / inspection_screen.dart's onSuccess pattern.
+  void _confirmAndPay() {
+    if (!_allDocsReady) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please upload all documents and add description'),
+          content: Text('Please upload all documents and add a description'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
+
+    if (!_consentGiven) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please confirm you consent to sharing these documents to submit your claim'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    Navigator.pop(context); // close the upload sheet
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PaymentScreen(
+          title: 'Insurance Claim Service',
+          price: _price,
+          duration: 'Doorstep pickup & drop',
+          vehicleId: widget.vehicleId,
+          showPickupDropOption: false,
+          onlineOnly: true,
+          onSuccess: _saveInsuranceClaim,
+        ),
+      ),
+    );
+  }
+
+  /// Uploads every picked document/photo, then inserts the claim row —
+  /// now a full doorstep pickup/garage/return trip just like a regular
+  /// service booking (delivery_partner_id, pickup/dropoff address,
+  /// delivery_stage, pickup/return OTP columns), always assigned to
+  /// delivery partner 3 and to newexpert_care. See
+  /// web/deliverydashboard.html and insurance_claim_details_screen.dart
+  /// for how those columns get driven afterwards.
+  Future<void> _saveInsuranceClaim(String orderId, String paymentId) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
 
     setState(() {
       isUploading = true;
@@ -184,15 +322,12 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
     });
 
     try {
-      // Get current user
-      final user = _supabase.auth.currentUser;
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
+      final claimId =
+          '${DateTime.now().millisecondsSinceEpoch}-${secureStorageToken()}';
+      final defaultAddr = await AddressService().getDefaultAddress();
+      final deliveryPartnerId =
+          await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('insurance_claims');
 
-      final claimId = DateTime.now().millisecondsSinceEpoch.toString();
-
-      // Upload all files
       setState(() => uploadStatus = 'Uploading RC Copy...');
       final rcUrl = await _uploadFile(
           rcCopyFile!, 'rc-copies', 'claim-$claimId-rc.pdf');
@@ -217,7 +352,6 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
       final photoUrl = await _uploadFile(
           damagePhotoFile!, 'damage-photos', 'claim-$claimId-damage.jpg');
 
-      // Save claim to database
       setState(() => uploadStatus = 'Saving claim details...');
       await _supabase.from('insurance_claims').insert({
         'user_id': user.id,
@@ -233,19 +367,29 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
         'damage_photo_url': photoUrl,
         'has_unread_update': true,
         'created_at': DateTime.now().toIso8601String(),
+        // Doorstep pickup/drop — same shape as 'bookings'.
+        'delivery_partner_id': deliveryPartnerId,
+        'pickupdrop': 'yes',
+        'pickup_address': defaultAddr?['address'],
+        'pickup_latitude': defaultAddr?['latitude'],
+        'pickup_longitude': defaultAddr?['longitude'],
+        'pickup_address_name': defaultAddr?['name'],
+        'dropoff_address': defaultAddr?['address'],
+        'dropoff_latitude': defaultAddr?['latitude'],
+        'dropoff_longitude': defaultAddr?['longitude'],
+        'dropoff_address_name': defaultAddr?['name'],
+        'package_price': _price,
+        'payment_status': 'paid',
+        'razorpay_order_id': orderId,
+        'razorpay_payment_id': paymentId,
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Insurance claim submitted successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        Navigator.pop(context);
-      }
+      if (mounted) await _showSubmittedDialog();
     } catch (e) {
+      // The payment already succeeded by this point — swallowing this
+      // instead of crashing avoids leaving the customer on a broken
+      // screen after money has already moved. Worst case support has to
+      // manually reconcile this claim from the Razorpay order id.
       if (mounted) {
         ErrorDisplay.showPremiumError(
           context,
@@ -263,75 +407,199 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
     }
   }
 
+  Future<void> _showSubmittedDialog() {
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: AppColors.surfaceRaised,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 30),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.verified_rounded, color: Colors.green, size: 36),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Claim Submitted',
+                style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w900, fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Your insurance claim has been submitted and assigned to our '
+                'partner garage. A delivery partner will reach out to pick up '
+                'your vehicle — you\'ll get updates at every step.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.mut, fontSize: 13.5, height: 1.5),
+              ),
+              const SizedBox(height: 22),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD4A017),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: const Text(
+                    'DONE',
+                    style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// One-time privacy notice shown before the upload sheet opens — the
+  /// "pop up" explaining what the documents are used for, rather than
+  /// burying that only in the small consent-checkbox text.
+  Future<void> _showPrivacyNoticeThenOpenUploadSheet() async {
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.surfaceRaised,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        icon: Icon(Icons.privacy_tip_rounded, color: const Color(0xFFD4A017), size: 32),
+        title: Text(
+          'Your documents, protected',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w900, fontSize: 16),
+        ),
+        content: Text(
+          'Everything you upload here — your RC copy, driving license, Aadhaar, '
+          'PAN, insurance copy, and damage photo — is used only to get your '
+          'insurance claim submitted and processed. Nothing is shared or used '
+          'for any other purpose.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.mut, fontSize: 13, height: 1.5),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD4A017),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text(
+                'GOT IT',
+                style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (mounted) _showUploadSheet();
+  }
+
+  void _showUploadSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => _UploadSheetContent(
+          state: this,
+          setSheetState: setSheetState,
+        ),
+      ),
+    );
+  }
+
   /// Build document upload tile
   Widget _buildDocumentTile(
     String title,
     File? selectedFile,
-    String documentType,
+    VoidCallback onTap,
     IconData icon,
   ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: selectedFile != null
-              ? const Color(0xFFD4A017)
-              : AppColors.line,
-          width: 1.5,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceSunken,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selectedFile != null
+                ? const Color(0xFFD4A017)
+                : AppColors.line,
+            width: 1.5,
+          ),
         ),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: const Color(0xFFD4A017), size: 24),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: AppColors.txt,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
+        child: Row(
+          children: [
+            Icon(icon, color: const Color(0xFFD4A017), size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: AppColors.txt,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  selectedFile != null
-                      ? selectedFile.path.split('/').last
-                      : 'Upload PDF',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: selectedFile != null
-                        ? const Color(0xFFD4A017)
-                        : AppColors.mut,
-                    fontSize: 13,
+                  const SizedBox(height: 4),
+                  Text(
+                    selectedFile != null
+                        ? selectedFile.path.split('/').last
+                        : 'Upload PDF',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: selectedFile != null
+                          ? const Color(0xFFD4A017)
+                          : AppColors.mut,
+                      fontSize: 13,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFD4A017).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD4A017).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                selectedFile != null ? Icons.check_circle : Icons.cloud_upload,
+                color: selectedFile != null
+                    ? const Color(0xFFD4A017)
+                    : AppColors.mut,
+                size: 20,
+              ),
             ),
-            child: Icon(
-              selectedFile != null ? Icons.check_circle : Icons.cloud_upload,
-              color: selectedFile != null
-                  ? const Color(0xFFD4A017)
-                  : AppColors.mut,
-              size: 20,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -358,33 +626,40 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Stack(
-        children: [
-          isUploading
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const CircularProgressIndicator(
-                        color: Color(0xFFD4A017),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        uploadStatus,
-                        style: TextStyle(
-                          color: AppColors.txt,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+      floatingActionButton: FloatingActionButton(
+        onPressed: _callSupport,
+        backgroundColor: const Color(0xFFD4A017),
+        shape: const CircleBorder(),
+        child: const Icon(Icons.call_rounded, color: Colors.black, size: 26),
+      ),
+      body: isUploading
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(
+                    color: Color(0xFFD4A017),
                   ),
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
-                  child: Column(
+                  const SizedBox(height: 16),
+                  Text(
+                    uploadStatus,
+                    style: TextStyle(
+                      color: AppColors.txt,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _HowItWorksCard(price: _price),
+                  const SizedBox(height: 20),
+
                   // Vehicle Info Card
                   Container(
                     padding: const EdgeInsets.all(14),
@@ -439,275 +714,366 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 28),
 
-                  // Documents Section
-                  Text(
-                    'Required documents',
-                    style: TextStyle(
-                      color: AppColors.txt,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // RC Copy
-                  GestureDetector(
-                    onTap: () => _pickPdfFile('rc'),
-                    child: _buildDocumentTile(
-                      '📄 RC Copy',
-                      rcCopyFile,
-                      'rc',
-                      Icons.description,
-                    ),
-                  ),
-
-                  // Driving License
-                  GestureDetector(
-                    onTap: () => _pickPdfFile('license'),
-                    child: _buildDocumentTile(
-                      '📄 Driving License',
-                      drivingLicenseFile,
-                      'license',
-                      Icons.credit_card,
-                    ),
-                  ),
-
-                  // Owner Aadhaar
-                  GestureDetector(
-                    onTap: () => _pickPdfFile('aadhaar'),
-                    child: _buildDocumentTile(
-                      '📄 Owner Aadhaar',
-                      aadhaarFile,
-                      'aadhaar',
-                      Icons.badge,
-                    ),
-                  ),
-
-                  // Owner PAN
-                  GestureDetector(
-                    onTap: () => _pickPdfFile('pan'),
-                    child: _buildDocumentTile(
-                      '📄 Owner PAN',
-                      panFile,
-                      'pan',
-                      Icons.assignment,
-                    ),
-                  ),
-
-                  // Insurance Copy
-                  GestureDetector(
-                    onTap: () => _pickPdfFile('insurance'),
-                    child: _buildDocumentTile(
-                      '📄 Insurance Copy',
-                      insuranceCopyFile,
-                      'insurance',
-                      Icons.security,
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Damage Photo
-                  Text(
-                    'Damage photo',
-                    style: TextStyle(
-                      color: AppColors.txt,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  GestureDetector(
-                    onTap: _pickImageFile,
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 20),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceRaised,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: damagePhotoFile != null
-                              ? const Color(0xFFD4A017)
-                              : AppColors.line,
-                          width: 1.5,
-                        ),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 58,
+                    child: ElevatedButton.icon(
+                      onPressed: _showPrivacyNoticeThenOpenUploadSheet,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFD4A017),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
-                      child: damagePhotoFile != null
-                          ? Column(
-                              children: [
-                                Image.file(
-                                  damagePhotoFile!,
-                                  height: 180,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  damagePhotoFile!.path.split('/').last,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Color(0xFFD4A017),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : Column(
-                              children: [
-                                Icon(
-                                  Icons.image_not_supported,
-                                  color: AppColors.mut,
-                                  size: 48,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Tap to upload damage photo',
-                                  style: TextStyle(
-                                    color: AppColors.mut,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                    ),
-                  ),
-
-                  // Damage Description
-                  Text(
-                    'Describe the damage',
-                    style: TextStyle(
-                      color: AppColors.txt,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  TextField(
-                    controller: _damageDescriptionController,
-                    maxLines: 5,
-                    maxLength: 500,
-                    style: TextStyle(
-                      color: AppColors.txt,
-                      fontSize: 15,
-                    ),
-                    decoration: InputDecoration(
-                      hintText:
-                          'Describe the damage, accident details, location, etc.',
-                      hintStyle: TextStyle(
-                        color: AppColors.mut,
-                        fontSize: 14,
-                      ),
-                      filled: true,
-                      fillColor: AppColors.surfaceRaised,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: AppColors.line,
-                        ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: AppColors.line,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(
-                          color: Color(0xFFD4A017),
+                      icon: const Icon(Icons.upload_file_rounded, color: Colors.black),
+                      label: const Text(
+                        'UPLOAD DOCUMENTS & FILE CLAIM',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.4,
                         ),
                       ),
                     ),
                   ),
-
-                  const SizedBox(height: 80),
+                  const SizedBox(height: 14),
+                  Center(
+                    child: Text(
+                      'Need help? Tap the call button below to talk to us.',
+                      style: TextStyle(color: AppColors.mut, fontSize: 12.5),
+                    ),
+                  ),
                 ],
               ),
             ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _buildStickyBar(),
+    );
+  }
+}
+
+/// The "how this works" explainer shown at the top of the screen — what
+/// the customer described wanting before anything else: pickup, pay,
+/// garage handles the rest, updates along the way.
+class _HowItWorksCard extends StatelessWidget {
+  const _HowItWorksCard({required this.price});
+  final String price;
+
+  static const _steps = [
+    (
+      Icons.local_shipping_rounded,
+      'We come to you',
+      'Our delivery partner picks up your vehicle from your doorstep.',
+    ),
+    (
+      Icons.payments_rounded,
+      'You just pay the service fee',
+      'A flat, one-time fee — the rest is on us.',
+    ),
+    (
+      Icons.build_circle_rounded,
+      'Our garage takes it from there',
+      'Our partner garage handles the inspection, paperwork, and repair.',
+    ),
+    (
+      Icons.notifications_active_rounded,
+      'Stay in the loop',
+      'You\'ll get real-time updates and notifications at every step.',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'How it works',
+                style: TextStyle(color: AppColors.txt, fontSize: 17, fontWeight: FontWeight.w900),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD4A017),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  price,
+                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 13),
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 16),
+          for (var i = 0; i < _steps.length; i++)
+            Padding(
+              padding: EdgeInsets.only(bottom: i == _steps.length - 1 ? 0 : 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.chipBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(_steps[i].$1, color: AppColors.txt, size: 19),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _steps[i].$2,
+                          style: TextStyle(color: AppColors.txt, fontSize: 14, fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _steps[i].$3,
+                          style: TextStyle(color: AppColors.mut, fontSize: 12.5, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
   }
+}
 
-  // ── STICKY BOTTOM BAR ────────────────────────────────────────────
-  Widget _buildStickyBar() {
+/// The doc-upload/photo/description sheet opened from UPLOAD DOCUMENTS &
+/// FILE CLAIM — kept as a plain function-returning widget (not its own
+/// StatefulWidget) since all the actual file state lives on
+/// _InsuranceClaimScreenState; [setSheetState] is what makes picking a
+/// file inside this sheet actually repaint it (a modal bottom sheet's
+/// route isn't a descendant of the screen's Element tree, so the
+/// screen's own setState alone wouldn't rebuild this content).
+class _UploadSheetContent extends StatelessWidget {
+  const _UploadSheetContent({required this.state, required this.setSheetState});
+
+  final _InsuranceClaimScreenState state;
+  final void Function(void Function()) setSheetState;
+
+  @override
+  Widget build(BuildContext context) {
     return SafeArea(
       top: false,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
         decoration: BoxDecoration(
           color: AppColors.surfaceRaised,
-          border: Border(top: BorderSide(color: AppColors.line)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.25),
-              blurRadius: 20,
-              offset: const Offset(0, -6),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(color: AppColors.line, borderRadius: BorderRadius.circular(2)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Row(
+                children: [
+                  Text(
+                    'Documents & Claim Details',
+                    style: TextStyle(color: AppColors.txt, fontSize: 17, fontWeight: FontWeight.w900),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: AppColors.surfaceSunken, borderRadius: BorderRadius.circular(12)),
+                      child: Icon(Icons.close_rounded, color: AppColors.txt, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Required documents',
+                      style: TextStyle(color: AppColors.txt, fontSize: 16, fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 12),
+                    state._buildDocumentTile(
+                      '📄 RC Copy',
+                      state.rcCopyFile,
+                      () => state._pickPdfFile('rc', setSheetState),
+                      Icons.description,
+                    ),
+                    state._buildDocumentTile(
+                      '📄 Driving License',
+                      state.drivingLicenseFile,
+                      () => state._pickPdfFile('license', setSheetState),
+                      Icons.credit_card,
+                    ),
+                    state._buildDocumentTile(
+                      '📄 Owner Aadhaar',
+                      state.aadhaarFile,
+                      () => state._pickPdfFile('aadhaar', setSheetState),
+                      Icons.badge,
+                    ),
+                    state._buildDocumentTile(
+                      '📄 Owner PAN',
+                      state.panFile,
+                      () => state._pickPdfFile('pan', setSheetState),
+                      Icons.assignment,
+                    ),
+                    state._buildDocumentTile(
+                      '📄 Insurance Copy',
+                      state.insuranceCopyFile,
+                      () => state._pickPdfFile('insurance', setSheetState),
+                      Icons.security,
+                    ),
+
+                    const SizedBox(height: 16),
+                    Text(
+                      'Damage photo',
+                      style: TextStyle(color: AppColors.txt, fontSize: 16, fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: () => state._pickImageFile(setSheetState),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceSunken,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: state.damagePhotoFile != null ? const Color(0xFFD4A017) : AppColors.line,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: state.damagePhotoFile != null
+                            ? Column(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.file(
+                                      state.damagePhotoFile!,
+                                      height: 160,
+                                      width: double.infinity,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    state.damagePhotoFile!.path.split('/').last,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: Color(0xFFD4A017), fontSize: 13, fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              )
+                            : Column(
+                                children: [
+                                  Icon(Icons.add_a_photo_rounded, color: AppColors.mut, size: 34),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    'Tap to upload damage photo',
+                                    style: TextStyle(color: AppColors.mut, fontSize: 14, fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+                    Text(
+                      'Describe the damage',
+                      style: TextStyle(color: AppColors.txt, fontSize: 16, fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: state._damageDescriptionController,
+                      maxLines: 4,
+                      maxLength: 500,
+                      onChanged: (_) => setSheetState(() {}),
+                      style: TextStyle(color: AppColors.txt, fontSize: 14.5),
+                      decoration: InputDecoration(
+                        hintText: 'Describe the damage, accident details, location, etc.',
+                        hintStyle: TextStyle(color: AppColors.mut, fontSize: 13.5),
+                        filled: true,
+                        fillColor: AppColors.surfaceSunken,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.line)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.line)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFD4A017))),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+                    InkWell(
+                      onTap: () => setSheetState(() => state._consentGiven = !state._consentGiven),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Checkbox(
+                            value: state._consentGiven,
+                            onChanged: (v) => setSheetState(() => state._consentGiven = v ?? false),
+                            activeColor: const Color(0xFFD4A017),
+                          ),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: Text(
+                                'I consent to sharing these documents with the insurer and garage '
+                                'partner solely to process this insurance claim.',
+                                style: TextStyle(color: AppColors.mut, fontSize: 12, height: 1.5),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: state._confirmAndPay,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFD4A017),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        child: const Text(
+                          'SUBMIT CLAIM',
+                          style: TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
-        ),
-        child: GestureDetector(
-          onTap: isUploading ? null : _submitClaim,
-          child: Container(
-            width: double.infinity,
-            height: 56,
-            decoration: BoxDecoration(
-              color: isUploading
-                  ? const Color(0xFFD4A017).withOpacity(0.5)
-                  : const Color(0xFFD4A017),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: isUploading
-                  ? []
-                  : [
-                      BoxShadow(
-                        color: const Color(0xFFD4A017).withOpacity(0.3),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (isUploading)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: AppColors.onAccentDark,
-                    ),
-                  )
-                else
-                  Icon(Icons.check_circle, color: AppColors.onAccentDark, size: 20),
-                const SizedBox(width: 10),
-                Text(
-                  isUploading ? 'Uploading...' : 'Submit Claim',
-                  style: TextStyle(
-                    color: AppColors.onAccentDark,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );

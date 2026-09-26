@@ -17,7 +17,7 @@ import 'paint_care_screen.dart';
 import 'payment_screen.dart';
 import 'roadside_assistance_screen.dart';
 import 'servicing_package_screen.dart';
-import 'subscriptions_screen.dart';
+import 'monthly_wash_screen.dart';
 import 'tyre_care_screen.dart';
 import 'washing_package_screen.dart';
 import 'wheel_management_package_screen.dart';
@@ -86,7 +86,7 @@ const Map<String, Color> _kCategoryAccent = {
   'Paint & Body': Color(0xFFBA68C8),
   'Premium Detailing': Color(0xFFD4A017),
   'Insurance': Color(0xFF66BB6A),
-  'Subscriptions': Color(0xFFFFB74D),
+  'Monthly Wash': Color(0xFFFFB74D),
   'Roadside Assistance': Color(0xFFEF5350),
   'Business Solutions': Color(0xFF90A4AE),
 };
@@ -98,7 +98,7 @@ const Map<String, IconData> _kCategoryIcon = {
   'Paint & Body': Icons.format_paint_rounded,
   'Premium Detailing': Icons.auto_awesome_rounded,
   'Insurance': Icons.verified_user_rounded,
-  'Subscriptions': Icons.subscriptions_rounded,
+  'Monthly Wash': Icons.subscriptions_rounded,
   'Roadside Assistance': Icons.support_agent_rounded,
   'Business Solutions': Icons.business_rounded,
 };
@@ -110,7 +110,7 @@ const List<String> _kCategoryOrder = [
   'Paint & Body',
   'Premium Detailing',
   'Insurance',
-  'Subscriptions',
+  'Monthly Wash',
   'Roadside Assistance',
   'Business Solutions',
 ];
@@ -345,7 +345,7 @@ Widget _insurance(Map<String, dynamic>? v, {String? highlightPackage}) => Insura
       highlightPackage: highlightPackage,
     );
 Widget _subscriptions(Map<String, dynamic>? v, {String? highlightPackage}) =>
-    SubscriptionsScreen(vehicleId: v?['id']?.toString() ?? '', highlightPackage: highlightPackage);
+    MonthlyWashScreen(vehicleId: v?['id']?.toString() ?? '', highlightPackage: highlightPackage);
 Widget _roadside(Map<String, dynamic>? v, {String? highlightPackage}) =>
     RoadsideAssistanceScreen(highlightPackage: highlightPackage);
 Widget _fleetMgmt(Map<String, dynamic>? v, {String? highlightPackage}) =>
@@ -780,13 +780,13 @@ final List<_Package> _kCatalog = [
     directBook: false,
   ),
 
-  // ── Subscriptions ─────────────────────────────────────────────────────
+  // ── Monthly Wash ───────────────────────────────────────────────────────
   const _Package(
-    category: 'Subscriptions',
-    name: 'Car Wash Subscription',
+    category: 'Monthly Wash',
+    name: 'Monthly Wash Plan',
     price: 'From ₹500/month',
     duration: '30-day plan',
-    tagline: 'Daily doorstep car wash, billed monthly — price depends on your vehicle type.',
+    tagline: 'Daily doorstep car wash for 30 days — price depends on your vehicle type.',
     features: ['Bike — ₹500/month', 'Hatchback / Small Cars — ₹600/month', 'SUV / XUV / Sedan — ₹1000/month', 'Luxury Cars — ₹1200/month', '6 Water Washes / Week', '2 Interior Washes / Week', 'Daily App Updates', 'Free Shampoo Wash on missed days', 'Flexible Timings (4 AM-9 AM, except Wednesdays)', 'No Contact Required'],
     screenBuilder: _subscriptions,
     directBook: false,
@@ -1133,19 +1133,9 @@ class _ServicesScreenState extends State<ServicesScreen> {
   // ── Actions ──────────────────────────────────────────────────────────
   Future<void> _callUs() async {
     final uri = Uri(scheme: 'tel', path: _expertPhone);
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Could not open dialer. Please call +91 93530 94672'),
-            backgroundColor: AppColors.surfaceRaised,
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Could not open dialer. Please call +91 93530 94672'),

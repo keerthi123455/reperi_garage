@@ -1,6 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../widgets/error_display.dart';
 import 'home_screen.dart';
@@ -70,15 +71,7 @@ class _SignupScreenState extends State<SignupScreen>
         email: email,
         password: password,
         data: {'phone': phone},
-      );
-
-      // Delivery partner accounts sign up through this same screen —
-      // detected purely by email convention (delivery1@reperi.com,
-      // delivery2@..., etc., matching the prefix used everywhere else
-      // for these accounts). When it matches, also create the
-      // delivery_partners profile row so the account can log into
-      // web/delivery.html, which looks a partner up by email.
-      await _maybeCreateDeliveryPartnerProfile(email);
+      ).timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
 
@@ -94,55 +87,18 @@ class _SignupScreenState extends State<SignupScreen>
         MaterialPageRoute(builder: (_) => const HomeScreen()),
         (route) => false,
       );
+    } on TimeoutException {
+      if (!mounted) return;
+      ErrorDisplay.showPremiumError(
+        context,
+        error: 'timeout',
+        customMessage: 'That took too long — check your internet connection and try again.',
+      );
     } catch (e) {
       if (!mounted) return;
       ErrorDisplay.showPremiumError(context, error: e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  /// Creates the matching `delivery_partners` row for delivery-partner
-  /// accounts (email starting with "delivery", e.g. delivery1@reperi.com)
-  /// — the same convention web/delivery.html's own register form uses.
-  /// `id` is left out entirely so its SERIAL default (1, 2, 3, ...)
-  /// applies; it's unrelated to the Supabase Auth user id. Runs quietly:
-  /// a failure here (duplicate email, RLS, etc.) doesn't block the normal
-  /// signup flow, since this account still works as a regular customer
-  /// account either way — it just wouldn't be able to log into
-  /// delivery.html until the row exists.
-  Future<void> _maybeCreateDeliveryPartnerProfile(String email) async {
-    final username = email.split('@').first.toLowerCase();
-    if (!username.startsWith('delivery')) return;
-
-    try {
-      await Supabase.instance.client.from('delivery_partners').insert({
-        'email': email,
-        // Supabase Auth already stores the real credential securely
-        // server-side — this column is redundant, but NOT NULL in the
-        // given schema, so a fixed placeholder satisfies the constraint
-        // without duplicating (or exposing) the actual password.
-        'password_hash': 'managed_by_supabase_auth',
-        'status': 'active',
-      });
-    } catch (e) {
-      // Swallowed deliberately — see doc comment above.
-    }
-  }
-
-  /// Opens the Terms of Service / Privacy Policy pages linked in the
-  /// signup consent line below — same URLs and pattern HomeScreen's
-  /// drawer uses for these.
-  Future<void> _openExternalUrl(String url) async {
-    try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (_) {
-      if (!mounted) return;
-      ErrorDisplay.showPremiumToast(
-        context,
-        message: 'Could not open link',
-        icon: Icons.error_outline_rounded,
-      );
     }
   }
 
@@ -180,66 +136,16 @@ class _SignupScreenState extends State<SignupScreen>
 
                     /// ── HERO IMAGE ────────────────────────────────────
                     SizedBox(
-                      height: 220,
+                      height: 110,
                       width: double.infinity,
                       child: Image.asset(
-                        'assets/images/login.png',
+                        'assets/images/login.jpeg',
                         fit: BoxFit.contain,
                         alignment: Alignment.center,
-                        errorBuilder: (_, __, ___) => const Center(
-                          child: Icon(
-                            Icons.shield_rounded,
-                            size: 80,
-                            color: Color(0xFFD4A017),
-                          ),
-                        ),
                       ),
                     ),
 
-                    /// ── PARTNER NETWORK ───────────────────────────────
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _goldLine(),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'PARTNER NETWORK',
-                            style: TextStyle(
-                              color: Color(0xFFD4A017),
-                              fontSize: 12,
-                              letterSpacing: 3,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          _goldLine(),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 6),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _goldLine(width: 20),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'PREMIUM VEHICLE CARE',
-                          style: TextStyle(
-                            color: Color(0xFF666666),
-                            fontSize: 10,
-                            letterSpacing: 2.5,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        _goldLine(width: 20),
-                      ],
-                    ),
-
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 10),
 
                     /// ── HEADLINE ──────────────────────────────────────
                     const Text(
@@ -251,18 +157,8 @@ class _SignupScreenState extends State<SignupScreen>
                         letterSpacing: 0.5,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Join the premium automotive ecosystem',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Color(0xFF888888),
-                        fontSize: 15,
-                        height: 1.55,
-                      ),
-                    ),
 
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 16),
 
                     /// ── SIGNUP CARD ────────────────────────────────────
                     Padding(
@@ -270,7 +166,7 @@ class _SignupScreenState extends State<SignupScreen>
                       child: _buildSignupCard(),
                     ),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 14),
 
                     /// ── LOGIN LINK ─────────────────────────────────────
                     Row(
@@ -306,7 +202,7 @@ class _SignupScreenState extends State<SignupScreen>
                       ],
                     ),
 
-                   const SizedBox(height: 36),
+                   const SizedBox(height: 16),
                       ],
                     ),
                   ),
@@ -372,14 +268,7 @@ class _SignupScreenState extends State<SignupScreen>
           /// PASSWORD
           _buildPasswordField(),
 
-          const SizedBox(height: 18),
-
-          /// CONSENT — required disclosure before account creation collects
-          /// email/phone (App Store Guideline 5.1.1); kept as plain, low-
-          /// friction text rather than a mandatory checkbox.
-          _buildConsentText(),
-
-          const SizedBox(height: 18),
+          const SizedBox(height: 22),
 
           /// SIGN UP BUTTON
           _buildSignUpButton(),
@@ -490,41 +379,6 @@ class _SignupScreenState extends State<SignupScreen>
           ),
         ],
       ),
-    );
-  }
-
-  /// "By signing up, you agree to our Terms of Service and Privacy
-  /// Policy." — small, muted disclaimer text matching the sizing/color of
-  /// other fine print in this card (e.g. the "secure sign up" divider
-  /// label below), with the two links tappable and opening the same
-  /// pages as the drawer's Privacy Policy / Terms & Conditions entries.
-  Widget _buildConsentText() {
-    const baseStyle = TextStyle(
-      color: Color(0xFF888888),
-      fontSize: 11.5,
-      height: 1.5,
-    );
-    const linkStyle = TextStyle(
-      color: Color(0xFFD4A017),
-      fontSize: 11.5,
-      fontWeight: FontWeight.w700,
-      height: 1.5,
-    );
-    return Wrap(
-      alignment: WrapAlignment.center,
-      children: [
-        const Text('By signing up, you agree to our ', style: baseStyle),
-        GestureDetector(
-          onTap: () => _openExternalUrl('https://reperi.in/terms.html'),
-          child: const Text('Terms of Service', style: linkStyle),
-        ),
-        const Text(' and ', style: baseStyle),
-        GestureDetector(
-          onTap: () => _openExternalUrl('https://reperi.in/privacy-policy.html'),
-          child: const Text('Privacy Policy', style: linkStyle),
-        ),
-        const Text('.', style: baseStyle),
-      ],
     );
   }
 
