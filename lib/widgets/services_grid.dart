@@ -12,7 +12,7 @@ const List<ServiceEntry> kCoreServices = [
   (icon: Symbols.tire_repair, label: 'Tyres &\nWheels'),
   (icon: Symbols.car_repair, label: 'Denting'),
   (icon: Symbols.format_paint, label: 'Painting'),
-  (icon: Symbols.verified_user, label: 'Insurance\nClaim'),
+  (icon: Symbols.verified_user, label: 'Claim\nAssistance'),
 ];
 
 const List<ServiceEntry> kExtraServices = [

@@ -5,23 +5,23 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/error_display.dart';
 
-class InsuranceClaimDetailsScreen extends StatefulWidget {
+class ClaimDetailsScreen extends StatefulWidget {
   final int claimId;
   final String adminUsername;
 
-  const InsuranceClaimDetailsScreen({
+  const ClaimDetailsScreen({
     super.key,
     required this.claimId,
     required this.adminUsername,
   });
 
   @override
-  State<InsuranceClaimDetailsScreen> createState() =>
-      _InsuranceClaimDetailsScreenState();
+  State<ClaimDetailsScreen> createState() =>
+      _ClaimDetailsScreenState();
 }
 
-class _InsuranceClaimDetailsScreenState
-    extends State<InsuranceClaimDetailsScreen> {
+class _ClaimDetailsScreenState
+    extends State<ClaimDetailsScreen> {
   final _supabase = Supabase.instance.client;
   final _updateController = TextEditingController();
   Map? claim;
@@ -31,7 +31,7 @@ class _InsuranceClaimDetailsScreenState
   bool markingDone = false;
 
   // This claim now has a live delivery_stage/OTP flow just like a regular
-  // booking (see insurance_claim_screen.dart), but nothing pushes the
+  // booking (see claim_screen.dart), but nothing pushes the
   // customer's pickup-OTP entry or the delivery partner's stage taps into
   // this screen on its own — poll instead of leaving staff to keep
   // re-opening it themselves.
@@ -53,13 +53,13 @@ class _InsuranceClaimDetailsScreenState
   Future<void> _silentRefresh() async {
     try {
       final claimResponse = await _supabase
-          .from('insurance_claims')
+          .from('claim_table')
           .select('*')
           .eq('id', widget.claimId)
           .single();
 
       final updatesResponse = await _supabase
-          .from('insurance_claims_updates')
+          .from('claim_table_updates')
           .select('*')
           .eq('claim_id', widget.claimId)
           .order('created_at', ascending: false);
@@ -75,13 +75,13 @@ class _InsuranceClaimDetailsScreenState
   Future<void> _fetchClaimDetails() async {
     try {
       final claimResponse = await _supabase
-          .from('insurance_claims')
+          .from('claim_table')
           .select('*')
           .eq('id', widget.claimId)
           .single();
 
       final updatesResponse = await _supabase
-          .from('insurance_claims_updates')
+          .from('claim_table_updates')
           .select('*')
           .eq('claim_id', widget.claimId)
           .order('created_at', ascending: false);
@@ -111,7 +111,7 @@ class _InsuranceClaimDetailsScreenState
   static const _signedUrlExpirySeconds = 300;
 
   /// Documents are stored in a private bucket by their storage PATH (see
-  /// insurance_claim_screen.dart's upload code) — this mints a fresh,
+  /// claim_screen.dart's upload code) — this mints a fresh,
   /// short-lived signed URL right before actually opening the document,
   /// rather than reading a permanent public link straight off the row.
   /// Also handles claims submitted before this fix, whose stored value is
@@ -142,9 +142,9 @@ class _InsuranceClaimDetailsScreenState
 
   /// One-tap "the repair work is physically finished" signal — mirrors
   /// booking_details_screen.dart's MARK AS DONE exactly, just against
-  /// insurance_claims/claim_status instead of bookings/booking_status.
+  /// claim_table/claim_status instead of bookings/booking_status.
   /// This is a full doorstep pickup/drop claim now (see
-  /// insurance_claim_screen.dart), so — like a 'bookings' row with
+  /// claim_screen.dart), so — like a 'bookings' row with
   /// pickup/drop on — the delivery partner is the one who generates the
   /// return OTP from web/deliverydashboard.html, not this screen.
   Future<void> _markAsDone() async {
@@ -153,7 +153,7 @@ class _InsuranceClaimDetailsScreenState
     try {
       final nowIso = DateTime.now().toIso8601String();
 
-      await _supabase.from('insurance_claims').update({
+      await _supabase.from('claim_table').update({
         'claim_status': 'Ready for Pickup',
         'marked_done_at': nowIso,
       }).eq('id', widget.claimId);
@@ -189,12 +189,12 @@ class _InsuranceClaimDetailsScreenState
     }
 
     try {
-      await _supabase.from('insurance_claims_updates').insert({
+      await _supabase.from('claim_table_updates').insert({
         'claim_id': widget.claimId,
         'admin_id': widget.adminUsername,
         'description': _updateController.text,
         'photo_url': null,
-        'created_at': DateTime.now().toIso8601String(),
+        'created_at': DateTime.now().toUtc().toIso8601String(),
       });
 
       _updateController.clear();

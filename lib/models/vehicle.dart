@@ -37,7 +37,7 @@ class Vehicle {
   /// vehicle just because one of them is subscribed.
   final bool hasActiveSubscription;
 
-  /// Whether the garage, a delivery partner, a washer, or an insurance
+  /// Whether the garage, a delivery partner, a washer, or a
   /// claim has an update this vehicle's owner hasn't seen yet — see
   /// `VehicleUpdateTracker` for what counts as "seen". Drives the
   /// notification bell badge on its home-screen card.

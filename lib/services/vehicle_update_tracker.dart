@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Tracks whether a vehicle has an update from any of the four sources a
 /// customer can hear from — the garage (regular service bookings), a
 /// delivery partner (the pickup/drop stage tracker), a washer (subscription
-/// service history), or an insurance claim — so the home screen can show a
+/// service history), or a claim — so the home screen can show a
 /// notification bell that goes off once the customer has actually viewed
 /// vehicle_bookings_screen.dart, where all four are shown.
 ///
@@ -82,10 +82,10 @@ class VehicleUpdateTracker {
       }
     } catch (_) {}
 
-    // Insurance — claim status plus the latest entry in its update feed.
+    // Claim — claim status plus the latest entry in its update feed.
     try {
       final claims = List<Map<String, dynamic>>.from(
-        await supabase.from('insurance_claims').select('id, claim_status').eq('vehicle_id', vehicleId),
+        await supabase.from('claim_table').select('id, claim_status').eq('vehicle_id', vehicleId),
       );
       for (final c in claims) {
         final claimId = c['id'].toString();
@@ -93,7 +93,7 @@ class VehicleUpdateTracker {
         if (status.isNotEmpty) signature['claim_status_$claimId'] = status;
         final updates = List<Map<String, dynamic>>.from(
           await supabase
-              .from('insurance_claims_updates')
+              .from('claim_table_updates')
               .select('id')
               .eq('claim_id', c['id'])
               .order('created_at', ascending: false)

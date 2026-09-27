@@ -12,7 +12,7 @@ import '../utils/secure_storage_path.dart';
 import '../widgets/error_display.dart';
 import 'payment_screen.dart';
 
-class InsuranceClaimScreen extends StatefulWidget {
+class ClaimScreen extends StatefulWidget {
   final String vehicleId;
   final String carModel;
   final String carBrand;
@@ -23,7 +23,7 @@ class InsuranceClaimScreen extends StatefulWidget {
   /// only so callers that pass it (see buildPackageScreenFor) compile.
   final String? highlightPackage;
 
-  const InsuranceClaimScreen({
+  const ClaimScreen({
     super.key,
     required this.vehicleId,
     required this.carModel,
@@ -33,10 +33,10 @@ class InsuranceClaimScreen extends StatefulWidget {
   });
 
   @override
-  State<InsuranceClaimScreen> createState() => _InsuranceClaimScreenState();
+  State<ClaimScreen> createState() => _ClaimScreenState();
 }
 
-class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
+class _ClaimScreenState extends State<ClaimScreen> {
   final _supabase = Supabase.instance.client;
   final _damageDescriptionController = TextEditingController();
   final ImagePicker _imagePicker = ImagePicker();
@@ -60,8 +60,8 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
   // elsewhere in the app.
   bool _consentGiven = false;
 
-  // Constant for insurance admin
-  static const String INSURANCE_ADMIN_USERNAME = 'newexpert_care';
+  // Constant for claim admin
+  static const String CLAIM_ADMIN_USERNAME = 'newexpert_care';
 
   // Fixed fee for the full doorstep pickup -> garage -> return service —
   // same 3-partner-pool/online-only pattern as pollution/inspection.
@@ -237,7 +237,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
   /// ever got hold of it view them indefinitely. Storing just the path
   /// means access is only ever granted via a short-lived signed URL,
   /// minted on demand right when someone actually opens the document (see
-  /// insurance_claim_details_screen.dart's _downloadDocument) rather than
+  /// claim_details_screen.dart's _downloadDocument) rather than
   /// baked in forever at upload time.
   Future<String?> _uploadFile(File file, String folderPath, String fileName) async {
     try {
@@ -265,7 +265,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
 
   /// Validates everything's in place, then hands off to PaymentScreen —
   /// the actual upload + claim insert only happens in
-  /// _saveInsuranceClaim, once payment actually succeeds. Mirrors
+  /// _saveClaim, once payment actually succeeds. Mirrors
   /// pollution_screen.dart / inspection_screen.dart's onSuccess pattern.
   void _confirmAndPay() {
     if (!_allDocsReady) {
@@ -293,13 +293,13 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
-          title: 'Insurance Claim Service',
+          title: 'Claim Assistance Service',
           price: _price,
           duration: 'Doorstep pickup & drop',
           vehicleId: widget.vehicleId,
           showPickupDropOption: false,
           onlineOnly: true,
-          onSuccess: _saveInsuranceClaim,
+          onSuccess: _saveClaim,
         ),
       ),
     );
@@ -310,9 +310,9 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
   /// service booking (delivery_partner_id, pickup/dropoff address,
   /// delivery_stage, pickup/return OTP columns), always assigned to
   /// delivery partner 3 and to newexpert_care. See
-  /// web/deliverydashboard.html and insurance_claim_details_screen.dart
+  /// web/deliverydashboard.html and claim_details_screen.dart
   /// for how those columns get driven afterwards.
-  Future<void> _saveInsuranceClaim(String orderId, String paymentId) async {
+  Future<void> _saveClaim(String orderId, String paymentId) async {
     final user = _supabase.auth.currentUser;
     if (user == null) return;
 
@@ -326,7 +326,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
           '${DateTime.now().millisecondsSinceEpoch}-${secureStorageToken()}';
       final defaultAddr = await AddressService().getDefaultAddress();
       final deliveryPartnerId =
-          await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('insurance_claims');
+          await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('claim_table');
 
       setState(() => uploadStatus = 'Uploading RC Copy...');
       final rcUrl = await _uploadFile(
@@ -353,10 +353,10 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
           damagePhotoFile!, 'damage-photos', 'claim-$claimId-damage.jpg');
 
       setState(() => uploadStatus = 'Saving claim details...');
-      await _supabase.from('insurance_claims').insert({
+      await _supabase.from('claim_table').insert({
         'user_id': user.id,
         'vehicle_id': widget.vehicleId,
-        'assigned_to_admin_id': INSURANCE_ADMIN_USERNAME,
+        'assigned_to_admin_id': CLAIM_ADMIN_USERNAME,
         'claim_status': 'submitted',
         'damage_description': _damageDescriptionController.text.trim(),
         'rc_copy_url': rcUrl,
@@ -366,7 +366,12 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
         'insurance_copy_url': insuranceUrl,
         'damage_photo_url': photoUrl,
         'has_unread_update': true,
-        'created_at': DateTime.now().toIso8601String(),
+        // .toUtc() matters here: a naive local (IST) timestamp with no
+        // offset gets stored into this timestamptz column as if it were
+        // already UTC, making the row look ~5.5 hours old the moment
+        // it's created — which is exactly what broke the 2-minute cancel
+        // window (it read as ~331 minutes remaining instead of ~2).
+        'created_at': DateTime.now().toUtc().toIso8601String(),
         // Doorstep pickup/drop — same shape as 'bookings'.
         'delivery_partner_id': deliveryPartnerId,
         'pickupdrop': 'yes',
@@ -394,7 +399,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
         ErrorDisplay.showPremiumError(
           context,
           error: e,
-          customMessage: 'Could not submit your insurance claim. Please try again.',
+          customMessage: 'Could not submit your claim. Please try again.',
         );
       }
     } finally {
@@ -435,7 +440,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Your insurance claim has been submitted and assigned to our '
+                'Your claim has been submitted and assigned to our '
                 'partner garage. A delivery partner will reach out to pick up '
                 'your vehicle — you\'ll get updates at every step.',
                 textAlign: TextAlign.center,
@@ -485,7 +490,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
         content: Text(
           'Everything you upload here — your RC copy, driving license, Aadhaar, '
           'PAN, insurance copy, and damage photo — is used only to get your '
-          'insurance claim submitted and processed. Nothing is shared or used '
+          'claim submitted and processed. Nothing is shared or used '
           'for any other purpose.',
           textAlign: TextAlign.center,
           style: TextStyle(color: AppColors.mut, fontSize: 13, height: 1.5),
@@ -612,7 +617,7 @@ class _InsuranceClaimScreenState extends State<InsuranceClaimScreen> {
         backgroundColor: AppColors.surfaceRaised,
         elevation: 0,
         title: Text(
-          'File Insurance Claim',
+          'File a Claim',
           style: TextStyle(
             color: AppColors.txt,
             fontSize: 20,
@@ -860,14 +865,14 @@ class _HowItWorksCard extends StatelessWidget {
 /// The doc-upload/photo/description sheet opened from UPLOAD DOCUMENTS &
 /// FILE CLAIM — kept as a plain function-returning widget (not its own
 /// StatefulWidget) since all the actual file state lives on
-/// _InsuranceClaimScreenState; [setSheetState] is what makes picking a
+/// _ClaimScreenState; [setSheetState] is what makes picking a
 /// file inside this sheet actually repaint it (a modal bottom sheet's
 /// route isn't a descendant of the screen's Element tree, so the
 /// screen's own setState alone wouldn't rebuild this content).
 class _UploadSheetContent extends StatelessWidget {
   const _UploadSheetContent({required this.state, required this.setSheetState});
 
-  final _InsuranceClaimScreenState state;
+  final _ClaimScreenState state;
   final void Function(void Function()) setSheetState;
 
   @override
@@ -1043,7 +1048,7 @@ class _UploadSheetContent extends StatelessWidget {
                               padding: const EdgeInsets.only(top: 12),
                               child: Text(
                                 'I consent to sharing these documents with the insurer and garage '
-                                'partner solely to process this insurance claim.',
+                                'partner solely to process this claim.',
                                 style: TextStyle(color: AppColors.mut, fontSize: 12, height: 1.5),
                               ),
                             ),

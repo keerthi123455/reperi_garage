@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Assigns each new booking to a delivery partner — hardcoded to exactly
 /// three, split by booking type, rather than a dynamic pool, per how the
 /// delivery partner program currently works:
-///  - 'inspection_booking', 'pollution_booking' and 'insurance_claims'
+///  - 'inspection_booking', 'pollution_booking' and 'claim_table'
 ///    always go to partner 3 (a dedicated partner for these doorstep
 ///    services with no vehicle-type rotation of their own).
 ///  - Everything else ('bookings') alternates between partners 1 and 2 —
@@ -15,7 +15,7 @@ class DeliveryPartnerAssignmentService {
   static const _dedicatedPartnerTables = {
     'inspection_booking',
     'pollution_booking',
-    'insurance_claims',
+    'claim_table',
   };
   static const _dedicatedPartnerId = 3;
 

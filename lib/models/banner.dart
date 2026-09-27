@@ -26,7 +26,7 @@ const List<String> kServiceBanners = [
   'assets/images/detailing.jpeg',
   'assets/images/dent.jpeg',
   'assets/images/carspa.jpeg',
-  'assets/images/insurance.jpeg',
+  'assets/images/claim.jpeg',
 ];
 
 /// The single promo banner shown under "Keep your car showroom-new

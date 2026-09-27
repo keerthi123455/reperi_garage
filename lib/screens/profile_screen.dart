@@ -176,7 +176,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // ── Check if vehicle has any active/ongoing engagement ──
   // Blocks deletion while a service booking, pollution/inspection pickup,
-  // insurance claim, or subscription is still in progress for this
+  // claim, or subscription is still in progress for this
   // vehicle — losing the vehicle mid-service would orphan whatever's
   // already underway.
   Future<bool> _checkActiveService(String vehicleId) async {
@@ -267,7 +267,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     // A claim is only "done" once approved or rejected.
     if (await latestRowIsActive(
-      table: 'insurance_claims',
+      table: 'claim_table',
       statusColumn: 'claim_status',
       isActive: (s) => s != 'approved' && s != 'rejected',
     )) {

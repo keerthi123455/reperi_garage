@@ -558,13 +558,13 @@
 
         const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // 'bookings' and 'insurance_claims' (insurance_claim_screen.dart's
+        // 'bookings' and 'claim_table' (claim_screen.dart's
         // paid doorstep pickup/garage/return claim) both have a real
         // garage-wait leg — the garage's own MARK AS DONE gates the
         // return trip. pollution_booking/inspection_booking don't have an
         // admin app of their own, so they skip straight from 'to_garage'
         // to 'delivered' with no such gate.
-        const hasGarageLeg = (b) => b.sourceTable === 'bookings' || b.sourceTable === 'insurance_claims';
+        const hasGarageLeg = (b) => b.sourceTable === 'bookings' || b.sourceTable === 'claim_table';
 
         // The fixed pickup/drop stage sequence a delivery partner drives a
         // booking through. null (not in this list) means "booked, nothing
@@ -743,8 +743,8 @@
             const bookingsContent = document.getElementById('bookingsContent');
 
             try {
-                const [bookingsRes, pollutionRes, inspectionRes, insuranceRes] = await Promise.all([
-                    // 'bookings' and 'insurance_claims' both join the
+                const [bookingsRes, pollutionRes, inspectionRes, claimRes] = await Promise.all([
+                    // 'bookings' and 'claim_table' both join the
                     // assigned garage's own location — that's what the
                     // return trip (picking the finished car back up FROM
                     // the garage) navigates to. pollution_booking/
@@ -755,11 +755,11 @@
                         .eq('delivery_partner_id', partnerId),
                     sbClient.from('pollution_booking').select('*').eq('delivery_partner_id', partnerId),
                     sbClient.from('inspection_booking').select('*').eq('delivery_partner_id', partnerId),
-                    // insurance_claims (insurance_claim_screen.dart) is now
+                    // claim_table (claim_screen.dart) is now
                     // a full doorstep pickup/garage/return trip just like
                     // 'bookings', driven the same way here — see
                     // stageOrderFor/renderStageBlock/navigateTargetFor.
-                    sbClient.from('insurance_claims')
+                    sbClient.from('claim_table')
                         .select('*, admin:assigned_to_admin_id(username, latitude, longitude)')
                         .eq('delivery_partner_id', partnerId),
                 ]);
@@ -767,7 +767,7 @@
                 if (bookingsRes.error) throw bookingsRes.error;
                 if (pollutionRes.error) throw pollutionRes.error;
                 if (inspectionRes.error) throw inspectionRes.error;
-                if (insuranceRes.error) throw insuranceRes.error;
+                if (claimRes.error) throw claimRes.error;
 
                 const normalize = (rows, typeLabel, defaultTitle, sourceTable) => (rows || []).map((r) => ({
                     sourceTable,
@@ -797,8 +797,8 @@
                     pickupOtpVerifiedAt: r.pickup_otp_verified_at || null,
                     returnOtpCode: r.return_otp_code || null,
                     returnOtpVerifiedAt: r.return_otp_verified_at || null,
-                    // Set on 'bookings' (booking_status) or 'insurance_claims'
-                    // (claim_status, via insurance_claim_details_screen.dart's
+                    // Set on 'bookings' (booking_status) or 'claim_table'
+                    // (claim_status, via claim_details_screen.dart's
                     // own MARK AS DONE) — both flip to 'Ready for Pickup'
                     // once the garage finishes the work.
                     bookingStatus: r.booking_status || r.claim_status || null,
@@ -822,7 +822,7 @@
                     ...normalize(bookingsRes.data, 'Service Booking', 'Service Booking', 'bookings'),
                     ...normalize(pollutionRes.data, 'Pollution Certificate', 'Pollution Certificate Check', 'pollution_booking'),
                     ...normalize(inspectionRes.data, 'Vehicle Health Check', 'Vehicle Health Check', 'inspection_booking'),
-                    ...normalize(insuranceRes.data, 'Insurance Claim', 'Insurance Claim', 'insurance_claims'),
+                    ...normalize(claimRes.data, 'Claim Assistance', 'Claim Assistance', 'claim_table'),
                 ];
 
                 all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
@@ -977,7 +977,7 @@
         // — the partner already dropped the vehicle off; this is the wait
         // for the garage itself to finish the work (bookingStatus becomes
         // 'Ready for Pickup' via booking_details_screen.dart's or
-        // insurance_claim_details_screen.dart's own MARK AS DONE) before
+        // claim_details_screen.dart's own MARK AS DONE) before
         // "Picked Up" (from the garage) unlocks.
         function renderGarageWaitBlock(b) {
             if (b.bookingStatus === 'Ready for Pickup') {

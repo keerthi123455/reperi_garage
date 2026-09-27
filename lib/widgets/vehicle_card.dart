@@ -219,15 +219,20 @@ class _VehiclePhoto extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasPhoto = url != null && url!.isNotEmpty;
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: VehicleCard._photoSize,
-        height: VehicleCard._photoSize,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            hasPhoto
+    return SizedBox(
+      width: VehicleCard._photoSize,
+      height: VehicleCard._photoSize,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          GestureDetector(
+            // With a photo already there, tapping the circle views it full
+            // screen (zoomable) instead of immediately jumping to the
+            // camera/gallery picker — that's now the "+" badge's job below,
+            // so changing the photo is still one tap away, just no longer
+            // the only thing tapping the photo can do.
+            onTap: hasPhoto ? () => _showVehiclePhotoViewer(context, url!) : onTap,
+            child: hasPhoto
                 ? ClipOval(
                     child: Image.network(
                       url!,
@@ -244,10 +249,14 @@ class _VehiclePhoto extends StatelessWidget {
                     label: 'CAR PHOTO',
                     borderRadius: VehicleCard._photoSize / 2,
                   ),
-            // Gold "+" badge signals the photo circle is tappable.
-            Positioned(
-              bottom: -2,
-              right: -2,
+          ),
+          // Gold "+" badge — always opens the camera/gallery picker,
+          // regardless of whether a photo already exists.
+          Positioned(
+            bottom: -2,
+            right: -2,
+            child: GestureDetector(
+              onTap: onTap,
               child: Container(
                 width: 22,
                 height: 22,
@@ -259,11 +268,68 @@ class _VehiclePhoto extends StatelessWidget {
                 child: Icon(Symbols.add, size: 14, color: AppColors.onAccentDark, weight: 700),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
+
+/// Fullscreen pinch-to-zoom viewer for a vehicle's photo — same look as
+/// vehicle_bookings_screen.dart's before/after wash-photo viewer, just
+/// standalone here since VehicleCard is a separate widget with no access
+/// to that screen's private method.
+void _showVehiclePhotoViewer(BuildContext context, String imageUrl) {
+  showDialog(
+    context: context,
+    barrierColor: Colors.black.withOpacity(0.9),
+    builder: (context) => Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.all(0),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            color: Colors.black.withOpacity(0.85),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Vehicle Photo',
+                  style: TextStyle(
+                    color: Color(0xFFD4A017),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Icon(Icons.close_rounded, color: Colors.white, size: 26),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: InteractiveViewer(
+              minScale: 1,
+              maxScale: 5,
+              child: Center(
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Icon(
+                    Icons.image_not_supported,
+                    color: AppColors.mut,
+                    size: 64,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _ActiveSubBadge extends StatelessWidget {
@@ -278,7 +344,7 @@ class _ActiveSubBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(5),
       ),
       child: Text(
-        'ACTIVE SUB',
+        'WASH PLAN',
         style: GoogleFonts.manrope(
           fontSize: 8.5,
           fontWeight: FontWeight.w700,
@@ -464,7 +530,7 @@ class _ServiceBadgeState extends State<_ServiceBadge> with SingleTickerProviderS
   }
 }
 
-/// The red "update from garage/washer/delivery/insurance" bell badge,
+/// The red "update from garage/washer/delivery/claim" bell badge,
 /// overlaid on the card's bottom-right corner — deliberately bigger than
 /// [_ServiceBadge]'s spanner (34px core vs. 28px) since a new update needs
 /// to be the first thing that catches your eye on the tile. Goes off (see

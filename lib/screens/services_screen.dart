@@ -11,7 +11,7 @@ import 'car_spa_screen.dart';
 import 'denting_tinkering_screen.dart';
 import 'detailing_packages_screen.dart';
 import 'fleet_management_screen.dart';
-import 'insurance_claim_screen.dart';
+import 'claim_screen.dart';
 import 'paint_care_package_screen.dart';
 import 'paint_care_screen.dart';
 import 'payment_screen.dart';
@@ -34,7 +34,7 @@ typedef _ScreenBuilder = Widget Function(Map<String, dynamic>? vehicle, {String?
 /// One bookable line item in the unified catalog — every tier from every
 /// package screen in the app (Servicing, Washing, Wheel Management, Paint
 /// Care Package, Tyre Care, Book Service, Paint Care, Denting & Tinkering,
-/// Car Spa, Detailing, Insurance, Subscriptions, Roadside Assistance),
+/// Car Spa, Detailing, Claim Assistance, Monthly Wash, Roadside Assistance),
 /// flattened so it's all searchable and browsable from one screen.
 class _Package {
   final String category;
@@ -85,7 +85,7 @@ const Map<String, Color> _kCategoryAccent = {
   'Wheels & Tyres': Color(0xFFFF8A65),
   'Paint & Body': Color(0xFFBA68C8),
   'Premium Detailing': Color(0xFFD4A017),
-  'Insurance': Color(0xFF66BB6A),
+  'Claim Assistance': Color(0xFF66BB6A),
   'Monthly Wash': Color(0xFFFFB74D),
   'Roadside Assistance': Color(0xFFEF5350),
   'Business Solutions': Color(0xFF90A4AE),
@@ -97,7 +97,7 @@ const Map<String, IconData> _kCategoryIcon = {
   'Wheels & Tyres': Icons.tire_repair_rounded,
   'Paint & Body': Icons.format_paint_rounded,
   'Premium Detailing': Icons.auto_awesome_rounded,
-  'Insurance': Icons.verified_user_rounded,
+  'Claim Assistance': Icons.verified_user_rounded,
   'Monthly Wash': Icons.subscriptions_rounded,
   'Roadside Assistance': Icons.support_agent_rounded,
   'Business Solutions': Icons.business_rounded,
@@ -109,7 +109,7 @@ const List<String> _kCategoryOrder = [
   'Wheels & Tyres',
   'Paint & Body',
   'Premium Detailing',
-  'Insurance',
+  'Claim Assistance',
   'Monthly Wash',
   'Roadside Assistance',
   'Business Solutions',
@@ -337,7 +337,7 @@ Widget _denting(Map<String, dynamic>? v, {String? highlightPackage}) =>
     DentingTinkeringScreen(vehicle: v ?? const {'id': ''}, highlightPackage: highlightPackage);
 Widget _detailing(Map<String, dynamic>? v, {String? highlightPackage}) =>
     DetailingPackagesScreen(highlightPackage: highlightPackage);
-Widget _insurance(Map<String, dynamic>? v, {String? highlightPackage}) => InsuranceClaimScreen(
+Widget _claim(Map<String, dynamic>? v, {String? highlightPackage}) => ClaimScreen(
       vehicleId: v?['id']?.toString() ?? '',
       carModel: (v?['car_model'] ?? '').toString(),
       carBrand: (v?['car_brand'] ?? '').toString(),
@@ -768,15 +768,15 @@ final List<_Package> _kCatalog = [
     directBook: false,
   ),
 
-  // ── Insurance ─────────────────────────────────────────────────────────
+  // ── Claim Assistance ─────────────────────────────────────────────────────
   const _Package(
-    category: 'Insurance',
-    name: 'Insurance Claim Assistance',
+    category: 'Claim Assistance',
+    name: 'Claim Assistance',
     price: 'Free Consultation',
     duration: 'As per claim',
     tagline: 'Cashless accident assistance — we handle the paperwork with your insurer.',
     features: ['Cashless claim assistance', 'Document pickup & digital submission', 'Approved garage network', 'End-to-end claim status tracking'],
-    screenBuilder: _insurance,
+    screenBuilder: _claim,
     directBook: false,
   ),
 

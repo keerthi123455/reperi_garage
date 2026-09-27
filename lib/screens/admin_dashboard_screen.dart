@@ -5,7 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'booking_details_screen.dart';
 import 'fleet_request_details_screen.dart';
-import 'insurance_claim_details_screen.dart';
+import 'claim_details_screen.dart';
 import 'login_screen.dart';
 import '../services/push_notification_service.dart';
 import '../widgets/error_display.dart';
@@ -22,7 +22,7 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List bookings = [];
   List fleetRequests = [];
-  List insuranceClaims = [];
+  List claims = [];
   Set<String> unreadBookingIds = {};
   String adminUsername = '';
 
@@ -93,10 +93,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             .order('created_at', ascending: false)
         : [];
 
-    // Only fetch insurance claims if admin is newexpert_care
-    final insuranceResponse = adminUsername == 'newexpert_care'
+    // Only fetch claims if admin is newexpert_care
+    final claimsResponse = adminUsername == 'newexpert_care'
         ? await supabase
-            .from('insurance_claims')
+            .from('claim_table')
             .select('*')
             .eq('assigned_to_admin_id', 'newexpert_care')
             .order('created_at', ascending: false)
@@ -118,7 +118,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     setState(() {
       bookings = clientResponse;
       fleetRequests = fleetResponse;
-      insuranceClaims = insuranceResponse;
+      claims = claimsResponse;
       unreadBookingIds = unreadIds;
       this.adminUsername = adminUsername;
       loading = false;
@@ -202,13 +202,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           (fleet['status'] ?? '').toString().toLowerCase().contains(query);
     }).toList();
 
-    final filteredInsuranceClaims = insuranceClaims;
+    final filteredClaims = claims;
 
-    final activeList = selectedTab == 0 
-        ? filteredBookings 
+    final activeList = selectedTab == 0
+        ? filteredBookings
         : selectedTab == 1
             ? filteredFleet
-            : filteredInsuranceClaims;
+            : filteredClaims;
 
     return Scaffold(
       backgroundColor: const Color(0xFF262626),
@@ -247,7 +247,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'CLIENT'),
           BottomNavigationBarItem(
               icon: Icon(Icons.local_shipping), label: 'FLEET'),
-          BottomNavigationBarItem(icon: Icon(Icons.shield), label: 'INSURANCE'),
+          BottomNavigationBarItem(icon: Icon(Icons.shield), label: 'CLAIMS'),
         ],
       ),
       body: loading
@@ -267,7 +267,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                     ? 'No Bookings Found'
                                     : selectedTab == 1
                                         ? 'No Fleet Requests Found'
-                                        : 'No Insurance Claims Found',
+                                        : 'No Claims Found',
                                 style: const TextStyle(
                                     color: Colors.white54, fontSize: 18),
                               ),
@@ -283,7 +283,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                   } else if (selectedTab == 1) {
                                     return _buildFleetCard(activeList[index]);
                                   } else {
-                                    return _buildInsuranceClaimCard(activeList[index]);
+                                    return _buildClaimCard(activeList[index]);
                                   }
                                 },
                               ),
@@ -332,6 +332,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Widget _buildClientCard(Map booking) {
     final status = (booking['booking_status'] ?? 'PENDING').toString().toUpperCase();
     final hasUnread = unreadBookingIds.contains(booking['id'].toString());
+    // The vehicle a booking points to can be gone (deleted since the
+    // booking was made) — the search filter above already accounts for
+    // that, so this card has to as well instead of assuming it's there.
     final vehicle = booking['vehicles'] as Map?;
 
     Color statusColor;
@@ -400,7 +403,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${vehicle?['car_brand'] ?? ''} ${vehicle?['car_model'] ?? ''}',
+                        vehicle != null
+                            ? '${vehicle['car_brand']} ${vehicle['car_model']}'
+                            : 'Vehicle unavailable',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 20,
@@ -423,7 +428,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  (vehicle?['car_number'] ?? 'N/A').toString().toUpperCase(),
+                  (vehicle?['car_number'] ?? '—').toString().toUpperCase(),
                   style: const TextStyle(
                     color: Color(0xFFD4A017),
                     fontSize: 16,
@@ -453,8 +458,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ],
             ),
             const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -472,6 +477,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 8),
                 const Row(
                   children: [
                     Text(
@@ -660,7 +666,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Widget _buildInsuranceClaimCard(Map claim) {
+  Widget _buildClaimCard(Map claim) {
     final status = (claim['claim_status'] ?? 'SUBMITTED').toString().toUpperCase();
     final emoji = _getStatusEmoji((claim['claim_status'] ?? 'submitted').toString());
     final vehicleId = claim['vehicle_id'] ?? 'Unknown';
@@ -670,7 +676,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => InsuranceClaimDetailsScreen(
+            builder: (_) => ClaimDetailsScreen(
               claimId: claim['id'],
               adminUsername: adminUsername,
             ),
@@ -703,7 +709,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Insurance Claim',
+                        'Claim Assistance',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -754,7 +760,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Submitted: ${DateTime.parse(claim['created_at']).toString().split('.')[0]}',
+              'Submitted: ${claim['created_at'] != null ? DateTime.tryParse(claim['created_at'].toString())?.toString().split('.')[0] ?? 'Unknown' : 'Unknown'}',
               style: TextStyle(
                 color: Colors.grey.withOpacity(0.7),
                 fontSize: 10,

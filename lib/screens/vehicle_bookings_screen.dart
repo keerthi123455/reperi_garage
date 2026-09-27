@@ -68,8 +68,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
   List bookings = [];
   Set<String> unreadBookingIds = {};
-  List insuranceUpdates = [];
-  List insuranceClaims = [];
+  List claimUpdates = [];
+  List claims = [];
   List washHistory = [];
   List pollutionBookings = [];
   List inspectionBookings = [];
@@ -78,7 +78,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   // it, which already degrade silently) — drives a retry screen instead of
   // leaving the loading spinner stuck forever.
   bool _loadError = false;
-  bool _insuranceExpanded = false;
+  bool _claimsExpanded = false;
   bool _subscriptionExpanded = false;
   Map subscription = {};
 
@@ -110,12 +110,14 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   }
 
   // ── Cancel window ──────────────────────────────────────────────────
-  // Services, pollution, inspection, and insurance claim bookings can all
+  // Services, pollution, and inspection bookings can all
   // be cancelled for _cancelWindow after they're placed — cancelling
   // deletes the record outright (see _showCancelFlow) rather than just
   // flagging it, so there's no "already cancelled" state to check for
   // here; once gone, it simply stops appearing in these lists.
-  // Subscriptions deliberately have no cancel option at all.
+  // Subscriptions and claims deliberately have no cancel option at all —
+  // see _anyCancellable and the claim card, which never call
+  // _isCancellable/_buildCancelWindow.
   static const Duration _cancelWindow = Duration(minutes: 2);
   Timer? _cancelTicker;
 
@@ -135,6 +137,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       fetchBookings();
       fetchPollutionBookings();
       fetchInspectionBookings();
+      fetchClaims();
     });
   }
 
@@ -154,8 +157,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   bool get _anyCancellable =>
       bookings.any((b) => _isCancellable(b)) ||
       pollutionBookings.any((b) => _isCancellable(b)) ||
-      inspectionBookings.any((b) => _isCancellable(b)) ||
-      insuranceClaims.any((b) => _isCancellable(b));
+      inspectionBookings.any((b) => _isCancellable(b));
 
   void _syncCancelTicker() {
     if (_anyCancellable && _cancelTicker == null) {
@@ -177,8 +179,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   void initState() {
     super.initState();
     fetchBookings();
-    fetchInsuranceUpdates();
-    fetchInsuranceClaims();
+    fetchClaimUpdates();
+    fetchClaims();
     fetchSubscription();
     fetchWashHistory();
     fetchPollutionBookings();
@@ -314,8 +316,18 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       return true;
     }
 
+    // Same shape as 'bookings' — claim_status is what MARK AS DONE
+    // (claim_details_screen.dart) and the return OTP verify
+    // above both drive, independent of delivery_stage.
+    if (await latestRowIsActiveUnlessReturned(
+      table: 'claim_table',
+      statusColumn: 'claim_status',
+    )) {
+      return true;
+    }
+
     if (await latestRowIsActive(
-      table: 'insurance_claims',
+      table: 'claim_table',
       statusColumn: 'claim_status',
       isActive: (s) => s != 'approved' && s != 'rejected',
     )) {
@@ -1035,19 +1047,19 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     }
   }
 
-  Future<void> fetchInsuranceUpdates() async {
+  Future<void> fetchClaimUpdates() async {
     try {
       final supabase = Supabase.instance.client;
 
-      // Get all insurance claims for this vehicle
+      // Get all claims for this vehicle
       final claimsResponse = await supabase
-          .from('insurance_claims')
+          .from('claim_table')
           .select('id')
           .eq('vehicle_id', widget.vehicleId);
 
       if ((claimsResponse as List).isEmpty) {
         if (!mounted) return;
-        setState(() => insuranceUpdates = []);
+        setState(() => claimUpdates = []);
         return;
       }
 
@@ -1057,7 +1069,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
       // Get all updates for these claims
       final updatesResponse = await supabase
-          .from('insurance_claims_updates')
+          .from('claim_table_updates')
           .select('*')
           .inFilter('claim_id', claimIds)
           .order('created_at', ascending: false);
@@ -1065,30 +1077,30 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       if (!mounted) return;
 
       setState(() {
-        insuranceUpdates = updatesResponse;
+        claimUpdates = updatesResponse;
       });
     } catch (e) {
-      debugPrint('Error fetching insurance updates: $e');
+      debugPrint('Error fetching claim updates: $e');
     }
   }
 
   /// The claims themselves, shown as their own cards (status + submitted
-  /// date + cancel window) — separate from fetchInsuranceUpdates() above,
+  /// date + cancel window) — separate from fetchClaimUpdates() above,
   /// which only pulls the update/comment feed for claims that already
   /// exist.
-  Future<void> fetchInsuranceClaims() async {
+  Future<void> fetchClaims() async {
     try {
       final response = await Supabase.instance.client
-          .from('insurance_claims')
+          .from('claim_table')
           .select('*')
           .eq('vehicle_id', widget.vehicleId)
           .order('created_at', ascending: false);
 
       if (!mounted) return;
-      setState(() => insuranceClaims = response as List);
+      setState(() => claims = response as List);
       _syncCancelTicker();
     } catch (e) {
-      debugPrint('Error fetching insurance claims: $e');
+      debugPrint('Error fetching claims: $e');
     }
   }
 
@@ -1172,7 +1184,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   Future<void> _showCancelFlow({
     required Map record,
     required String table,
-    required String bookingType, // 'service' | 'pollution' | 'inspection' | 'insurance'
+    required String bookingType, // 'service' | 'pollution' | 'inspection' | 'claim'
     required String title,
     String? price,
   }) async {
@@ -1198,8 +1210,17 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser;
 
+      // booking_cancellations.booking_type predates the Insurance Claim ->
+      // Claim Assistance rename and almost certainly still only accepts
+      // the original set of values (likely a fixed/enum column) — sending
+      // the new 'claim' label here 400s the insert (confirmed via the
+      // Supabase API logs). Map it back to the value that column already
+      // recognizes; 'claim' is still used for every in-app routing
+      // decision below (which fetch functions to re-run after cancelling).
+      final dbBookingType = bookingType == 'claim' ? 'insurance' : bookingType;
+
       await supabase.from('booking_cancellations').insert({
-        'booking_type': bookingType,
+        'booking_type': dbBookingType,
         'booking_id': record['id'],
         'user_id': user?.id,
         'vehicle_id': widget.vehicleId,
@@ -1219,9 +1240,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
         case 'inspection':
           await fetchInspectionBookings();
           break;
-        case 'insurance':
-          await fetchInsuranceClaims();
-          await fetchInsuranceUpdates();
+        case 'claim':
+          await fetchClaims();
+          await fetchClaimUpdates();
           break;
         default:
           await fetchBookings();
@@ -1960,16 +1981,16 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
                     const SizedBox(height: 24),
 
-                    // ── INSURANCE UPDATES SECTION ──
+                    // ── CLAIM UPDATES SECTION ──
                     GestureDetector(
-                      onTap: () => setState(() => _insuranceExpanded = !_insuranceExpanded),
+                      onTap: () => setState(() => _claimsExpanded = !_claimsExpanded),
                       child: Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: AppColors.surfaceRaised,
                           borderRadius: BorderRadius.circular(26),
                           border: Border.all(
-                            color: insuranceUpdates.isNotEmpty
+                            color: claimUpdates.isNotEmpty
                                 ? const Color(0xFFD4A017).withOpacity(0.3)
                                 : AppColors.line,
                           ),
@@ -1981,7 +2002,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 const Text(
-                                  'Insurance Updates',
+                                  'Claim Updates',
                                   style: TextStyle(
                                     color: Color(0xFFD4A017),
                                     fontSize: 14,
@@ -1989,19 +2010,19 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                   ),
                                 ),
                                 Icon(
-                                  _insuranceExpanded
+                                  _claimsExpanded
                                       ? Icons.expand_less
                                       : Icons.expand_more,
                                   color: const Color(0xFFD4A017),
                                 ),
                               ],
                             ),
-                            if (_insuranceExpanded) ...[
+                            if (_claimsExpanded) ...[
                               const SizedBox(height: 16),
-                              if (insuranceUpdates.isEmpty)
+                              if (claimUpdates.isEmpty)
                                 Center(
                                   child: Text(
-                                    'No insurance updates yet',
+                                    'No claim updates yet',
                                     style: TextStyle(
                                       color: AppColors.mut,
                                       fontSize: 13,
@@ -2009,7 +2030,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                   ),
                                 )
                               else
-                                ...insuranceUpdates.map((update) {
+                                ...claimUpdates.map((update) {
                                   return Container(
                                     margin: const EdgeInsets.only(bottom: 16),
                                     padding: const EdgeInsets.all(16),
@@ -2518,10 +2539,10 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       ),
                     ],
 
-                    if (insuranceClaims.isNotEmpty) ...[
+                    if (claims.isNotEmpty) ...[
                       const SizedBox(height: 24),
                       Text(
-                        'Insurance Claims',
+                        'Claims',
                         style: TextStyle(
                           color: AppColors.txt,
                           fontSize: 28,
@@ -2529,7 +2550,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      ...insuranceClaims.map((c) => _buildInsuranceClaimCard(c)),
+                      ...claims.map((c) => _buildClaimCard(c)),
                     ],
 
                     const SizedBox(height: 40),
@@ -2680,14 +2701,17 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     );
   }
 
-  /// A claim from `insurance_claims` shown the same way as a compliance
-  /// card — status, submitted date, and (while inside the window) the
-  /// cancel option — but with no price or delivery tracker, since a claim
-  /// is a document submission, not a pickup/drop booking.
-  Widget _buildInsuranceClaimCard(Map claim) {
+  /// A claim from `claim_table` — since this is now a full doorstep
+  /// pickup/garage/return trip just like a paid 'bookings' service (see
+  /// claim_screen.dart), this shows the exact same
+  /// delivery-stage timeline + pickup/return OTP flow as a regular online
+  /// service booking with pickup/drop, rather than the old plain
+  /// status-only card.
+  Widget _buildClaimCard(Map claim) {
     final status = (claim['claim_status'] ?? 'submitted').toString();
     final dateStr = formatFullDateTime(claim['created_at']);
     final description = (claim['damage_description'] ?? '').toString();
+    final price = claim['package_price']?.toString();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 22),
@@ -2701,7 +2725,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Insurance Claim Assistance',
+            'Claim Assistance',
             style: TextStyle(
               color: AppColors.txt,
               fontSize: 22,
@@ -2709,6 +2733,14 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
             ),
           ),
           const SizedBox(height: 10),
+          if (price != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                price,
+                style: const TextStyle(color: Color(0xFFD4A017), fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
           Text(
             dateStr,
             style: TextStyle(color: AppColors.mut, fontSize: 13),
@@ -2738,13 +2770,37 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
               ),
             ),
           ),
-          if (_isCancellable(claim))
-            _buildCancelWindow(
-              record: claim,
-              table: 'insurance_claims',
-              bookingType: 'insurance',
-              title: 'Insurance Claim Assistance',
+          _DeliveryStageTracker(
+            stage: claim['delivery_stage'],
+            stageTimestamps: {
+              'pickup_started': claim['stage_pickup_started_at'],
+              'picked_up': claim['stage_picked_up_at'],
+              'to_garage': claim['stage_to_garage_at'],
+              'out_for_delivery': claim['stage_out_for_delivery_at'],
+              'delivered': claim['stage_delivered_at'],
+            },
+            createdAt: claim['created_at'],
+            hasGarageLeg: true,
+          ),
+          if (claim['delivery_stage'] == 'pickup_started')
+            _PickupOtpVerification(
+              table: 'claim_table',
+              bookingId: claim['id'],
+              otpCode: claim['pickup_otp_code'] as String?,
+              verifiedAt: claim['pickup_otp_verified_at'],
+              onVerified: fetchClaims,
             ),
+          if (claim['delivery_stage'] == 'out_for_delivery')
+            _ReturnOtpVerification(
+              table: 'claim_table',
+              bookingId: claim['id'],
+              otpCode: claim['return_otp_code'] as String?,
+              verifiedAt: claim['return_otp_verified_at'],
+              partnerLabel: 'your delivery partner',
+              onVerified: fetchClaims,
+            ),
+          // Claims have no cancel option — see _anyCancellable, which no
+          // longer includes `claims` either.
         ],
       ),
     );
@@ -3701,6 +3757,11 @@ class _ReturnOtpVerificationState extends State<_ReturnOtpVerification> {
       };
       if (widget.table == 'bookings' && !deferToPaymentConfirmation) {
         updatePayload['booking_status'] = 'Delivered';
+      } else if (widget.table == 'claim_table') {
+        // claim_table plays the same role 'bookings' does here, just
+        // under its own pre-existing column name (claim_status already
+        // held 'submitted'/'Ready for Pickup' before this OTP existed).
+        updatePayload['claim_status'] = 'Delivered';
       }
 
       final rows = await Supabase.instance.client

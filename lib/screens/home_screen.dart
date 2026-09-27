@@ -47,7 +47,7 @@ import 'fleet_dashboard_screen.dart';
 import 'fleet_login_sheet.dart';
 import 'fleet_management_screen.dart';
 import 'inspection_screen.dart';
-import 'insurance_claim_screen.dart';
+import 'claim_screen.dart';
 import 'login_screen.dart';
 import 'paint_care_package_screen.dart';
 import 'paint_care_screen.dart';
@@ -454,7 +454,7 @@ class _HomeScreenState extends State<HomeScreen> {
       'assets/images/painting.jpeg' => (_) => PaintCareScreen(vehicle: vehicleMap),
       'assets/images/dent.jpeg' => (_) => DentingTinkeringScreen(vehicle: vehicleMap),
       'assets/images/carspa.jpeg' => (_) => CarSpaScreen(vehicle: vehicleMap),
-      'assets/images/insurance.jpeg' => (_) => InsuranceClaimScreen(
+      'assets/images/claim.jpeg' => (_) => ClaimScreen(
           vehicleId: vehicle?.id ?? '',
           carModel: vehicle?.model ?? '',
           carBrand: vehicle?.brand ?? '',
@@ -1092,11 +1092,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                   (_) => PaintCareScreen(vehicle: vehicleMap),
                                 ),
                               );
-                            } else if (service == 'Insurance Claim') {
+                            } else if (service == 'Claim Assistance') {
                               Navigator.push(
                                 context,
                                 premiumPageRoute(
-                                  (_) => InsuranceClaimScreen(
+                                  (_) => ClaimScreen(
                                     vehicleId: vehicle?.id ?? '',
                                     carModel: vehicle?.model ?? '',
                                     carBrand: vehicle?.brand ?? '',
