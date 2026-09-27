@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '/services/payment_service_factory.dart';
-import '/services/payment_service.dart' show PaymentResult;
 import 'home_screen.dart';
 import 'profile_screen.dart';
+import 'vehicle_bookings_screen.dart';
 import 'package:reperi_garage/services/address_service.dart';
 import 'package:reperi_garage/screens/address_management_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -80,6 +80,14 @@ class PaymentScreen extends StatefulWidget {
   /// usual vehicle-type rotation — see AdminAssignmentService.getNextAdminId.
   final String? forcedAdminUsername;
 
+  /// Which section of VehicleBookingsScreen this booking lands in, so the
+  /// success flow below can scroll straight to it — 'bookings' (the
+  /// default `bookings` table insert path, used by every ordinary package
+  /// screen), 'pollution', 'inspection', 'claim', or 'subscription'.
+  /// Screens with a custom [onSuccess] writing to a different table pass
+  /// the matching value explicitly.
+  final String bookingSection;
+
   const PaymentScreen({
     super.key,
     required this.title,
@@ -93,6 +101,7 @@ class PaymentScreen extends StatefulWidget {
     this.forcePickupDropYes = false,
     this.vehicleRequired = true,
     this.forcedAdminUsername,
+    this.bookingSection = 'bookings',
   });
 
   @override
@@ -400,6 +409,51 @@ class _PaymentScreenState extends State<PaymentScreen>
     );
   }
 
+  /// After a successful booking, land the customer on that vehicle's own
+  /// dashboard, scrolled straight to the package they just booked — rather
+  /// than always dumping them back on the home screen. Roadside Assistance
+  /// and the fleet "Pay Now" flow pass an empty [vehicleId] on purpose
+  /// (there's no single vehicle to show a dashboard for), so those still
+  /// fall back to Home.
+  Future<void> _goToBookingDestination() async {
+    if (widget.vehicleId.isEmpty) {
+      _goToHomeScreen();
+      return;
+    }
+
+    String carModel = widget.title;
+    String carBrand = '';
+    String carNumber = '';
+    try {
+      final vehicle = await Supabase.instance.client
+          .from('vehicles')
+          .select('car_model, car_brand, car_number')
+          .eq('id', widget.vehicleId)
+          .single();
+      carModel = (vehicle['car_model'] ?? carModel).toString();
+      carBrand = (vehicle['car_brand'] ?? carBrand).toString();
+      carNumber = (vehicle['car_number'] ?? carNumber).toString();
+    } catch (e) {
+      // Vehicle lookup failed — still worth landing on the dashboard with
+      // whatever we have rather than falling all the way back to Home.
+    }
+
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VehicleBookingsScreen(
+          vehicleId: widget.vehicleId,
+          carModel: carModel,
+          carBrand: carBrand,
+          carNumber: carNumber,
+          highlightSection: widget.bookingSection,
+        ),
+      ),
+      (route) => false,
+    );
+  }
+
   /// Shared success animation + delay + navigation, used by both payment paths
   Future<void> _showSuccessAndGoHome() async {
     setState(() {
@@ -413,7 +467,7 @@ class _PaymentScreenState extends State<PaymentScreen>
 
     if (!mounted) return;
 
-    _goToHomeScreen();
+    await _goToBookingDestination();
   }
 
   /// PATH 1: Pay Online via Razorpay
@@ -436,15 +490,6 @@ class _PaymentScreenState extends State<PaymentScreen>
       isProcessing = true;
     });
 
-    // This try/catch covers only the steps BEFORE Razorpay has actually
-    // charged the customer — creating the order and opening checkout.
-    // EVENT_PAYMENT_SUCCESS (what makes `result.success` true, see
-    // PaymentServiceMobile) only fires once Razorpay has captured the
-    // charge, so nothing in this block can fail after money has moved —
-    // a failure here is safe to show generically and safe to retry by
-    // simply calling placeOnlineOrder() again, since no charge has
-    // happened yet.
-    PaymentResult result;
     try {
       // Package amount plus the doorstep pickup/drop fee if the customer
       // added it — falls back to the raw price string's digits when
@@ -476,7 +521,7 @@ class _PaymentScreenState extends State<PaymentScreen>
 
       // STEP 2: Open Razorpay checkout
       final paymentService = getPaymentService();
-      result = await paymentService.openCheckout(
+      final result = await paymentService.openCheckout(
         orderId: orderId,
         keyId: keyId,
         amountInPaise: amountInPaise,
@@ -495,48 +540,7 @@ class _PaymentScreenState extends State<PaymentScreen>
         );
         return;
       }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        isProcessing = false;
-      });
-      ErrorDisplay.showPremiumError(
-        context,
-        error: e,
-        customMessage: 'Could not place your booking. Please try again.',
-      );
-      return;
-    }
 
-    // From here on the customer HAS been charged. Verification and saving
-    // the booking are isolated in their own try/catch (see
-    // _confirmAndSaveBooking) so a failure in either — verification
-    // returning unverified, or the onSuccess callback / bookings insert
-    // throwing for any reason (dropped network, RLS error, admin/delivery
-    // partner lookup failing) — is never mistaken for a failed charge and
-    // never retried by reopening Razorpay checkout, which would charge
-    // the customer a second time.
-    await _confirmAndSaveBooking(result);
-  }
-
-  /// Verifies the Razorpay signature and then saves the booking (via
-  /// [widget.onSuccess] or the default `bookings` insert). Only ever
-  /// called after Razorpay has already reported a successful charge —
-  /// see the call site in [placeOnlineOrder].
-  ///
-  /// Kept in its own try/catch, separate from the payment-charging flow,
-  /// so a failure here (verification coming back unverified — the charge
-  /// still happened on Razorpay's side, this call just confirms the
-  /// signature — or the save itself throwing) shows an honest "you were
-  /// charged, saving failed" message instead of the generic booking
-  /// error, with a retry that re-runs ONLY this method against the same
-  /// [result] (same orderId/paymentId/signature) rather than opening a
-  /// new Razorpay checkout and charging the customer again.
-  Future<void> _confirmAndSaveBooking(PaymentResult result) async {
-    final supabase = Supabase.instance.client;
-    final user = supabase.auth.currentUser;
-
-    try {
       // STEP 3: Verify payment signature via Edge Function
       final verifyResponse = await supabase.functions.invoke(
         'verify-razorpay-payment',
@@ -554,78 +558,107 @@ class _PaymentScreenState extends State<PaymentScreen>
         throw Exception('Payment verification failed');
       }
 
-      // STEP 4: Record the payment, since it's confirmed real. Fleet
-      // payments use the custom callback; consumer bookings use the
-      // default insert into `bookings`.
-      if (widget.onSuccess != null) {
-        await widget.onSuccess!(result.orderId!, result.paymentId!);
-      } else {
-        // ── Get location and customer details ──
-        final addressService = AddressService();
-        final defaultAddr = await addressService.getDefaultAddress();
+      // STEP 4: Only now record the payment, since it's confirmed real.
+      // Isolated in its own try/catch (rather than sharing the one above)
+      // because Razorpay has already charged the customer by this point —
+      // a failure saving the record (dropped connection, DB hiccup) is a
+      // different situation than a failed payment. It must never be
+      // treated the same way, since tapping "try again" on the generic
+      // failure message would run a brand-new Razorpay checkout and charge
+      // them a second time. Instead this says plainly that the charge went
+      // through, and its retry re-attempts only this save with the same
+      // orderId/paymentId — never a new charge.
+      final orderIdForRecord = result.orderId!;
+      final paymentIdForRecord = result.paymentId!;
 
-        // Get customer details from profiles
-        Map<String, dynamic>? profileData;
+      Future<void> recordBooking() async {
         try {
-          profileData = await supabase
-              .from('profiles')
-              .select('full_name, phone')
-              .eq('id', user!.id)
-              .single();
+          // Fleet payments use the custom callback; consumer bookings use
+          // the default insert into `bookings`.
+          if (widget.onSuccess != null) {
+            await widget.onSuccess!(orderIdForRecord, paymentIdForRecord);
+          } else {
+            // ── Get location and customer details ──
+            final addressService = AddressService();
+            final defaultAddr = await addressService.getDefaultAddress();
+
+            // Get customer details from profiles
+            Map<String, dynamic>? profileData;
+            try {
+              profileData = await supabase
+                  .from('profiles')
+                  .select('full_name, phone')
+                  .eq('id', user!.id)
+                  .single();
+            } catch (e) {
+              // Profile might not exist, continue with null values
+            }
+
+            // Get admin ID — forcedAdminUsername (e.g. Roadside
+            // Assistance -> 'emergency_service') always wins; otherwise scoped
+            // to this vehicle's type (two-wheeler bookings only rotate among
+            // two-wheeler admins, four-wheeler among four-wheeler admins).
+            final assignedAdminId = await AdminAssignmentService.getNextAdminId(
+              vehicleId: widget.vehicleId,
+              forcedAdminUsername: widget.forcedAdminUsername,
+            );
+            // Only assign a delivery partner when there's actually a
+            // pickup/drop for one to handle.
+            final deliveryPartnerId = _pickupDropYes
+                ? await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('bookings')
+                : null;
+
+            await supabase.from('bookings').insert({
+              'user_id': user!.id,
+              'vehicle_id': widget.vehicleId,
+              'package_name': widget.title,
+              'package_price': widget.price,
+              if (_showPickupDrop)
+                'pickupdrop': _addPickupDrop ? 'yes' : 'no'
+              else if (widget.forcePickupDropYes)
+                'pickupdrop': 'yes',
+              if (deliveryPartnerId != null) 'delivery_partner_id': deliveryPartnerId,
+              'razorpay_order_id': orderIdForRecord,
+              'razorpay_payment_id': paymentIdForRecord,
+              'payment_status': 'paid',
+
+              // ── Location Data ──
+              'pickup_address': defaultAddr?['address'] ?? 'Not specified',
+              'pickup_latitude': defaultAddr?['latitude'],
+              'pickup_longitude': defaultAddr?['longitude'],
+              'pickup_address_name': defaultAddr?['name'],
+              'dropoff_address': defaultAddr?['address'] ?? 'Not specified',
+              'dropoff_latitude': defaultAddr?['latitude'],
+              'dropoff_longitude': defaultAddr?['longitude'],
+              'dropoff_address_name': defaultAddr?['name'],
+
+              // ── Customer Details ──
+              'customer_name': profileData?['full_name'] ?? 'Unknown',
+              'customer_phone': profileData?['phone'],
+
+              // Admin Assignment (Load-Balanced)
+              'assigned_to_admin_id': assignedAdminId,
+            });
+          }
+
+          await _showSuccessAndGoHome();
         } catch (e) {
-          // Profile might not exist, continue with null values
+          if (!mounted) return;
+          setState(() {
+            isProcessing = false;
+          });
+          ErrorDisplay.showPremiumError(
+            context,
+            error: e,
+            customMessage:
+                'Your payment went through, but we couldn\'t save your booking (ref: $paymentIdForRecord). Tap retry, or contact support with that reference if it keeps failing.',
+            onRetry: recordBooking,
+          );
         }
-
-        // Get admin ID — forcedAdminUsername (e.g. Roadside
-        // Assistance -> 'emergency_service') always wins; otherwise scoped
-        // to this vehicle's type (two-wheeler bookings only rotate among
-        // two-wheeler admins, four-wheeler among four-wheeler admins).
-        final assignedAdminId = await AdminAssignmentService.getNextAdminId(
-          vehicleId: widget.vehicleId,
-          forcedAdminUsername: widget.forcedAdminUsername,
-        );
-        // Only assign a delivery partner when there's actually a
-        // pickup/drop for one to handle.
-        final deliveryPartnerId = _pickupDropYes
-            ? await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('bookings')
-            : null;
-
-        await supabase.from('bookings').insert({
-          'user_id': user!.id,
-          'vehicle_id': widget.vehicleId,
-          'package_name': widget.title,
-          'package_price': widget.price,
-          if (_showPickupDrop)
-            'pickupdrop': _addPickupDrop ? 'yes' : 'no'
-          else if (widget.forcePickupDropYes)
-            'pickupdrop': 'yes',
-          if (deliveryPartnerId != null) 'delivery_partner_id': deliveryPartnerId,
-          'razorpay_order_id': result.orderId,
-          'razorpay_payment_id': result.paymentId,
-          'payment_status': 'paid',
-
-          // ── Location Data ──
-          'pickup_address': defaultAddr?['address'] ?? 'Not specified',
-          'pickup_latitude': defaultAddr?['latitude'],
-          'pickup_longitude': defaultAddr?['longitude'],
-          'pickup_address_name': defaultAddr?['name'],
-          'dropoff_address': defaultAddr?['address'] ?? 'Not specified',
-          'dropoff_latitude': defaultAddr?['latitude'],
-          'dropoff_longitude': defaultAddr?['longitude'],
-          'dropoff_address_name': defaultAddr?['name'],
-
-          // ── Customer Details ──
-          'customer_name': profileData?['full_name'] ?? 'Unknown',
-          'customer_phone': profileData?['phone'],
-
-          // Admin Assignment (Load-Balanced)
-          'assigned_to_admin_id': assignedAdminId,
-        });
       }
 
-      await _showSuccessAndGoHome();
+      await recordBooking();
     } catch (e) {
-      debugPrint('❌ Error confirming/saving booking after successful charge: $e');
       if (!mounted) return;
       setState(() {
         isProcessing = false;
@@ -633,10 +666,7 @@ class _PaymentScreenState extends State<PaymentScreen>
       ErrorDisplay.showPremiumError(
         context,
         error: e,
-        customMessage: 'Your payment was successful, but we couldn\'t save '
-            'your booking (ref: ${result.paymentId}). Tap retry — you will '
-            'NOT be charged again.',
-        onRetry: () => _confirmAndSaveBooking(result),
+        customMessage: 'Could not place your booking. Please try again.',
       );
     }
   }
@@ -888,11 +918,17 @@ class _PaymentScreenState extends State<PaymentScreen>
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Text(
-                        '${widget.title} booked successfully',
-                        style: const TextStyle(
-                          color: _PayColors.muted,
-                          fontSize: 15,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Text(
+                          '${widget.title} booked successfully',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: _PayColors.navy,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            height: 1.4,
+                          ),
                         ),
                       ),
                     ],

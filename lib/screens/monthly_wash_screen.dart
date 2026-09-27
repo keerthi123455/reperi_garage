@@ -359,6 +359,7 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
                                       vehicleId: widget.vehicleId,
                                       onSuccess: _savePlanToDatabase,
                                       showPickupDropOption: false,
+                                      bookingSection: 'subscription',
                                     ),
                                   ),
                                 );

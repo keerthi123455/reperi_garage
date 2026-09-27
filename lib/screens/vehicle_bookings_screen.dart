@@ -44,12 +44,20 @@ class VehicleBookingsScreen extends StatefulWidget {
   final String carBrand;
   final String carNumber;
 
+  /// Set only right after a fresh booking to scroll straight to it once
+  /// this screen loads — 'bookings' | 'pollution' | 'inspection' | 'claim'
+  /// | 'subscription'. The newest row of that section (index 0, since
+  /// every list here is fetched newest-first) is the one scrolled to.
+  /// Null for a normal visit to this screen (no scroll, no highlight).
+  final String? highlightSection;
+
   const VehicleBookingsScreen({
     super.key,
     required this.vehicleId,
     required this.carModel,
     required this.carBrand,
     required this.carNumber,
+    this.highlightSection,
   });
 
   @override
@@ -81,6 +89,30 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   bool _claimsExpanded = false;
   bool _subscriptionExpanded = false;
   Map subscription = {};
+
+  // ── Scroll-to-new-booking ────────────────────────────────────────────
+  // Set by PaymentScreen right after a successful booking so the customer
+  // lands here already scrolled to the package they just paid for, instead
+  // of having to hunt for it. Only ever fires once per screen visit — after
+  // that the key stays attached (harmless) but _didScrollToHighlight blocks
+  // a second jump on every 15s auto-refresh.
+  final GlobalKey _highlightKey = GlobalKey();
+  bool _didScrollToHighlight = false;
+
+  void _maybeScrollToHighlight(String section) {
+    if (_didScrollToHighlight || widget.highlightSection != section) return;
+    _didScrollToHighlight = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _highlightKey.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeOutCubic,
+        alignment: 0.1,
+      );
+    });
+  }
 
   // ── "NEW SERVICE UPDATE" badge, per booking ─────────────────────────
   // booking_status has no server-side "read" flag (unlike the admin chat's
@@ -1013,6 +1045,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
         setState(() {
           subscription = response;
         });
+        if (subscription.isNotEmpty) _maybeScrollToHighlight('subscription');
       }
     } catch (e) {
       debugPrint('Error fetching subscription: $e');
@@ -1099,6 +1132,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       if (!mounted) return;
       setState(() => claims = response as List);
       _syncCancelTicker();
+      if (claims.isNotEmpty) _maybeScrollToHighlight('claim');
     } catch (e) {
       debugPrint('Error fetching claims: $e');
     }
@@ -1151,6 +1185,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
         _loadError = false;
       });
       _syncCancelTicker();
+      if (bookings.isNotEmpty) _maybeScrollToHighlight('bookings');
       await _loadSeenBookingStatuses();
     } catch (e) {
       // Without this, a failed fetch (no network, RLS hiccup, timeout) left
@@ -1410,6 +1445,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       if (!mounted) return;
       setState(() => pollutionBookings = response as List);
       _syncCancelTicker();
+      if (pollutionBookings.isNotEmpty) _maybeScrollToHighlight('pollution');
     } catch (e) {
       debugPrint('Error fetching pollution bookings: $e');
     }
@@ -1426,6 +1462,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       if (!mounted) return;
       setState(() => inspectionBookings = response as List);
       _syncCancelTicker();
+      if (inspectionBookings.isNotEmpty) _maybeScrollToHighlight('inspection');
     } catch (e) {
       debugPrint('Error fetching inspection bookings: $e');
     }
@@ -1650,6 +1687,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
                     // ── EXPANDABLE SUBSCRIPTION TILE ──
                     GestureDetector(
+                      key: widget.highlightSection == 'subscription' ? _highlightKey : null,
                       onTap: () {
                         setState(() {
                           _subscriptionExpanded = !_subscriptionExpanded;
@@ -2105,7 +2143,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                         ),
                       ),
 
-                    ...bookings.map((booking) {
+                    ...bookings.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final booking = entry.value;
                       final bookingId = booking['id'].toString();
                       final currentStatus = (booking['booking_status'] ?? '').toString();
                       final hasUpdate = currentStatus != 'Pending' &&
@@ -2130,6 +2170,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                           (booking['pickupdrop'] ?? '').toString().toLowerCase() != 'yes';
 
                       return GestureDetector(
+                        key: (widget.highlightSection == 'bookings' && index == 0)
+                            ? _highlightKey
+                            : null,
                         onTap: () {
                           // Viewing the tracking screen IS "seeing" this
                           // booking's current status — snapshot it now so
@@ -2521,20 +2564,26 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      ...pollutionBookings.map(
-                        (b) => _buildComplianceCard(
+                      ...pollutionBookings.asMap().entries.map(
+                        (entry) => _buildComplianceCard(
                           title: 'Pollution Check',
-                          booking: b,
+                          booking: entry.value,
                           table: 'pollution_booking',
                           bookingType: 'pollution',
+                          highlightKey: (widget.highlightSection == 'pollution' && entry.key == 0)
+                              ? _highlightKey
+                              : null,
                         ),
                       ),
-                      ...inspectionBookings.map(
-                        (b) => _buildComplianceCard(
+                      ...inspectionBookings.asMap().entries.map(
+                        (entry) => _buildComplianceCard(
                           title: 'Vehicle Inspection',
-                          booking: b,
+                          booking: entry.value,
                           table: 'inspection_booking',
                           bookingType: 'inspection',
+                          highlightKey: (widget.highlightSection == 'inspection' && entry.key == 0)
+                              ? _highlightKey
+                              : null,
                         ),
                       ),
                     ],
@@ -2550,7 +2599,12 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      ...claims.map((c) => _buildClaimCard(c)),
+                      ...claims.asMap().entries.map((entry) => _buildClaimCard(
+                            entry.value,
+                            highlightKey: (widget.highlightSection == 'claim' && entry.key == 0)
+                                ? _highlightKey
+                                : null,
+                          )),
                     ],
 
                     const SizedBox(height: 40),
@@ -2586,6 +2640,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     required Map booking,
     required String table,
     required String bookingType,
+    Key? highlightKey,
   }) {
     final status = (booking['status'] ?? 'booked').toString();
     final price = (booking['price'] ?? booking['package_price'])?.toString();
@@ -2599,6 +2654,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     final showTimeline = table != 'inspection_booking';
 
     return Container(
+      key: highlightKey,
       margin: const EdgeInsets.only(bottom: 22),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -2707,13 +2763,14 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   /// delivery-stage timeline + pickup/return OTP flow as a regular online
   /// service booking with pickup/drop, rather than the old plain
   /// status-only card.
-  Widget _buildClaimCard(Map claim) {
+  Widget _buildClaimCard(Map claim, {Key? highlightKey}) {
     final status = (claim['claim_status'] ?? 'submitted').toString();
     final dateStr = formatFullDateTime(claim['created_at']);
     final description = (claim['damage_description'] ?? '').toString();
     final price = claim['package_price']?.toString();
 
     return Container(
+      key: highlightKey,
       margin: const EdgeInsets.only(bottom: 22),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(

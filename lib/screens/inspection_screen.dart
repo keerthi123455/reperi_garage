@@ -339,6 +339,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
           vehicleId: widget.vehicleId,
           showPickupDropOption: false,
           onSuccess: _saveInspectionBooking,
+          bookingSection: 'inspection',
         ),
       ),
     );

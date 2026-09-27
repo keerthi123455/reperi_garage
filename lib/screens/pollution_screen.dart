@@ -56,22 +56,7 @@ class _PollutionScreenState extends State<PollutionScreen> {
   }
 
   Future<void> _callSupport() async {
-    final uri = Uri(scheme: 'tel', path: '9353094672');
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open dialer. Please try again.')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open dialer. Please try again.')),
-      );
-    }
+    await launchUrl(Uri(scheme: 'tel', path: '9353094672'));
   }
 
   /// Records the completed booking in its own table rather than the
@@ -119,6 +104,7 @@ class _PollutionScreenState extends State<PollutionScreen> {
           vehicleId: widget.vehicleId,
           showPickupDropOption: false,
           onSuccess: _savePollutionBooking,
+          bookingSection: 'pollution',
         ),
       ),
     );

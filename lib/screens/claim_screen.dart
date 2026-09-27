@@ -300,6 +300,7 @@ class _ClaimScreenState extends State<ClaimScreen> {
           showPickupDropOption: false,
           onlineOnly: true,
           onSuccess: _saveClaim,
+          bookingSection: 'claim',
         ),
       ),
     );
