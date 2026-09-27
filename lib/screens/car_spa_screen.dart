@@ -150,18 +150,23 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
 
       final byKey = {for (final row in rows) row['key'] as String: row};
 
+      // Falls back to the existing hardcoded price/duration on a NULL DB
+      // field (e.g. an admin row with pricing left blank) instead of
+      // storing null into fields that reach PaymentScreen's non-nullable
+      // `required String price`/`duration` — a NULL here used to crash the
+      // app the moment the customer tapped "Proceed".
       setState(() {
         if (byKey['car_spa_quick_refresh'] != null) {
-          packages[0]['price'] = byKey['car_spa_quick_refresh']!['price'];
-          packages[0]['duration'] = byKey['car_spa_quick_refresh']!['duration'];
+          packages[0]['price'] = byKey['car_spa_quick_refresh']!['price'] ?? packages[0]['price'];
+          packages[0]['duration'] = byKey['car_spa_quick_refresh']!['duration'] ?? packages[0]['duration'];
         }
         if (byKey['car_spa_premium'] != null) {
-          packages[1]['price'] = byKey['car_spa_premium']!['price'];
-          packages[1]['duration'] = byKey['car_spa_premium']!['duration'];
+          packages[1]['price'] = byKey['car_spa_premium']!['price'] ?? packages[1]['price'];
+          packages[1]['duration'] = byKey['car_spa_premium']!['duration'] ?? packages[1]['duration'];
         }
         if (byKey['car_spa_signature_plus'] != null) {
-          packages[2]['price'] = byKey['car_spa_signature_plus']!['price'];
-          packages[2]['duration'] = byKey['car_spa_signature_plus']!['duration'];
+          packages[2]['price'] = byKey['car_spa_signature_plus']!['price'] ?? packages[2]['price'];
+          packages[2]['duration'] = byKey['car_spa_signature_plus']!['duration'] ?? packages[2]['duration'];
         }
       });
     } catch (e) {

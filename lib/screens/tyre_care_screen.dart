@@ -199,10 +199,17 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
           if (key == null) continue;
           final row = byKey[key];
           if (row != null) {
-            _packages[i]['price'] = row['price'];
-            _packages[i]['duration'] = row['duration'];
+            // Falls back to the existing hardcoded value on a NULL DB
+            // field (e.g. an admin row with pricing left blank) instead of
+            // storing null into fields _PackageCard renders with a
+            // non-nullable `as String` cast — a NULL here used to crash
+            // the screen on the very next rebuild.
+            _packages[i]['price'] = row['price'] ?? _packages[i]['price'];
+            _packages[i]['duration'] = row['duration'] ?? _packages[i]['duration'];
             _packages[i]['description'] = row['details'] ?? _packages[i]['description'];
-            _packages[i]['features'] = List<String>.from(row['services']);
+            if (row['services'] != null) {
+              _packages[i]['features'] = List<String>.from(row['services']);
+            }
           }
         }
       });
@@ -224,22 +231,7 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
   }
 
   Future<void> _callExpert() async {
-    final uri = Uri.parse('tel:9353094672');
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open dialer. Please try again.')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open dialer. Please try again.')),
-      );
-    }
+    await launchUrl(Uri.parse('tel:9353094672'));
   }
 
   /// This is a custom-quote request, not a fixed price — there is no

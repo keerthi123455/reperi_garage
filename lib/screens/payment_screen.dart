@@ -568,6 +568,26 @@ class _PaymentScreenState extends State<PaymentScreen>
       // them a second time. Instead this says plainly that the charge went
       // through, and its retry re-attempts only this save with the same
       // orderId/paymentId — never a new charge.
+      // Razorpay's SDK has documented cases where orderId/paymentId come
+      // back null on the success callback even though the charge went
+      // through — force-unwrapping here used to throw straight into the
+      // generic "Could not place your booking" catch below, telling an
+      // already-charged customer their payment failed. Show the honest
+      // "we couldn't save it" message instead, with whatever reference we
+      // do have.
+      if (result.orderId == null || result.paymentId == null) {
+        if (!mounted) return;
+        setState(() {
+          isProcessing = false;
+        });
+        ErrorDisplay.showPremiumError(
+          context,
+          error: Exception('Missing payment reference after a verified payment'),
+          customMessage:
+              'Your payment went through, but we couldn\'t save your booking (ref: ${result.paymentId ?? result.orderId ?? "unavailable"}). Please contact support with that reference.',
+        );
+        return;
+      }
       final orderIdForRecord = result.orderId!;
       final paymentIdForRecord = result.paymentId!;
 

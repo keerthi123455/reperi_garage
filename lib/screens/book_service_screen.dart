@@ -168,10 +168,15 @@ class _BookServiceScreenState
         for (var i = 0; i < keyOrder.length && i < services.length; i++) {
           final row = byKey[keyOrder[i]];
           if (row != null) {
-            services[i]['price'] = row['price'];
-            services[i]['time'] = row['duration'];
+            // Falls back to the existing hardcoded value on a NULL DB
+            // field instead of storing null into fields rendered with a
+            // non-nullable `as String` cast further down this screen.
+            services[i]['price'] = row['price'] ?? services[i]['price'];
+            services[i]['time'] = row['duration'] ?? services[i]['time'];
             services[i]['details'] = row['details'] ?? services[i]['details'];
-            services[i]['features'] = List<String>.from(row['services']);
+            if (row['services'] != null) {
+              services[i]['features'] = List<String>.from(row['services']);
+            }
           }
         }
       });

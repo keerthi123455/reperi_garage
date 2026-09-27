@@ -845,8 +845,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         TextEditingController(text: (vehicle['car_model'] ?? '').toString());
     final carNumberController =
         TextEditingController(text: (vehicle['car_number'] ?? '').toString());
+    // Falls back to 'four_wheeler' for any value that isn't one of
+    // brandsByType's own two keys too (not just null) — this column has no
+    // DB-side enum/CHECK constraint, so a stray value from elsewhere would
+    // otherwise null-check-crash every `brandsByType[selectedVehicleType]!`
+    // below the moment this sheet opens.
+    final rawVehicleType = (vehicle['vehicle_type'] as String?) ?? 'four_wheeler';
     String selectedVehicleType =
-        (vehicle['vehicle_type'] as String?) ?? 'four_wheeler';
+        brandsByType.containsKey(rawVehicleType) ? rawVehicleType : 'four_wheeler';
     String selectedBrand =
         (vehicle['car_brand'] as String?) ?? brandsByType[selectedVehicleType]!.first;
     final carModelFocus = FocusNode();

@@ -200,10 +200,15 @@ class _DentingTinkeringScreenState extends State<DentingTinkeringScreen> {
         for (var i = 0; i < keyOrder.length && i < packages.length; i++) {
           final row = byKey[keyOrder[i]];
           if (row != null) {
-            packages[i]['price'] = row['price'];
-            packages[i]['duration'] = row['duration'];
+            // Falls back to the existing hardcoded value on a NULL DB
+            // field instead of storing null into fields rendered with a
+            // non-nullable `as String` cast further down this screen.
+            packages[i]['price'] = row['price'] ?? packages[i]['price'];
+            packages[i]['duration'] = row['duration'] ?? packages[i]['duration'];
             packages[i]['details'] = row['details'] ?? packages[i]['details'];
-            packages[i]['features'] = List<String>.from(row['services']);
+            if (row['services'] != null) {
+              packages[i]['features'] = List<String>.from(row['services']);
+            }
           }
         }
       });
