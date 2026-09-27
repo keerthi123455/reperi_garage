@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'apple_review_assignment_override.dart';
 
 /// Service for load-balanced admin assignment.
 /// 
@@ -44,6 +45,13 @@ class AdminAssignmentService {
     String? vehicleId,
     String? forcedAdminUsername,
   }) async {
+    // Apple review routing takes priority over everything below,
+    // including forcedAdminUsername — while this is enabled every booking
+    // needs to land on the one demo garage account, not the real
+    // 'emergency_service' admin Roadside Assistance would normally force.
+    final reviewAdminId = await AppleReviewAssignmentOverride.resolveAdminId();
+    if (reviewAdminId != null) return reviewAdminId;
+
     if (forcedAdminUsername != null) {
       return _resolveAdminIdByUsername(forcedAdminUsername);
     }

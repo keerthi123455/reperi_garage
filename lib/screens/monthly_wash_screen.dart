@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../services/address_service.dart';
+import '../services/apple_review_assignment_override.dart';
 import '../widgets/error_display.dart';
 
 class MonthlyWashScreen extends StatefulWidget {
@@ -193,6 +194,14 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
       final planDetails = _getPlanDetails();
       final endDate = DateTime.now().add(const Duration(days: 30));
       final defaultAddr = await AddressService().getDefaultAddress();
+      // No production code assigns a washer to a new subscription at all
+      // today (washer_id is only ever set by hand in Supabase) — this
+      // only fills it in during Apple review, so the demo subscription
+      // shows up on the review washer's dashboard automatically instead
+      // of needing a manual database edit for every test run.
+      final reviewWasherId = await AppleReviewAssignmentOverride.resolveWasherId(
+        customerEmail: user.email,
+      );
 
       await Supabase.instance.client.from('monthlywash_table').insert({
         'user_id': user.id,
@@ -209,6 +218,7 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
         'pickup_latitude': defaultAddr?['latitude'],
         'pickup_longitude': defaultAddr?['longitude'],
         'pickup_address_name': defaultAddr?['name'],
+        if (reviewWasherId != null) 'washer_id': reviewWasherId,
       });
 
       debugPrint('✅ Wash plan saved to database');

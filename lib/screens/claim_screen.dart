@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import '../services/address_service.dart';
+import '../services/apple_review_assignment_override.dart';
 import '../services/delivery_partner_assignment_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
@@ -60,8 +61,10 @@ class _ClaimScreenState extends State<ClaimScreen> {
   // elsewhere in the app.
   bool _consentGiven = false;
 
-  // Constant for claim admin
-  static const String CLAIM_ADMIN_USERNAME = 'newexpert_care';
+  // Constant for claim admin — the 'newexpert_care' admin's actual
+  // admin.id (a uuid), not their username. claim_table.assigned_to_admin_id
+  // is a foreign key to admin.id, so this must be the id, not the name.
+  static const String CLAIM_ADMIN_ID = '1bcf9d81-6625-4c01-ac23-f0c237462eb7';
 
   // Fixed fee for the full doorstep pickup -> garage -> return service —
   // same 3-partner-pool/online-only pattern as pollution/inspection.
@@ -328,6 +331,13 @@ class _ClaimScreenState extends State<ClaimScreen> {
       final defaultAddr = await AddressService().getDefaultAddress();
       final deliveryPartnerId =
           await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('claim_table');
+      // Claims bypass AdminAssignmentService entirely (always going to one
+      // fixed admin instead of rotating), so the Apple review override has
+      // to be checked here directly too — otherwise a claim made during
+      // review would still land on the real CLAIM_ADMIN_ID admin instead
+      // of the demo garage account.
+      final claimAdminId =
+          await AppleReviewAssignmentOverride.resolveAdminId() ?? CLAIM_ADMIN_ID;
 
       setState(() => uploadStatus = 'Uploading RC Copy...');
       final rcUrl = await _uploadFile(
@@ -357,7 +367,7 @@ class _ClaimScreenState extends State<ClaimScreen> {
       await _supabase.from('claim_table').insert({
         'user_id': user.id,
         'vehicle_id': widget.vehicleId,
-        'assigned_to_admin_id': CLAIM_ADMIN_USERNAME,
+        'assigned_to_admin_id': claimAdminId,
         'claim_status': 'submitted',
         'damage_description': _damageDescriptionController.text.trim(),
         'rc_copy_url': rcUrl,

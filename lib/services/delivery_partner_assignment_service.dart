@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'apple_review_assignment_override.dart';
 
 /// Assigns each new booking to a delivery partner — hardcoded to exactly
 /// three, split by booking type, rather than a dynamic pool, per how the
@@ -24,6 +25,13 @@ class DeliveryPartnerAssignmentService {
   /// alternation — or null if the count lookup fails, so callers can fall
   /// back to leaving delivery_partner_id unset rather than guessing.
   static Future<int?> getNextDeliveryPartnerId(String table) async {
+    // Apple review routing takes priority over both the dedicated-partner
+    // and alternating logic below — every doorstep table (bookings,
+    // inspection_booking, pollution_booking, claim_table) needs to reach
+    // the one demo delivery partner while this is enabled.
+    final reviewPartnerId = await AppleReviewAssignmentOverride.resolveDeliveryPartnerId();
+    if (reviewPartnerId != null) return reviewPartnerId;
+
     if (_dedicatedPartnerTables.contains(table)) {
       return _dedicatedPartnerId;
     }

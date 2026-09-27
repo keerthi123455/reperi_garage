@@ -7,6 +7,7 @@ import 'booking_details_screen.dart';
 import 'fleet_request_details_screen.dart';
 import 'claim_details_screen.dart';
 import 'login_screen.dart';
+import '../services/apple_review_assignment_override.dart';
 import '../services/push_notification_service.dart';
 import '../widgets/error_display.dart';
 
@@ -85,20 +86,39 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     final adminUsername = adminData['username'] ?? '';
 
-    // Only fetch fleet requests if admin is haya_autogears
-    final fleetResponse = adminUsername == 'haya_autogears'
+    final isReviewAdmin = AppleReviewAssignmentOverride.enabled &&
+        adminUsername == AppleReviewAssignmentOverride.adminUsername;
+
+    // Fleet requests always go to exactly one admin — haya_autogears
+    // normally, or the review admin while Apple review routing is
+    // enabled. A full swap rather than an addition, since this fetch has
+    // no per-request filter (whoever passes this gate sees every fleet
+    // request that exists) — haya_autogears is meant to stop seeing them
+    // while review mode has this rerouted, not see them alongside the
+    // review admin.
+    final fleetGateUsername = AppleReviewAssignmentOverride.enabled
+        ? AppleReviewAssignmentOverride.adminUsername
+        : 'haya_autogears';
+    final fleetResponse = adminUsername == fleetGateUsername
         ? await supabase
             .from('fleet_pickup_requests')
             .select()
             .order('created_at', ascending: false)
         : [];
 
-    // Only fetch claims if admin is newexpert_care
-    final claimsResponse = adminUsername == 'newexpert_care'
+    // Only fetch claims if admin is newexpert_care (or the review admin —
+    // see isReviewAdmin above). claim_table.assigned_to_admin_id is a
+    // foreign key to admin.id (a uuid) — this used to compare against the
+    // literal username string 'newexpert_care', which matched back when
+    // that column was `text` and stored raw usernames; now that it's a
+    // real uuid FK, it has to compare against that admin's actual id.
+    final claimsResponse = (adminUsername == 'newexpert_care' || isReviewAdmin)
         ? await supabase
             .from('claim_table')
             .select('*')
-            .eq('assigned_to_admin_id', 'newexpert_care')
+            .eq('assigned_to_admin_id', isReviewAdmin
+                ? (await AppleReviewAssignmentOverride.resolveAdminId())!
+                : '1bcf9d81-6625-4c01-ac23-f0c237462eb7')
             .order('created_at', ascending: false)
         : [];
 
