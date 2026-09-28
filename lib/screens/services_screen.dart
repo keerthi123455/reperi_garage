@@ -1380,7 +1380,14 @@ class _ServicesScreenState extends State<ServicesScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.ink,
-      body: CustomScrollView(
+      // Tapping anywhere outside the search field (which handles its own
+      // taps fine, same as buttons/cards below it) dismisses the keyboard
+      // — HitTestBehavior.opaque so empty space between/around slivers
+      // still counts as a tap, not just the widgets drawn on it.
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(child: _buildHero()),
           SliverToBoxAdapter(
@@ -1442,6 +1449,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
               ],
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
+        ),
       ),
       bottomNavigationBar: BottomNavBar(
         currentIndex: 3,

@@ -8,9 +8,11 @@ import 'payment_screen.dart';
 /// deliberately NOT fetched from Supabase, matching the pattern used for
 /// the Servicing screen. Presented as three tabs (Browse / Compare /
 /// Details) instead of one long scroll, with a sticky bottom "BOOK NOW"
-/// bar that goes straight to PaymentScreen — no pickup/drop add-on at all
-/// here, since a doorstep wash is handled entirely by the washer at the
-/// customer's own location (see the PaymentScreen call below).
+/// bar that goes straight to PaymentScreen. EXPRESS WASH / PREMIUM WASH
+/// get no pickup/drop add-on at all — a doorstep wash is handled entirely
+/// by the washer at the customer's own location — but SIGNATURE DETAILING
+/// is a bigger job that still goes through a real garage admin, with the
+/// normal optional pickup/drop toggle (see _goToPayment's _washerOnlyTiers).
 class _Tier {
   final String name;
   final String price;
@@ -179,9 +181,16 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  // No pickup/drop add-on at all for this service — "Book Now" just goes
-  // straight to PaymentScreen with the tier's price.
+  // SIGNATURE DETAILING is a much bigger job than the other two tiers on
+  // this screen (₹2,999 vs ₹299/₹599) — it needs a real garage admin
+  // in the loop, not just a washer, so it goes through the normal
+  // admin + optional pickup/drop flow like any other premium service.
+  // EXPRESS WASH / PREMIUM WASH stay washer-only, handled entirely at the
+  // customer's location with no garage visit at all.
+  static const _washerOnlyTiers = {'EXPRESS WASH', 'PREMIUM WASH'};
+
   void _goToPayment(_Tier tier) {
+    final washerOnly = _washerOnlyTiers.contains(tier.name);
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -190,19 +199,21 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
           price: tier.price,
           duration: '1-2 hrs',
           vehicleId: widget.vehicleId,
-          assignsWasher: true,
+          assignsWasher: washerOnly,
           // A doorstep wash is handled entirely by the washer — no garage
           // admin and no separate delivery partner are involved at all,
-          // in real use or during Apple review.
-          assignsAdmin: false,
-          assignsDeliveryPartner: false,
+          // in real use or during Apple review. Signature Detailing keeps
+          // the normal defaults (admin assigned, pickup/drop optional).
+          assignsAdmin: !washerOnly,
+          assignsDeliveryPartner: !washerOnly,
           // The wash happens at the customer's own location, same as
           // Monthly Wash (which never had this toggle either) — there's no
           // vehicle being taken anywhere, so no pickup/drop option makes
           // sense here. Leaving it on would let a customer pay the +₹100
-          // fee for a pickup that (now that assignsDeliveryPartner is
-          // false) would never actually happen.
-          showPickupDropOption: false,
+          // fee for a pickup that (with assignsDeliveryPartner false)
+          // would never actually happen. Signature Detailing shows the
+          // normal optional toggle instead, same as any other package.
+          showPickupDropOption: !washerOnly,
         ),
       ),
     );

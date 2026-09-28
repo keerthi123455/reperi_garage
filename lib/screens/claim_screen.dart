@@ -153,6 +153,33 @@ class _ClaimScreenState extends State<ClaimScreen> {
     }
   }
 
+  /// Clears a wrongly-attached document/photo so the customer can pick the
+  /// right one again, without needing to close and reopen the whole sheet.
+  void _removeFile(String documentType, void Function(void Function()) setSheetState) {
+    setSheetState(() {
+      switch (documentType) {
+        case 'rc':
+          rcCopyFile = null;
+          break;
+        case 'license':
+          drivingLicenseFile = null;
+          break;
+        case 'aadhaar':
+          aadhaarFile = null;
+          break;
+        case 'pan':
+          panFile = null;
+          break;
+        case 'insurance':
+          insuranceCopyFile = null;
+          break;
+        case 'damage':
+          damagePhotoFile = null;
+          break;
+      }
+    });
+  }
+
   Future<ImageSource?> _showDamagePhotoSourceSheet() {
     return showModalBottomSheet<ImageSource>(
       context: context,
@@ -576,13 +603,16 @@ class _ClaimScreenState extends State<ClaimScreen> {
     );
   }
 
-  /// Build document upload tile
+  /// Build document upload tile. [onRemove], when a file is already
+  /// selected, adds a small delete button so the wrong attachment can be
+  /// cleared without re-picking over it or closing the whole sheet.
   Widget _buildDocumentTile(
     String title,
     File? selectedFile,
     VoidCallback onTap,
-    IconData icon,
-  ) {
+    IconData icon, {
+    VoidCallback? onRemove,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -602,6 +632,10 @@ class _ClaimScreenState extends State<ClaimScreen> {
           children: [
             Icon(icon, color: const Color(0xFFD4A017), size: 24),
             const SizedBox(width: 12),
+            // Expanded absorbs whatever width is left after the fixed-size
+            // icons on the trailing side — adding the extra delete button
+            // below doesn't risk an overflow, this column just gets a
+            // little narrower and the filename still ellipsizes.
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -646,6 +680,20 @@ class _ClaimScreenState extends State<ClaimScreen> {
                 size: 20,
               ),
             ),
+            if (selectedFile != null && onRemove != null) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: onRemove,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 20),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -906,20 +954,40 @@ class _HowItWorksCard extends StatelessWidget {
 }
 
 /// The doc-upload/photo/description sheet opened from UPLOAD DOCUMENTS &
-/// FILE CLAIM — kept as a plain function-returning widget (not its own
-/// StatefulWidget) since all the actual file state lives on
-/// _ClaimScreenState; [setSheetState] is what makes picking a
-/// file inside this sheet actually repaint it (a modal bottom sheet's
-/// route isn't a descendant of the screen's Element tree, so the
+/// FILE CLAIM. A StatefulWidget (not a plain function-returning one)
+/// purely so its own [dispose] can force the keyboard down — see the note
+/// there for why that's the one reliable place to do it. The actual file
+/// state still lives on _ClaimScreenState; [setSheetState] is what makes
+/// picking a file inside this sheet actually repaint it (a modal bottom
+/// sheet's route isn't a descendant of the screen's Element tree, so the
 /// screen's own setState alone wouldn't rebuild this content).
-class _UploadSheetContent extends StatelessWidget {
+class _UploadSheetContent extends StatefulWidget {
   const _UploadSheetContent({required this.state, required this.setSheetState});
 
   final _ClaimScreenState state;
   final void Function(void Function()) setSheetState;
 
   @override
+  State<_UploadSheetContent> createState() => _UploadSheetContentState();
+}
+
+class _UploadSheetContentState extends State<_UploadSheetContent> {
+  @override
+  void dispose() {
+    // Whatever closed this sheet — the X button, SUBMIT CLAIM's own pop,
+    // swiping it down, tapping the barrier outside it, or the Android back
+    // button — this widget gets disposed either way, so this is the one
+    // place guaranteed to run regardless of which path was taken. Trying
+    // to catch every individual close gesture one at a time (as tried
+    // before) kept missing cases; this can't miss any of them.
+    FocusManager.instance.primaryFocus?.unfocus();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final state = widget.state;
+    final setSheetState = widget.setSheetState;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return AnimatedPadding(
       padding: EdgeInsets.only(bottom: bottomInset),
@@ -952,17 +1020,7 @@ class _UploadSheetContent extends StatelessWidget {
                   ),
                   const Spacer(),
                   GestureDetector(
-                    onTap: () {
-                      // Same reasoning as _confirmAndPay's unfocus — closing
-                      // the sheet without submitting shouldn't leave the
-                      // keyboard stuck either, same as leaving the chat
-                      // screen. FocusScope.of(context) is correct here
-                      // (unlike _confirmAndPay) since this context is the
-                      // sheet's own, where the description field actually
-                      // lives.
-                      FocusScope.of(context).unfocus();
-                      Navigator.pop(context);
-                    },
+                    onTap: () => Navigator.pop(context),
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(color: AppColors.surfaceSunken, borderRadius: BorderRadius.circular(12)),
@@ -973,7 +1031,15 @@ class _UploadSheetContent extends StatelessWidget {
               ),
             ),
             Flexible(
-              child: SingleChildScrollView(
+              // Tapping anywhere in the body that isn't a text field,
+              // button, or document tile (its own tap targets still win —
+              // see the note on nested GestureDetectors in
+              // _buildDocumentTile) dismisses the keyboard, same as
+              // services_screen.dart's search bar.
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => FocusScope.of(context).unfocus(),
+                child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -988,30 +1054,35 @@ class _UploadSheetContent extends StatelessWidget {
                       state.rcCopyFile,
                       () => state._pickPdfFile('rc', setSheetState),
                       Icons.description,
+                      onRemove: () => state._removeFile('rc', setSheetState),
                     ),
                     state._buildDocumentTile(
                       '📄 Driving License',
                       state.drivingLicenseFile,
                       () => state._pickPdfFile('license', setSheetState),
                       Icons.credit_card,
+                      onRemove: () => state._removeFile('license', setSheetState),
                     ),
                     state._buildDocumentTile(
                       '📄 Owner Aadhaar',
                       state.aadhaarFile,
                       () => state._pickPdfFile('aadhaar', setSheetState),
                       Icons.badge,
+                      onRemove: () => state._removeFile('aadhaar', setSheetState),
                     ),
                     state._buildDocumentTile(
                       '📄 Owner PAN',
                       state.panFile,
                       () => state._pickPdfFile('pan', setSheetState),
                       Icons.assignment,
+                      onRemove: () => state._removeFile('pan', setSheetState),
                     ),
                     state._buildDocumentTile(
                       '📄 Insurance Copy',
                       state.insuranceCopyFile,
                       () => state._pickPdfFile('insurance', setSheetState),
                       Icons.security,
+                      onRemove: () => state._removeFile('insurance', setSheetState),
                     ),
 
                     const SizedBox(height: 16),
@@ -1045,11 +1116,32 @@ class _UploadSheetContent extends StatelessWidget {
                                     ),
                                   ),
                                   const SizedBox(height: 10),
-                                  Text(
-                                    state.damagePhotoFile!.path.split('/').last,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: Color(0xFFD4A017), fontSize: 13, fontWeight: FontWeight.w600),
+                                  // Row + Expanded so a long filename
+                                  // ellipsizes instead of pushing the
+                                  // delete button off-screen or overflowing.
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          state.damagePhotoFile!.path.split('/').last,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: Color(0xFFD4A017), fontSize: 13, fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      GestureDetector(
+                                        onTap: () => state._removeFile('damage', setSheetState),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(6),
+                                          decoration: BoxDecoration(
+                                            color: Colors.redAccent.withOpacity(0.12),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 18),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               )
@@ -1133,6 +1225,7 @@ class _UploadSheetContent extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
                 ),
               ),
             ),

@@ -392,6 +392,31 @@ class _LoginScreenState extends State<LoginScreen>
               });
 
               try {
+                // resetPasswordForEmail always resolves successfully
+                // regardless of whether the email is actually registered —
+                // that's Supabase's deliberate anti-enumeration behavior,
+                // not a bug — so a customer who deleted their account
+                // (which really does remove the auth user; see
+                // delete-account/index.ts) would still see "check your
+                // email" here forever, with no email ever arriving.
+                // customer-verify-email checks first, the same "verify
+                // then send" shape the garage/admin forgot-password flow
+                // already uses via admin-verify-identity.
+                final verifyResponse = await Supabase.instance.client.functions.invoke(
+                  'customer-verify-email',
+                  body: {'email': email},
+                );
+                final registered = (verifyResponse.data as Map?)?['registered'] == true;
+
+                if (!registered) {
+                  if (!context.mounted) return;
+                  setDialogState(() {
+                    isLoading = false;
+                    error = 'No account found with that email.';
+                  });
+                  return;
+                }
+
                 final redirectUrl = kIsWeb
                     ? 'https://reperi.in/reset-password'
                     : 'reperi://reset-password';
