@@ -2395,7 +2395,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                     ),
                                     if (needsGarageVisit &&
                                         garageLat != null &&
-                                        garageLong != null) ...[
+                                        garageLong != null &&
+                                        booking['booking_status'] != 'Delivered') ...[
                                       const SizedBox(height: 12),
                                       SizedBox(
                                         width: double.infinity,

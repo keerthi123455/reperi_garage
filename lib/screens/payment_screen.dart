@@ -9,6 +9,7 @@ import 'package:reperi_garage/screens/address_management_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '/services/admin_assignment_service.dart';
 import '/services/delivery_partner_assignment_service.dart';
+import '/services/washer_assignment_service.dart';
 import '/services/service_area.dart';
 import '../widgets/error_display.dart';
 
@@ -51,10 +52,13 @@ class PaymentScreen extends StatefulWidget {
 
   /// Whether to offer the "Doorstep Pickup & Drop (+₹100)" add-on. Left on
   /// by default for the many package-booking screens that navigate here
-  /// directly; subscriptions, the pollution certificate, and the vehicle
-  /// health check turn it off since those aren't a pickup/drop-a-vehicle
-  /// service. Also suppressed automatically whenever [billItems] is set
-  /// (the fleet flow), which already shows its own itemized total.
+  /// directly; subscriptions, the pollution certificate, the vehicle
+  /// health check, and Claim Assistance turn it off explicitly since those
+  /// aren't an optional-pickup service. [billItems] only controls whether
+  /// the bill is shown as a single price or an itemized breakdown — it has
+  /// no bearing on pickup/drop, so a screen using an itemized bill (like
+  /// Paint Care's add-ons checkout) still needs to set this explicitly if
+  /// it wants pickup/drop hidden, the same as any other screen.
   final bool showPickupDropOption;
 
   /// When [showPickupDropOption] is off and this is true, the default
@@ -88,6 +92,14 @@ class PaymentScreen extends StatefulWidget {
   /// the matching value explicitly.
   final String bookingSection;
 
+  /// True only for the one-time wash packages (washing_package_screen.dart's
+  /// ₹299/₹599 tiers) — when set, the default `bookings` insert also
+  /// assigns a washer via WasherAssignmentService (alternating between
+  /// washer 1 and 2 for real customers, or the fixed Apple review washer
+  /// for the review account), alongside the usual admin/delivery-partner
+  /// assignment. Every other package leaves washer_id unset, same as today.
+  final bool assignsWasher;
+
   const PaymentScreen({
     super.key,
     required this.title,
@@ -99,6 +111,7 @@ class PaymentScreen extends StatefulWidget {
     this.onlineOnly = false,
     this.showPickupDropOption = true,
     this.forcePickupDropYes = false,
+    this.assignsWasher = false,
     this.vehicleRequired = true,
     this.forcedAdminUsername,
     this.bookingSection = 'bookings',
@@ -117,7 +130,7 @@ class _PaymentScreenState extends State<PaymentScreen>
   bool _addPickupDrop = false;
   static const int _pickupDropFee = 100;
 
-  bool get _showPickupDrop => widget.showPickupDropOption && widget.billItems == null;
+  bool get _showPickupDrop => widget.showPickupDropOption;
 
   /// Whether this booking is actually being picked up/dropped off — used to
   /// decide whether a delivery partner should be assigned at all. A "no"
@@ -439,7 +452,22 @@ class _PaymentScreenState extends State<PaymentScreen>
     }
 
     if (!mounted) return;
+    // Two pushes, not one pushAndRemoveUntil straight to
+    // VehicleBookingsScreen with (route) => false — that used to wipe out
+    // the entire stack including HomeScreen, leaving this screen as the
+    // only route that ever existed. With nothing left underneath it, the
+    // bottom nav's Home tab (which just pops back to the first route) had
+    // nothing to pop to, there was no back arrow since Navigator.canPop
+    // was false, and the Android back button exited the app outright.
+    // Rebuilding a fresh Home underneath first, then pushing the vehicle
+    // dashboard on top of it, gives the exact same two-level stack every
+    // other bottom-nav destination in this app already ends up with.
     Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      (route) => false,
+    );
+    Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => VehicleBookingsScreen(
@@ -450,7 +478,6 @@ class _PaymentScreenState extends State<PaymentScreen>
           highlightSection: widget.bookingSection,
         ),
       ),
-      (route) => false,
     );
   }
 
@@ -627,6 +654,12 @@ class _PaymentScreenState extends State<PaymentScreen>
             final deliveryPartnerId = _pickupDropYes
                 ? await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('bookings')
                 : null;
+            final washerId = widget.assignsWasher
+                ? await WasherAssignmentService.getNextWasherId(
+                    'bookings',
+                    customerEmail: user!.email,
+                  )
+                : null;
 
             await supabase.from('bookings').insert({
               'user_id': user!.id,
@@ -638,6 +671,7 @@ class _PaymentScreenState extends State<PaymentScreen>
               else if (widget.forcePickupDropYes)
                 'pickupdrop': 'yes',
               if (deliveryPartnerId != null) 'delivery_partner_id': deliveryPartnerId,
+              if (washerId != null) 'washer_id': washerId,
               'razorpay_order_id': orderIdForRecord,
               'razorpay_payment_id': paymentIdForRecord,
               'payment_status': 'paid',
@@ -745,6 +779,12 @@ class _PaymentScreenState extends State<PaymentScreen>
         final deliveryPartnerId = _pickupDropYes
             ? await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('bookings')
             : null;
+        final washerId = widget.assignsWasher
+            ? await WasherAssignmentService.getNextWasherId(
+                'bookings',
+                customerEmail: user.email,
+              )
+            : null;
 
         await supabase.from('bookings').insert({
           'user_id': user.id,
@@ -756,6 +796,7 @@ class _PaymentScreenState extends State<PaymentScreen>
           else if (widget.forcePickupDropYes)
             'pickupdrop': 'yes',
           if (deliveryPartnerId != null) 'delivery_partner_id': deliveryPartnerId,
+          if (washerId != null) 'washer_id': washerId,
           'payment_status': 'cod', // cash on delivery/pickup
 
           // ── Location Data ──

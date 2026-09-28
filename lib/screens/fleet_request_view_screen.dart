@@ -1351,6 +1351,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                                       vehicleId: '',
                                       vehicleRequired: false,
                                       billItems: List<Map<String, dynamic>>.from(req['bill_items'] ?? []),
+                                      showPickupDropOption: false,
                                       onlineOnly: true,
                                       onSuccess: (orderId, paymentId) async {
                                         try {

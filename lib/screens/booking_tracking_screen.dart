@@ -1151,12 +1151,14 @@ class _ChatSheetState extends State<ChatSheet> {
 
       if (mounted) {
         setState(() => blockedSenders.add(sender));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Blocked $sender'),
-            backgroundColor: Colors.red.shade700,
-            duration: const Duration(seconds: 2),
-          ),
+        // showPremiumToast, not a plain SnackBar — this chat is a modal
+        // bottom sheet with no Scaffold of its own, so a SnackBar attaches
+        // to the screen underneath and renders hidden behind the sheet.
+        ErrorDisplay.showPremiumToast(
+          context,
+          message: 'Blocked $sender',
+          icon: Icons.block_rounded,
+          accent: Colors.red.shade400,
         );
       }
     } catch (e) {
@@ -1184,11 +1186,11 @@ class _ChatSheetState extends State<ChatSheet> {
 
       if (mounted) {
         setState(() => blockedSenders.remove(sender));
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('User unblocked'),
-            duration: const Duration(seconds: 2),
-          ),
+        ErrorDisplay.showPremiumToast(
+          context,
+          message: 'User unblocked',
+          icon: Icons.check_circle_rounded,
+          accent: Colors.green,
         );
       }
     } catch (e) {
@@ -1263,12 +1265,11 @@ class _ChatSheetState extends State<ChatSheet> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Report submitted. Thank you!'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
+        ErrorDisplay.showPremiumToast(
+          context,
+          message: 'Report submitted. Thank you!',
+          icon: Icons.flag_rounded,
+          accent: Colors.green,
         );
       }
     } catch (e) {
