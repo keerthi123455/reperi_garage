@@ -888,10 +888,15 @@ class _UploadSheetContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return AnimatedPadding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      child: SafeArea(
       top: false,
       child: Container(
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9 - bottomInset),
         decoration: BoxDecoration(
           color: AppColors.surfaceRaised,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -1091,6 +1096,7 @@ class _UploadSheetContent extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }
