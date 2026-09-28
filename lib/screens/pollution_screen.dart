@@ -71,6 +71,21 @@ class _PollutionScreenState extends State<PollutionScreen> {
     final deliveryPartnerId =
         await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('pollution_booking');
 
+    // Snapshotted here rather than joined later — the delivery dashboard
+    // runs on the anon key and has no route to auth.users, so this is what
+    // lets it show/call the customer directly (see
+    // web/deliverydashboard.html's renderCustomerContactRow).
+    Map<String, dynamic>? profileData;
+    try {
+      profileData = await Supabase.instance.client
+          .from('profiles')
+          .select('full_name, phone')
+          .eq('id', user.id)
+          .single();
+    } catch (e) {
+      // Profile might not exist, continue with null values
+    }
+
     await Supabase.instance.client.from('pollution_booking').insert({
       'user_id': user.id,
       'vehicle_id': widget.vehicleId,
@@ -90,6 +105,8 @@ class _PollutionScreenState extends State<PollutionScreen> {
       // pickup/drop by nature, no opt-out toggle for this service.
       'pickupdrop': 'yes',
       'status': 'booked',
+      'customer_name': profileData?['full_name'] ?? 'Unknown',
+      'customer_phone': profileData?['phone'],
     });
   }
 

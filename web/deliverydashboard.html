@@ -566,6 +566,13 @@
         // to 'delivered' with no such gate.
         const hasGarageLeg = (b) => b.sourceTable === 'bookings' || b.sourceTable === 'claim_table';
 
+        // Pre-delivery inspection has no OTP handshake at all (coordination
+        // happens by phone via customerPhone) and no garage/timeline legs —
+        // just two flat states, so it's kept on its own short-circuit
+        // rather than folded into the generic OTP-gated stage machinery
+        // below (see stageOrderFor/renderStageBlock/advanceStage).
+        const skipOtpFor = (b) => b.sourceTable === 'inspection_booking';
+
         // The fixed pickup/drop stage sequence a delivery partner drives a
         // booking through. null (not in this list) means "booked, nothing
         // done yet" — shown to the customer as "Initiating Pickup".
@@ -580,7 +587,17 @@
         // applying to them too.
         const STAGE_ORDER_BOOKINGS = ['pickup_started', 'picked_up', 'to_garage', 'out_for_delivery', 'delivered'];
         const STAGE_ORDER_SIMPLE = ['pickup_started', 'picked_up', 'to_garage', 'delivered'];
-        const stageOrderFor = (b) => hasGarageLeg(b) ? STAGE_ORDER_BOOKINGS : STAGE_ORDER_SIMPLE;
+        // Inspection reuses the 'pickup_started'/'delivered' values (and
+        // their existing stage_*_at columns) so nothing downstream that
+        // keys off "the terminal value is 'delivered'" — e.g.
+        // vehicle_bookings_screen.dart's delete-vehicle guard — needs to
+        // change, but skips 'picked_up'/'to_garage' entirely: just two
+        // flat states, shown with their own wording below.
+        const STAGE_ORDER_INSPECTION = ['pickup_started', 'delivered'];
+        const stageOrderFor = (b) => {
+            if (b.sourceTable === 'inspection_booking') return STAGE_ORDER_INSPECTION;
+            return hasGarageLeg(b) ? STAGE_ORDER_BOOKINGS : STAGE_ORDER_SIMPLE;
+        };
 
         const STAGE_COLUMN = {
             pickup_started: 'stage_pickup_started_at',
@@ -600,8 +617,8 @@
         // Pollution-certificate bookings show different wording for the
         // same underlying stage values (no new stages, just display) —
         // mirrors vehicle_bookings_screen.dart's _DeliveryStageTracker
-        // isPollutionCertificate branch on the customer side. Left out of
-        // inspection_booking, which keeps the generic labels above.
+        // isPollutionCertificate branch on the customer side. Inspection
+        // has its own wording below instead (STAGE_LABEL_INSPECTION).
         const STAGE_LABEL_POLLUTION = {
             null: 'Initiating Pickup',
             pickup_started: 'Car Pickup',
@@ -609,8 +626,17 @@
             to_garage: 'Out For Delivery',
             delivered: 'Delivered',
         };
-        const stageLabelFor = (b) =>
-            (b.sourceTable === 'pollution_booking' ? STAGE_LABEL_POLLUTION : STAGE_LABEL)[b.deliveryStage];
+        // Inspection: just two states, no OTP/timeline wording at all —
+        // see STAGE_ORDER_INSPECTION above.
+        const STAGE_LABEL_INSPECTION = {
+            null: 'Not Started',
+            pickup_started: 'Inspection Started',
+            delivered: 'Inspection Done',
+        };
+        const stageLabelFor = (b) => {
+            if (b.sourceTable === 'inspection_booking') return STAGE_LABEL_INSPECTION[b.deliveryStage];
+            return (b.sourceTable === 'pollution_booking' ? STAGE_LABEL_POLLUTION : STAGE_LABEL)[b.deliveryStage];
+        };
         // What the button says to move OUT of the given current stage —
         // 'to_garage' differs by sourceTable (bookings' own version of
         // this text is never actually read; renderGarageWaitBlock always
@@ -635,7 +661,13 @@
             picked_up: 'Out For Delivery',
             to_garage: 'Delivered',
         };
+        // The only two buttons this booking type ever shows.
+        const NEXT_BUTTON_LABEL_INSPECTION = {
+            null: 'Inspection Started',
+            pickup_started: 'Inspection Done',
+        };
         const nextButtonLabelFor = (b) => {
+            if (b.sourceTable === 'inspection_booking') return NEXT_BUTTON_LABEL_INSPECTION[b.deliveryStage];
             if (hasGarageLeg(b)) return NEXT_BUTTON_LABEL_BOOKINGS[b.deliveryStage];
             if (b.sourceTable === 'pollution_booking') return NEXT_BUTTON_LABEL_POLLUTION[b.deliveryStage];
             return NEXT_BUTTON_LABEL_SIMPLE[b.deliveryStage];
@@ -814,6 +846,13 @@
                     vehicleType: r.vehicle_type || null,
                     slotDate: r.slot_date || null,
                     slotTime: r.slot_time || null,
+                    // customer_name/customer_phone are now snapshotted at
+                    // booking time on every table (payment_screen.dart,
+                    // inspection_screen.dart, pollution_screen.dart,
+                    // claim_screen.dart) — same reasoning as above: this
+                    // dashboard runs on the anon key with no route to
+                    // auth.users, so the tap-to-call number has to live on
+                    // the row itself. See renderCustomerContactRow below.
                     customerName: r.customer_name || null,
                     customerPhone: r.customer_phone || null,
                 }));
@@ -821,7 +860,7 @@
                 const all = [
                     ...normalize(bookingsRes.data, 'Service Booking', 'Service Booking', 'bookings'),
                     ...normalize(pollutionRes.data, 'Pollution Certificate', 'Pollution Certificate Check', 'pollution_booking'),
-                    ...normalize(inspectionRes.data, 'Vehicle Health Check', 'Vehicle Health Check', 'inspection_booking'),
+                    ...normalize(inspectionRes.data, 'Vehicle Inspection', 'Vehicle Inspection', 'inspection_booking'),
                     ...normalize(claimRes.data, 'Claim Assistance', 'Claim Assistance', 'claim_table'),
                 ];
 
@@ -907,11 +946,13 @@
             // customer phone number) rather than a spontaneous doorstep
             // pickup, so there's no customer waiting in the app to verify a
             // code either. Plain advance buttons throughout instead.
-            const skipOtp = b.sourceTable === 'inspection_booking';
+            const skipOtp = skipOtpFor(b);
 
             let actionHtml;
             if (stage === 'delivered') {
-                actionHtml = `<span class="delivered-pill">✅ Trip Completed</span>`;
+                actionHtml = b.sourceTable === 'inspection_booking'
+                    ? `<span class="delivered-pill">✅ Inspection Completed</span>`
+                    : `<span class="delivered-pill">✅ Trip Completed</span>`;
             } else if (stage === 'pickup_started' && !skipOtp) {
                 // Gate "Vehicle Picked Up" on the customer verifying this
                 // partner by OTP first — see generateOtpByKey/renderStageBlock's
@@ -1084,6 +1125,7 @@
                     <div class="booking-detail-row"><strong>Status:</strong> ${escapeHtml(b.status)}</div>
                     <div class="booking-detail-row"><strong>Pickup${b.pickupAddressName ? ` (${escapeHtml(b.pickupAddressName)})` : ''}:</strong> ${escapeHtml(b.pickupAddress || 'Not specified')}</div>
                     ${renderInspectionDetails(b)}
+                    ${renderCustomerContactRow(b)}
                     <div class="booking-footer">
                         ${b.pickupDrop ? `<span class="pickupdrop-pill">Pickup &amp; Drop: ${escapeHtml(b.pickupDrop)}</span>` : '<span></span>'}
                         ${navigateHtml}
@@ -1093,10 +1135,12 @@
             `;
         }
 
-        // Pre-delivery inspection has no in-app timeline/OTP — the details
-        // the customer chose in inspection_screen.dart's PLAN INSPECTION
-        // popup, plus a tap-to-call link, are what the partner needs
-        // instead to actually coordinate the pickup and return.
+        // Pre-delivery inspection has no in-app timeline/OTP — the vehicle
+        // condition/type and scheduled slot the customer chose in
+        // inspection_screen.dart's PLAN INSPECTION popup are what the
+        // partner needs instead to coordinate the visit (the customer
+        // contact/call row itself is rendered separately below, since
+        // every booking type shows it now, not just inspection).
         function renderInspectionDetails(b) {
             if (b.sourceTable !== 'inspection_booking') return '';
 
@@ -1107,6 +1151,16 @@
             return `
                 <div class="booking-detail-row"><strong>Vehicle:</strong> ${escapeHtml(b.vehicleCondition || '—')} ${escapeHtml(b.vehicleType || '')}</div>
                 ${slot ? `<div class="booking-detail-row"><strong>Scheduled Slot:</strong> ${slot}</div>` : ''}
+            `;
+        }
+
+        // Every delivery booking (not just inspection) now snapshots
+        // customer_name/customer_phone at booking time — see the comment
+        // by normalize()'s customerPhone field — so the partner can always
+        // reach the customer directly, tap-to-call, without needing to go
+        // through in-app chat.
+        function renderCustomerContactRow(b) {
+            return `
                 <div class="booking-detail-row">
                     <strong>Customer:</strong> ${escapeHtml(b.customerName || 'Not specified')}
                     ${b.customerPhone
@@ -1194,8 +1248,10 @@
             // Defense in depth — the button to reach here shouldn't even
             // render until the customer has verified the OTP (see
             // renderPickupOtpBlock), but guard the actual write too in
-            // case of a stale render/double-click.
-            if (booking.deliveryStage === 'pickup_started' && !booking.pickupOtpVerifiedAt) {
+            // case of a stale render/double-click. Inspection has no OTP
+            // step at all (skipOtpFor), so it's exempt — otherwise this
+            // would permanently block "Inspection Done" from ever firing.
+            if (!skipOtpFor(booking) && booking.deliveryStage === 'pickup_started' && !booking.pickupOtpVerifiedAt) {
                 alert('Ask the customer to verify your pickup OTP in their app first.');
                 return;
             }
@@ -1212,8 +1268,9 @@
 
             // Return-leg equivalent of the pickup-OTP guard above — the
             // final "Vehicle Delivered" tap shouldn't reach here until the
-            // customer has verified the return code in their app.
-            if (next === 'delivered' && !booking.returnOtpVerifiedAt) {
+            // customer has verified the return code in their app. Same
+            // inspection exemption as above.
+            if (!skipOtpFor(booking) && next === 'delivered' && !booking.returnOtpVerifiedAt) {
                 alert('Ask the customer to verify your return OTP in their app first.');
                 return;
             }

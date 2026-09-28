@@ -339,6 +339,21 @@ class _ClaimScreenState extends State<ClaimScreen> {
       final claimAdminId =
           await AppleReviewAssignmentOverride.resolveAdminId() ?? CLAIM_ADMIN_ID;
 
+      // Snapshotted here rather than joined later — the delivery dashboard
+      // runs on the anon key and has no route to auth.users, so this is
+      // what lets it show/call the customer directly (see
+      // web/deliverydashboard.html's renderCustomerContactRow).
+      Map<String, dynamic>? profileData;
+      try {
+        profileData = await _supabase
+            .from('profiles')
+            .select('full_name, phone')
+            .eq('id', user.id)
+            .single();
+      } catch (e) {
+        // Profile might not exist, continue with null values
+      }
+
       setState(() => uploadStatus = 'Uploading RC Copy...');
       final rcUrl = await _uploadFile(
           rcCopyFile!, 'rc-copies', 'claim-$claimId-rc.pdf');
@@ -398,6 +413,8 @@ class _ClaimScreenState extends State<ClaimScreen> {
         'payment_status': 'paid',
         'razorpay_order_id': orderId,
         'razorpay_payment_id': paymentId,
+        'customer_name': profileData?['full_name'] ?? 'Unknown',
+        'customer_phone': profileData?['phone'],
       });
 
       if (mounted) await _showSubmittedDialog();
