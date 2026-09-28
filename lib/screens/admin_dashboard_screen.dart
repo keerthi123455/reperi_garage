@@ -146,6 +146,36 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Log Out',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        content: const Text(
+          'Are you sure you want to logout?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('NO', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text(
+              'YES',
+              style: TextStyle(color: Color(0xFFD4A017), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     PushNotificationService.logout();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('admin_logged_in');
@@ -525,10 +555,76 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                 ),
               ),
+            // Emergency Service (Roadside Assistance) has no delivery
+            // partner in the loop at all (see PaymentScreen's
+            // assignsDeliveryPartner: false for this flow) — the admin
+            // dispatching the technician is the only person who can reach
+            // the customer, so a call option is offered right here instead
+            // of only on a delivery dashboard elsewhere. Every other
+            // booking type keeps in-app chat as the way to reach the
+            // customer, so this is deliberately scoped to just this one
+            // service.
+            if (_isEmergencyBooking(booking) && _customerPhone(booking) != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: GestureDetector(
+                  onTap: () => _callCustomer(_customerPhone(booking)!),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD4A017).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.call_rounded, color: Color(0xFFD4A017), size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Call Customer — ${_customerPhone(booking)}',
+                          style: const TextStyle(
+                            color: Color(0xFFD4A017),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  /// Roadside Assistance rows are all inserted with
+  /// package_name = 'Roadside Assistance - <issue title>' (see
+  /// roadside_assistance_screen.dart's _handleBookNow) — that prefix is the
+  /// only reliable signal for "this is an emergency-service booking",
+  /// since assigned_to_admin_id alone can't tell it apart from any other
+  /// booking type while Apple review routing has everything landing on the
+  /// same demo admin.
+  bool _isEmergencyBooking(Map booking) =>
+      (booking['package_name'] ?? '').toString().startsWith('Roadside Assistance');
+
+  /// customer_phone on a profile that was never filled in comes back as an
+  /// empty string, not null — checking `!= null` alone let the call button
+  /// render with nothing after the dash ("Call Customer — "). Trims and
+  /// returns null for anything blank so the button doesn't show at all in
+  /// that case.
+  String? _customerPhone(Map booking) {
+    final phone = booking['customer_phone']?.toString().trim();
+    return (phone == null || phone.isEmpty) ? null : phone;
+  }
+
+  Future<void> _callCustomer(String phone) async {
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
   }
 
   Widget _buildFleetCard(Map fleet) {

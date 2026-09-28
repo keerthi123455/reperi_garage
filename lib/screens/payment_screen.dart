@@ -63,9 +63,22 @@ class PaymentScreen extends StatefulWidget {
 
   /// When [showPickupDropOption] is off and this is true, the default
   /// `bookings` insert still writes `pickupdrop: 'yes'` instead of
-  /// omitting the column — for services (like roadside assistance) that
-  /// are inherently a pickup, just without the optional ₹100 toggle.
+  /// omitting the column — for services that are inherently a pickup with
+  /// no separate add-on fee at all (the card is never shown), e.g.
+  /// pollution/inspection. Contrast with [lockPickupDropOn] below, which
+  /// still shows the card and charges the ₹100 fee, just without a way to
+  /// turn it off.
   final bool forcePickupDropYes;
+
+  /// Shows the same "Doorstep Pickup & Drop (+₹100)" card as the normal
+  /// optional flow, already switched on and billed, but with no Switch to
+  /// turn it off — for services where doorstep pickup/drop isn't optional
+  /// but is still billed as its own line, e.g. Roadside Assistance (you
+  /// can't ask someone stranded with a dead battery to drive the vehicle
+  /// in themselves). Leave [showPickupDropOption] at its default (true)
+  /// when using this — it still drives the fee/insert logic, this only
+  /// removes the ability to deselect it.
+  final bool lockPickupDropOn;
 
   /// Whether this booking needs a real vehicle behind it. True for every
   /// ordinary service booking (the default); set to false for the couple
@@ -83,6 +96,26 @@ class PaymentScreen extends StatefulWidget {
   /// (e.g. 'emergency_service' for Roadside Assistance) instead of the
   /// usual vehicle-type rotation — see AdminAssignmentService.getNextAdminId.
   final String? forcedAdminUsername;
+
+  /// Whether a delivery partner should be assigned at all when this is a
+  /// pickup/drop booking. True for every ordinary service (the default) —
+  /// a real delivery partner drives to the customer, takes the vehicle to
+  /// the garage, and brings it back. Roadside Assistance sets this to
+  /// false: there's no vehicle being taken anywhere — the emergency_service
+  /// admin (a mobile technician) comes to the customer and fixes it on the
+  /// spot, so there's no separate "delivery guy" leg for anyone to handle,
+  /// even though the doorstep pickup/drop fee still applies (see
+  /// [lockPickupDropOn]).
+  final bool assignsDeliveryPartner;
+
+  /// Whether a garage admin should be assigned at all. True for every
+  /// ordinary service (the default) — there's a real garage doing the
+  /// work. The ₹299/₹599 one-time wash packages set this to false: a
+  /// doorstep wash is handled entirely by the washer (see [assignsWasher]),
+  /// with no garage/admin involved at all, in real use or during Apple
+  /// review — unlike [forcedAdminUsername], which still assigns *some*
+  /// admin, this assigns none.
+  final bool assignsAdmin;
 
   /// Which section of VehicleBookingsScreen this booking lands in, so the
   /// success flow below can scroll straight to it — 'bookings' (the
@@ -111,6 +144,9 @@ class PaymentScreen extends StatefulWidget {
     this.onlineOnly = false,
     this.showPickupDropOption = true,
     this.forcePickupDropYes = false,
+    this.lockPickupDropOn = false,
+    this.assignsDeliveryPartner = true,
+    this.assignsAdmin = true,
     this.assignsWasher = false,
     this.vehicleRequired = true,
     this.forcedAdminUsername,
@@ -213,6 +249,11 @@ class _PaymentScreenState extends State<PaymentScreen>
   @override
   void initState() {
     super.initState();
+
+    // lockPickupDropOn services (Roadside Assistance) show the pickup/drop
+    // card already switched on, with no way to turn it back off — see
+    // _pickupDropCard's Switch below.
+    if (widget.lockPickupDropOn) _addPickupDrop = true;
 
     _controller = AnimationController(
       vsync: this,
@@ -645,13 +686,21 @@ class _PaymentScreenState extends State<PaymentScreen>
             // Assistance -> 'emergency_service') always wins; otherwise scoped
             // to this vehicle's type (two-wheeler bookings only rotate among
             // two-wheeler admins, four-wheeler among four-wheeler admins).
-            final assignedAdminId = await AdminAssignmentService.getNextAdminId(
-              vehicleId: widget.vehicleId,
-              forcedAdminUsername: widget.forcedAdminUsername,
-            );
+            // assignsAdmin: false (the wash packages) skips this entirely —
+            // no garage is involved, so no admin should ever be assigned,
+            // in real use or during Apple review.
+            final assignedAdminId = widget.assignsAdmin
+                ? await AdminAssignmentService.getNextAdminId(
+                    vehicleId: widget.vehicleId,
+                    forcedAdminUsername: widget.forcedAdminUsername,
+                  )
+                : null;
             // Only assign a delivery partner when there's actually a
-            // pickup/drop for one to handle.
-            final deliveryPartnerId = _pickupDropYes
+            // pickup/drop for one to handle, and this service actually uses
+            // one (Roadside Assistance sets assignsDeliveryPartner: false —
+            // the forced emergency_service admin handles it on-site, no
+            // separate delivery leg for anyone else to drive).
+            final deliveryPartnerId = (_pickupDropYes && widget.assignsDeliveryPartner)
                 ? await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('bookings')
                 : null;
             final washerId = widget.assignsWasher
@@ -663,7 +712,14 @@ class _PaymentScreenState extends State<PaymentScreen>
 
             await supabase.from('bookings').insert({
               'user_id': user!.id,
-              'vehicle_id': widget.vehicleId,
+              // Roadside Assistance passes an empty vehicleId on purpose
+              // (vehicleRequired: false — this booking isn't tied to a
+              // specific vehicle). Writing '' into a uuid column throws a
+              // Postgres "invalid input syntax for type uuid" error —
+              // exactly what was turning a successful payment into a
+              // "couldn't save your booking" failure. Omit the column
+              // entirely instead, leaving it NULL.
+              if (widget.vehicleId.isNotEmpty) 'vehicle_id': widget.vehicleId,
               'package_name': widget.title,
               'package_price': widget.price,
               if (_showPickupDrop)
@@ -770,13 +826,21 @@ class _PaymentScreenState extends State<PaymentScreen>
         // Assistance -> 'emergency_service') always wins; otherwise scoped
         // to this vehicle's type (two-wheeler bookings only rotate among
         // two-wheeler admins, four-wheeler among four-wheeler admins).
-        final assignedAdminId = await AdminAssignmentService.getNextAdminId(
-          vehicleId: widget.vehicleId,
-          forcedAdminUsername: widget.forcedAdminUsername,
-        );
+        // assignsAdmin: false (the wash packages) skips this entirely — no
+        // garage is involved, so no admin should ever be assigned, in real
+        // use or during Apple review.
+        final assignedAdminId = widget.assignsAdmin
+            ? await AdminAssignmentService.getNextAdminId(
+                vehicleId: widget.vehicleId,
+                forcedAdminUsername: widget.forcedAdminUsername,
+              )
+            : null;
         // Only assign a delivery partner when there's actually a
-        // pickup/drop for one to handle.
-        final deliveryPartnerId = _pickupDropYes
+        // pickup/drop for one to handle, and this service actually uses one
+        // (Roadside Assistance sets assignsDeliveryPartner: false — the
+        // forced emergency_service admin handles it on-site, no separate
+        // delivery leg for anyone else to drive).
+        final deliveryPartnerId = (_pickupDropYes && widget.assignsDeliveryPartner)
             ? await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('bookings')
             : null;
         final washerId = widget.assignsWasher
@@ -788,7 +852,10 @@ class _PaymentScreenState extends State<PaymentScreen>
 
         await supabase.from('bookings').insert({
           'user_id': user.id,
-          'vehicle_id': widget.vehicleId,
+          // Same reasoning as the online-payment insert above — omit
+          // rather than write '' into a uuid column for the no-vehicle
+          // flows (Roadside Assistance).
+          if (widget.vehicleId.isNotEmpty) 'vehicle_id': widget.vehicleId,
           'package_name': widget.title,
           'package_price': widget.price,
           if (_showPickupDrop)
@@ -897,9 +964,9 @@ class _PaymentScreenState extends State<PaymentScreen>
                         color: _PayColors.blue,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Text(
-                        'RECOMMENDED',
-                        style: TextStyle(
+                      child: Text(
+                        widget.lockPickupDropOn ? 'REQUIRED' : 'RECOMMENDED',
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 9,
                           fontWeight: FontWeight.w800,
@@ -911,9 +978,11 @@ class _PaymentScreenState extends State<PaymentScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  active
-                      ? 'Added — +₹$_pickupDropFee for pickup & drop'
-                      : 'We collect your vehicle and drop it back — no need to visit the garage',
+                  widget.lockPickupDropOn
+                      ? 'Included — +₹$_pickupDropFee for pickup & drop'
+                      : active
+                          ? 'Added — +₹$_pickupDropFee for pickup & drop'
+                          : 'We collect your vehicle and drop it back — no need to visit the garage',
                   style: TextStyle(
                     color: active ? _PayColors.blue : _PayColors.muted,
                     fontWeight: active ? FontWeight.w700 : FontWeight.normal,
@@ -925,11 +994,17 @@ class _PaymentScreenState extends State<PaymentScreen>
             ),
           ),
           const SizedBox(width: 6),
-          Switch(
-            value: _addPickupDrop,
-            onChanged: _setPickupDrop,
-            activeColor: _PayColors.blue,
-          ),
+          // lockPickupDropOn services can't turn this off at all — a
+          // disabled Switch would just look broken (greyed out, seemingly
+          // unresponsive), so it's replaced with a plain lock glyph
+          // instead of a Switch entirely.
+          widget.lockPickupDropOn
+              ? Icon(Icons.lock_rounded, color: _PayColors.blue, size: 22)
+              : Switch(
+                  value: _addPickupDrop,
+                  onChanged: _setPickupDrop,
+                  activeColor: _PayColors.blue,
+                ),
         ],
       ),
     );

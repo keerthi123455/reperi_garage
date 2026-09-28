@@ -102,21 +102,7 @@ class _RoadsideAssistanceScreenState
 
   Future<void> _callSupport() async {
     final uri = Uri(scheme: 'tel', path: '9353094672');
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open dialer. Please try again.')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open dialer. Please try again.')),
-      );
-    }
+    await launchUrl(uri);
   }
 
   // Called when "BOOK NOW" is tapped — either from a specific service card,
@@ -195,6 +181,16 @@ class _RoadsideAssistanceScreenState
                     vehicleId: '',
                     vehicleRequired: false,
                     forcedAdminUsername: 'emergency_service',
+                    // A stranded customer can't be expected to drive the
+                    // vehicle in themselves — doorstep pickup & drop is
+                    // mandatory here, not an opt-in upsell like it is for a
+                    // regular service booking.
+                    lockPickupDropOn: true,
+                    // No separate delivery leg here — the emergency_service
+                    // admin IS the technician who comes to the customer and
+                    // fixes it on the spot. There's no vehicle being taken
+                    // to a garage and back for a delivery partner to drive.
+                    assignsDeliveryPartner: false,
                   ),
                 ),
               );

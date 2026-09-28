@@ -8,8 +8,9 @@ import 'payment_screen.dart';
 /// deliberately NOT fetched from Supabase, matching the pattern used for
 /// the Servicing screen. Presented as three tabs (Browse / Compare /
 /// Details) instead of one long scroll, with a sticky bottom "BOOK NOW"
-/// bar that goes straight to PaymentScreen — the optional doorstep
-/// pickup/drop add-on is asked there now, not here.
+/// bar that goes straight to PaymentScreen — no pickup/drop add-on at all
+/// here, since a doorstep wash is handled entirely by the washer at the
+/// customer's own location (see the PaymentScreen call below).
 class _Tier {
   final String name;
   final String price;
@@ -178,8 +179,8 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  // The doorstep pickup/drop add-on is now asked on PaymentScreen itself,
-  // not here — "Book Now" just goes straight there with the tier's price.
+  // No pickup/drop add-on at all for this service — "Book Now" just goes
+  // straight to PaymentScreen with the tier's price.
   void _goToPayment(_Tier tier) {
     Navigator.push(
       context,
@@ -190,6 +191,18 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
           duration: '1-2 hrs',
           vehicleId: widget.vehicleId,
           assignsWasher: true,
+          // A doorstep wash is handled entirely by the washer — no garage
+          // admin and no separate delivery partner are involved at all,
+          // in real use or during Apple review.
+          assignsAdmin: false,
+          assignsDeliveryPartner: false,
+          // The wash happens at the customer's own location, same as
+          // Monthly Wash (which never had this toggle either) — there's no
+          // vehicle being taken anywhere, so no pickup/drop option makes
+          // sense here. Leaving it on would let a customer pay the +₹100
+          // fee for a pickup that (now that assignsDeliveryPartner is
+          // false) would never actually happen.
+          showPickupDropOption: false,
         ),
       ),
     );

@@ -271,22 +271,37 @@ class _ClaimScreenState extends State<ClaimScreen> {
   /// _saveClaim, once payment actually succeeds. Mirrors
   /// pollution_screen.dart / inspection_screen.dart's onSuccess pattern.
   void _confirmAndPay() {
+    // The description field is very likely still focused (this is the
+    // SUBMIT CLAIM button right below it) — unfocus explicitly rather than
+    // relying on the sheet's dispose to do it. Popping the sheet and
+    // immediately pushing PaymentScreen in the same frame was racing with
+    // the keyboard's own dismiss animation, leaving it stuck on screen
+    // through the navigation transition. FocusManager.instance is used
+    // (rather than FocusScope.of(context)) since this method runs with
+    // the screen's own context, not the modal sheet's, where the actually
+    // focused field lives.
+    FocusManager.instance.primaryFocus?.unfocus();
+
     if (!_allDocsReady) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please upload all documents and add a description'),
-          backgroundColor: Colors.red,
-        ),
+      // A plain SnackBar renders behind an open modal bottom sheet's route
+      // — showPremiumToast is an overlay-based toast built for exactly
+      // this case (see booking_tracking_screen.dart's block/unblock/report
+      // toasts for the same fix).
+      ErrorDisplay.showPremiumToast(
+        context,
+        message: 'Please upload all documents and add a description',
+        icon: Icons.error_outline_rounded,
+        accent: const Color(0xFFE5484D),
       );
       return;
     }
 
     if (!_consentGiven) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please confirm you consent to sharing these documents to submit your claim'),
-          backgroundColor: Colors.red,
-        ),
+      ErrorDisplay.showPremiumToast(
+        context,
+        message: 'Please confirm you consent to sharing these documents to submit your claim',
+        icon: Icons.error_outline_rounded,
+        accent: const Color(0xFFE5484D),
       );
       return;
     }
@@ -937,7 +952,17 @@ class _UploadSheetContent extends StatelessWidget {
                   ),
                   const Spacer(),
                   GestureDetector(
-                    onTap: () => Navigator.pop(context),
+                    onTap: () {
+                      // Same reasoning as _confirmAndPay's unfocus — closing
+                      // the sheet without submitting shouldn't leave the
+                      // keyboard stuck either, same as leaving the chat
+                      // screen. FocusScope.of(context) is correct here
+                      // (unlike _confirmAndPay) since this context is the
+                      // sheet's own, where the description field actually
+                      // lives.
+                      FocusScope.of(context).unfocus();
+                      Navigator.pop(context);
+                    },
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(color: AppColors.surfaceSunken, borderRadius: BorderRadius.circular(12)),
