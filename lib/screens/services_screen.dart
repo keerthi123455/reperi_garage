@@ -785,10 +785,10 @@ final List<_Package> _kCatalog = [
   const _Package(
     category: 'Monthly Wash',
     name: 'Monthly Wash Plan',
-    price: 'From ₹500/month',
+    price: 'From ₹499/month',
     duration: '30-day plan',
     tagline: 'Daily doorstep car wash for 30 days — price depends on your vehicle type.',
-    features: ['Bike — ₹500/month', 'Hatchback / Small Cars — ₹600/month', 'SUV / XUV / Sedan — ₹1000/month', 'Luxury Cars — ₹1200/month', '6 Water Washes / Week', '2 Interior Washes / Week', 'Daily App Updates', 'Free Shampoo Wash on missed days', 'Flexible Timings (4 AM-9 AM, except Wednesdays)', 'No Contact Required'],
+    features: ['Bike — ₹499/month', 'Hatchback / Small Cars — ₹699/month', 'SUV / XUV / Sedan — ₹1099/month', 'Luxury Cars — ₹1999/month', '6 Water Washes / Week', '2 Interior Washes / Week', 'Daily App Updates', 'Free Shampoo Wash on missed days', 'Flexible Timings (4 AM-9 AM, except Wednesdays)', 'No Contact Required'],
     screenBuilder: _subscriptions,
     directBook: false,
   ),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -102,10 +103,18 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
 
   void _maybeScrollToHighlight(String section) {
     if (_didScrollToHighlight || widget.highlightSection != section) return;
-    _didScrollToHighlight = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _didScrollToHighlight) return;
       final ctx = _highlightKey.currentContext;
+      // FIX: claims/pollution/inspection/subscription usually finish loading
+      // BEFORE fetchBookings turns the page's loading spinner off — the card
+      // isn't on screen yet at that point, so there's nothing to scroll to.
+      // This used to mark the scroll as done anyway and never try again.
+      // Now it only counts as done once it actually scrolls; fetchBookings
+      // retries it the moment the spinner goes away (see
+      // _retryHighlightAfterLoad).
       if (ctx == null) return;
+      _didScrollToHighlight = true;
       Scrollable.ensureVisible(
         ctx,
         duration: const Duration(milliseconds: 500),
@@ -113,6 +122,14 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
         alignment: 0.1,
       );
     });
+  }
+
+  /// The page's list only appears once `loading` turns false — if the
+  /// highlighted section's own data arrived before that, its scroll found
+  /// nothing on screen. Try again now that the list is actually built.
+  void _retryHighlightAfterLoad() {
+    final section = widget.highlightSection;
+    if (section != null) _maybeScrollToHighlight(section);
   }
 
   // ── "NEW SERVICE UPDATE" badge, per booking ─────────────────────────
@@ -686,6 +703,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
               isTwoWheeler ? 'Two Wheeler Number' : 'Car Number',
               Icons.badge_outlined,
               focusNode: carNumberFocus,
+              allCaps: true,
               hasError: carNumberError,
               onChanged: (_) {
                 if (carNumberError) setSheetState(() => carNumberError = false);
@@ -721,7 +739,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                   'vehicle_type': selectedVehicleType,
                   'car_brand': selectedBrand,
                   'car_model': carModelController.text.trim(),
-                  'car_number': carNumberController.text.trim(),
+                  'car_number': carNumberController.text.trim().toUpperCase(),
                 }).eq('id', widget.vehicleId);
 
                 if (ctx.mounted) setSheetState(() {
@@ -739,7 +757,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                 setState(() {
                   _carModel = carModelController.text.trim();
                   _carBrand = selectedBrand;
-                  _carNumber = carNumberController.text.trim();
+                  _carNumber = carNumberController.text.trim().toUpperCase();
                 });
                 vehicleChangeBus.notifyVehicleUpdated();
 
@@ -1002,6 +1020,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     FocusNode? focusNode,
     bool hasError = false,
     ValueChanged<String>? onChanged,
+    bool allCaps = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1021,6 +1040,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
             controller: ctrl,
             focusNode: focusNode,
             onChanged: onChanged,
+            // Vehicle numbers: keyboard opens in caps, and anything typed
+            // or pasted in lowercase is turned into capitals as it's entered.
+            textCapitalization:
+                allCaps ? TextCapitalization.characters : TextCapitalization.none,
+            inputFormatters: allCaps ? [_UpperCaseTextFormatter()] : null,
             style: TextStyle(color: AppColors.txt),
             decoration: InputDecoration(
               icon: Icon(icon, size: 22, color: hasError ? Colors.red.shade400 : AppColors.mut),
@@ -1198,6 +1222,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       });
       _syncCancelTicker();
       if (bookings.isNotEmpty) _maybeScrollToHighlight('bookings');
+      _retryHighlightAfterLoad();
       await _loadSeenBookingStatuses();
     } catch (e) {
       // Without this, a failed fetch (no network, RLS hiccup, timeout) left
@@ -4206,5 +4231,14 @@ class _VehicleEditFadeIn extends StatelessWidget {
       ),
       child: child,
     );
+  }
+}
+
+/// Forces everything typed or pasted into a field to capitals, keeping the
+/// cursor where it was — used for vehicle numbers (e.g. KA01AB1234).
+class _UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    return newValue.copyWith(text: newValue.text.toUpperCase());
   }
 }

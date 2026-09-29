@@ -53,6 +53,12 @@ class _ClaimScreenState extends State<ClaimScreen> {
   // Upload state — drives the full-screen progress overlay shown only
   // after payment succeeds, while the picked files are actually uploaded.
   bool isUploading = false;
+
+  // One claim id per Razorpay payment. If saving fails after the customer
+  // has already paid, RETRY re-uses this same id — same storage paths,
+  // same row — so a retry can never create a second claim or clash with
+  // files the first attempt already uploaded.
+  final Map<String, String> _claimIdByPayment = {};
   String uploadStatus = '';
 
   // Explicit consent for sharing sensitive ID documents (Aadhaar, PAN,
@@ -270,18 +276,36 @@ class _ClaimScreenState extends State<ClaimScreen> {
   /// claim_details_screen.dart's _downloadDocument) rather than
   /// baked in forever at upload time.
   Future<String?> _uploadFile(File file, String folderPath, String fileName) async {
-    try {
-      final bytes = await file.readAsBytes();
-      final path = '$folderPath/$fileName';
+    final path = '$folderPath/$fileName';
+    final bytes = await file.readAsBytes();
 
-      await _supabase.storage
-          .from('insurance-documents')
-          .uploadBinary(path, bytes);
-
-      return path;
-    } catch (e) {
-      throw Exception('Upload failed: $e');
+    // Up to 3 tries per file — these uploads happen AFTER the customer has
+    // paid, so a single dropped request on a weak connection shouldn't be
+    // enough to lose their claim.
+    Object? lastError;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await _supabase.storage
+            .from('insurance-documents')
+            .uploadBinary(path, bytes);
+        return path;
+      } on StorageException catch (e) {
+        // Same claim id on a RETRY means the same path — if an earlier
+        // attempt already got this file up, it's already done.
+        final msg = e.message.toLowerCase();
+        if (e.statusCode == '409' ||
+            msg.contains('already exists') ||
+            msg.contains('duplicate')) {
+          return path;
+        }
+        lastError = e;
+      } catch (e) {
+        lastError = e;
+      }
+      debugPrint('Claim upload failed ($path, attempt $attempt/3): $lastError');
+      if (attempt < 3) await Future.delayed(Duration(seconds: attempt * 2));
     }
+    throw Exception('Upload failed ($path): $lastError');
   }
 
   bool get _allDocsReady =>
@@ -351,25 +375,66 @@ class _ClaimScreenState extends State<ClaimScreen> {
     );
   }
 
-  /// Uploads every picked document/photo, then inserts the claim row —
-  /// now a full doorstep pickup/garage/return trip just like a regular
-  /// service booking (delivery_partner_id, pickup/dropoff address,
-  /// delivery_stage, pickup/return OTP columns), always assigned to
-  /// delivery partner 3 and to newexpert_care. See
-  /// web/deliverydashboard.html and claim_details_screen.dart
-  /// for how those columns get driven afterwards.
+  /// Called by PaymentScreen only AFTER Razorpay has confirmed the
+  /// payment. Uploads every document/photo, then inserts the claim row —
+  /// a full doorstep pickup/garage/return trip just like a regular service
+  /// booking (see web/deliverydashboard.html and claim_details_screen.dart).
+  ///
+  /// FIX: this used to catch every error and return normally, so a failed
+  /// upload/insert still made PaymentScreen show ORDER PLACED — customer
+  /// charged, no claim saved, no way to retry. Now a failure shows a popup
+  /// that stays until the customer taps RETRY (same payment, same claim id,
+  /// never charged again) or CONTACT SUPPORT; only then does the error go
+  /// back to PaymentScreen, which shows its "your payment went through"
+  /// message instead of ORDER PLACED.
   Future<void> _saveClaim(String orderId, String paymentId) async {
     final user = _supabase.auth.currentUser;
     if (user == null) return;
 
-    setState(() {
-      isUploading = true;
-      uploadStatus = 'Uploading documents...';
-    });
+    final claimId = _claimIdByPayment.putIfAbsent(
+      paymentId,
+      () => '${DateTime.now().millisecondsSinceEpoch}-${secureStorageToken()}',
+    );
 
-    try {
-      final claimId =
-          '${DateTime.now().millisecondsSinceEpoch}-${secureStorageToken()}';
+    while (true) {
+      if (mounted) {
+        setState(() {
+          isUploading = true;
+          uploadStatus = 'Uploading documents...';
+        });
+      }
+
+      try {
+        await _uploadAndSaveClaim(user, claimId, orderId, paymentId);
+        if (mounted) {
+          setState(() {
+            isUploading = false;
+            uploadStatus = '';
+          });
+          await _showSubmittedDialog();
+        }
+        return;
+      } catch (e) {
+        debugPrint('Claim save failed after payment $paymentId: $e');
+        if (mounted) {
+          setState(() {
+            isUploading = false;
+            uploadStatus = '';
+          });
+        }
+        if (!mounted) rethrow;
+        final retry = await _showPaidButNotSavedDialog(paymentId);
+        if (!retry) rethrow;
+      }
+    }
+  }
+
+  Future<void> _uploadAndSaveClaim(
+    User user,
+    String claimId,
+    String orderId,
+    String paymentId,
+  ) async {
       final defaultAddr = await AddressService().getDefaultAddress();
       final deliveryPartnerId =
           await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('claim_table');
@@ -421,6 +486,16 @@ class _ClaimScreenState extends State<ClaimScreen> {
           damagePhotoFile!, 'damage-photos', 'claim-$claimId-damage.jpg');
 
       if (mounted) setState(() => uploadStatus = 'Saving claim details...');
+      // A RETRY after the row was actually saved (e.g. the connection
+      // dropped right after the insert went through) must not add a
+      // second claim for the same payment.
+      final alreadySaved = await _supabase
+          .from('claim_table')
+          .select('id')
+          .eq('razorpay_payment_id', paymentId)
+          .limit(1);
+      if ((alreadySaved as List).isNotEmpty) return;
+
       await _supabase.from('claim_table').insert({
         'user_id': user.id,
         'vehicle_id': widget.vehicleId,
@@ -459,27 +534,59 @@ class _ClaimScreenState extends State<ClaimScreen> {
         'customer_phone': profileData?['phone'],
       });
 
-      if (mounted) await _showSubmittedDialog();
-    } catch (e) {
-      // The payment already succeeded by this point — swallowing this
-      // instead of crashing avoids leaving the customer on a broken
-      // screen after money has already moved. Worst case support has to
-      // manually reconcile this claim from the Razorpay order id.
-      if (mounted) {
-        ErrorDisplay.showPremiumError(
-          context,
-          error: e,
-          customMessage: 'Could not submit your claim. Please try again.',
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          isUploading = false;
-          uploadStatus = '';
-        });
-      }
-    }
+  }
+
+  /// Shown when the claim couldn't be saved even though the payment went
+  /// through. Can't be dismissed by tapping outside or swiping back — the
+  /// customer has to choose, so they never land on a screen with a live
+  /// "pay" button while an unsaved paid claim is pending.
+  /// Returns true for RETRY, false for CONTACT SUPPORT.
+  Future<bool> _showPaidButNotSavedDialog(String paymentId) async {
+    final retry = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: AppColors.surfaceRaised,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          icon: const Icon(Icons.cloud_upload_rounded, color: Color(0xFFD4A017), size: 32),
+          title: Text(
+            'Payment received',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w900, fontSize: 16),
+          ),
+          content: Text(
+            'Your $_price payment went through, but we couldn\'t finish uploading '
+            'your claim documents — usually a weak connection. Tap RETRY to try '
+            'again. You will not be charged again.\n\nPayment ref: $paymentId',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.mut, fontSize: 13, height: 1.5),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text('CONTACT SUPPORT', style: TextStyle(color: AppColors.mut)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD4A017),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text(
+                'RETRY',
+                style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (retry != true) await _callSupport();
+    return retry == true;
   }
 
   Future<void> _showSubmittedDialog() {
@@ -522,8 +629,13 @@ class _ClaimScreenState extends State<ClaimScreen> {
                 height: 50,
                 child: ElevatedButton(
                   onPressed: () {
+                    // Only close this popup. The extra Navigator.pop(context)
+                    // that used to follow closed the PaymentScreen underneath
+                    // it too — PaymentScreen is what shows ORDER PLACED and
+                    // then opens the vehicle dashboard (with the Claims
+                    // section highlighted), so closing it early left the
+                    // customer stuck back on the claim screen instead.
                     Navigator.pop(dialogContext);
-                    Navigator.pop(context);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFD4A017),

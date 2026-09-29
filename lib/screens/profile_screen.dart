@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
@@ -592,6 +593,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               isTwoWheeler ? 'Two Wheeler Number' : 'Car Number',
               Icons.badge_outlined,
               focusNode: carNumberFocus,
+              allCaps: true,
               hasError: carNumberError,
               onChanged: (_) {
                 if (carNumberError) setSheetState(() => carNumberError = false);
@@ -637,7 +639,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   'vehicle_type': selectedVehicleType,
                   'car_brand': selectedBrand,
                   'car_model': carModelController.text.trim(),
-                  'car_number': carNumberController.text.trim(),
+                  'car_number': carNumberController.text.trim().toUpperCase(),
                 }).select().single();
 
                 final existing = await supabase
@@ -930,6 +932,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               isTwoWheeler ? 'Two Wheeler Number' : 'Car Number',
               Icons.badge_outlined,
               focusNode: carNumberFocus,
+              allCaps: true,
               hasError: carNumberError,
               onChanged: (_) {
                 if (carNumberError) setSheetState(() => carNumberError = false);
@@ -965,7 +968,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   'vehicle_type': selectedVehicleType,
                   'car_brand': selectedBrand,
                   'car_model': carModelController.text.trim(),
-                  'car_number': carNumberController.text.trim(),
+                  'car_number': carNumberController.text.trim().toUpperCase(),
                 }).eq('id', vehicle['id']);
 
                 if (ctx.mounted) setSheetState(() {
@@ -1251,6 +1254,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     FocusNode? focusNode,
     bool hasError = false,
     ValueChanged<String>? onChanged,
+    bool allCaps = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1270,6 +1274,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             controller: ctrl,
             focusNode: focusNode,
             onChanged: onChanged,
+            // Vehicle numbers: keyboard opens in caps, and anything typed
+            // or pasted in lowercase is turned into capitals as it's entered.
+            textCapitalization:
+                allCaps ? TextCapitalization.characters : TextCapitalization.none,
+            inputFormatters: allCaps ? [_UpperCaseTextFormatter()] : null,
             style: TextStyle(color: AppColors.txt),
             decoration: InputDecoration(
               icon: Icon(icon, size: 22, color: hasError ? Colors.red.shade400 : AppColors.mut),
@@ -1627,5 +1636,14 @@ class _StaggerFadeIn extends StatelessWidget {
       ),
       child: child,
     );
+  }
+}
+
+/// Forces everything typed or pasted into a field to capitals, keeping the
+/// cursor where it was — used for vehicle numbers (e.g. KA01AB1234).
+class _UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    return newValue.copyWith(text: newValue.text.toUpperCase());
   }
 }

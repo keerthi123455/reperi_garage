@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 
 const String kEmergencySupportNumber = '9353094672';
 
@@ -102,10 +103,18 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
     super.initState();
     _refresh();
     _poll = Timer.periodic(const Duration(seconds: 30), (_) => _refresh());
+    // AppColors are swapped in place on a light/dark toggle — rebuild so
+    // the banner follows the theme like every other screen does.
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    themeController.removeListener(_onThemeChanged);
     _poll?.cancel();
     _pulse.dispose();
     super.dispose();
@@ -169,7 +178,26 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
   @override
   Widget build(BuildContext context) {
     if (!_active) return const SizedBox.shrink();
-    const glow = Color(0xFFFF4D57);
+    // Dark mode keeps the original look exactly. Light mode swaps the
+    // near-black red pill and white text for a soft red-tinted card with
+    // the theme's own dark text, so it reads correctly on a light screen.
+    final isDark = AppColors.isDark;
+    final glow = isDark ? const Color(0xFFFF4D57) : const Color(0xFFD92D3A);
+    final bgColors = isDark
+        ? [
+            const Color(0xFF1B0B0D).withOpacity(0.92),
+            const Color(0xFF120607).withOpacity(0.96),
+          ]
+        : [
+            const Color(0xFFFFF1F2).withOpacity(0.96),
+            const Color(0xFFFFE3E5).withOpacity(0.98),
+          ];
+    final titleColor = isDark ? Colors.white : AppColors.txt;
+    final subtitleColor = isDark ? Colors.white.withOpacity(0.62) : AppColors.mut;
+    final chevronBg = isDark ? Colors.white.withOpacity(0.06) : AppColors.txt.withOpacity(0.05);
+    final chevronBorder = isDark ? Colors.white.withOpacity(0.10) : AppColors.line;
+    final chevronIcon = isDark ? Colors.white70 : AppColors.mut;
+    final dropShadow = Colors.black.withOpacity(isDark ? 0.35 : 0.10);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: AnimatedBuilder(
@@ -187,7 +215,7 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
                   offset: const Offset(0, 10),
                 ),
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.35),
+                  color: dropShadow,
                   blurRadius: 18,
                   offset: const Offset(0, 6),
                 ),
@@ -215,13 +243,10 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        const Color(0xFF1B0B0D).withOpacity(0.92),
-                        const Color(0xFF120607).withOpacity(0.96),
-                      ],
+                      colors: bgColors,
                     ),
                     border: Border.all(
-                      color: glow.withOpacity(0.55),
+                      color: glow.withOpacity(isDark ? 0.55 : 0.45),
                       width: 1.2,
                     ),
                   ),
@@ -311,7 +336,7 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0.1,
-                                color: Colors.white,
+                                color: titleColor,
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -324,7 +349,7 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
                               style: GoogleFonts.manrope(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w500,
-                                color: Colors.white.withOpacity(0.62),
+                                color: subtitleColor,
                               ),
                             ),
                           ],
@@ -335,12 +360,11 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.white.withOpacity(0.06),
-                          border: Border.all(
-                              color: Colors.white.withOpacity(0.10)),
+                          color: chevronBg,
+                          border: Border.all(color: chevronBorder),
                         ),
-                        child: const Icon(Symbols.chevron_right,
-                            color: Colors.white70, size: 18),
+                        child: Icon(Symbols.chevron_right,
+                            color: chevronIcon, size: 18),
                       ),
                     ],
                   ),
@@ -373,9 +397,43 @@ class _EmergencyHelpSheetState extends State<_EmergencyHelpSheet> {
   final _otpController = TextEditingController();
   bool _submitting = false;
   String? _error;
+  bool _closing = false;
+
+  /// Closes the sheet once — shared by the ✕ button and pull-down-to-close.
+  void _close() {
+    if (_closing || !mounted) return;
+    _closing = true;
+    FocusManager.instance.primaryFocus?.unfocus();
+    Navigator.pop(context);
+  }
+
+  /// Pull-down-to-close: when the list is already at the very top and the
+  /// customer keeps dragging down, the sheet closes (collapses back into
+  /// the banner) instead of just bouncing — the scrollable content used to
+  /// swallow that drag, so the sheet was hard to dismiss once opened.
+  bool _onScroll(ScrollNotification n) {
+    final draggingByFinger = (n is ScrollUpdateNotification && n.dragDetails != null) ||
+        (n is OverscrollNotification && n.dragDetails != null);
+    if (!draggingByFinger) return false;
+    final pulledPastTop = n.metrics.pixels < n.metrics.minScrollExtent - 60 ||
+        (n is OverscrollNotification && n.overscroll < -6 && n.metrics.pixels <= n.metrics.minScrollExtent);
+    if (pulledPastTop) _close();
+    return false;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
+    themeController.removeListener(_onThemeChanged);
     _otpController.dispose();
     super.dispose();
   }
@@ -531,7 +589,14 @@ class _EmergencyHelpSheetState extends State<_EmergencyHelpSheet> {
         20,
         20 + bottomInset + MediaQuery.viewInsetsOf(context).bottom,
       ),
-      child: SingleChildScrollView(
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScroll,
+        child: SingleChildScrollView(
+        // Always scrollable (with the same bounce on iOS and Android) so a
+        // pull-down at the top is detected even when the content is short.
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -547,13 +612,37 @@ class _EmergencyHelpSheetState extends State<_EmergencyHelpSheet> {
               ),
             ),
             const SizedBox(height: 18),
-            Text(
-              'Help is on the way',
-              style: GoogleFonts.manrope(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: AppColors.txt,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Help is on the way',
+                    style: GoogleFonts.manrope(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.txt,
+                    ),
+                  ),
+                ),
+                // Clear, always-visible way to close the sheet.
+                Semantics(
+                  button: true,
+                  label: 'Close',
+                  child: InkWell(
+                    onTap: _close,
+                    customBorder: const CircleBorder(),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.surfaceSunken,
+                        border: Border.all(color: AppColors.line),
+                      ),
+                      child: Icon(Icons.close_rounded, size: 20, color: AppColors.txt),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(
@@ -587,7 +676,10 @@ class _EmergencyHelpSheetState extends State<_EmergencyHelpSheet> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Symbols.call, color: Colors.white, size: 22),
+                    // Black in light mode, white in dark mode.
+                    Icon(Symbols.call,
+                        color: AppColors.isDark ? Colors.white : Colors.black,
+                        size: 22),
                     const SizedBox(width: 10),
                     Text(
                       'CALL US NOW  ·  $kEmergencySupportNumber',
@@ -595,7 +687,7 @@ class _EmergencyHelpSheetState extends State<_EmergencyHelpSheet> {
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.3,
-                        color: Colors.white,
+                        color: AppColors.isDark ? Colors.white : Colors.black,
                       ),
                     ),
                   ],
@@ -658,6 +750,7 @@ class _EmergencyHelpSheetState extends State<_EmergencyHelpSheet> {
                 ),
               ),
           ],
+        ),
         ),
       ),
     );

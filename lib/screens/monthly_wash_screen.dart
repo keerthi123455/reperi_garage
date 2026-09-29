@@ -310,7 +310,7 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
                           children: [
                             _buildPlanCard(
                               title: 'Hatchback / Small Cars',
-                              price: '₹600',
+                              price: '₹699',
                               vehicles:
                                   'Maruti Alto K10, Hyundai i20, Tata Punch, etc',
                               isSelected: selectedPlan == 'hatchback',
@@ -320,7 +320,7 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
                             const SizedBox(height: 16),
                             _buildPlanCard(
                               title: 'SUV / XUV / SEDAN',
-                              price: '₹1000',
+                              price: '₹1099',
                               vehicles:
                                   'Mahindra XUV500, Hyundai Creta, Tata Nexon, etc',
                               isSelected: selectedPlan == 'suv',
@@ -330,7 +330,7 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
                             const SizedBox(height: 16),
                             _buildPlanCard(
                               title: 'Luxury Cars',
-                              price: '₹1200',
+                              price: '₹1999',
                               vehicles: 'Audi, BMW, Mercedes-Benz, etc',
                               isSelected: selectedPlan == 'luxury',
                               onTap: () =>
@@ -339,7 +339,7 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
                             const SizedBox(height: 16),
                             _buildPlanCard(
                               title: 'Bike',
-                              price: '₹500',
+                              price: '₹499',
                               vehicles: 'All bikes & scooters',
                               isSelected: selectedPlan == 'bike',
                               onTap: () =>
@@ -446,22 +446,22 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
       case 'hatchback':
         return {
           'title': 'Monthly Wash Plan - Hatchback / Small Cars',
-          'price': '600',
+          'price': '699',
         };
       case 'suv':
         return {
           'title': 'Monthly Wash Plan - SUV / XUV / SEDAN',
-          'price': '1000',
+          'price': '1099',
         };
       case 'luxury':
         return {
           'title': 'Monthly Wash Plan - Luxury Cars',
-          'price': '1200',
+          'price': '1999',
         };
       case 'bike':
         return {
           'title': 'Monthly Wash Plan - Bike',
-          'price': '500',
+          'price': '499',
         };
       default:
         return {
