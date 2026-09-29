@@ -776,7 +776,6 @@ class _LoginScreenState extends State<LoginScreen>
         context,
         error: 'timeout',
         customMessage: 'That took too long — check your internet connection and try again.',
-        onRetry: _handleLogin,
       );
 
       setState(() => _isLoading = false);
@@ -786,7 +785,9 @@ class _LoginScreenState extends State<LoginScreen>
       ErrorDisplay.showPremiumError(
         context,
         error: e,
-        onRetry: _handleLogin,
+        customMessage: isClient
+            ? 'Could not sign in — check your email and password and try again.'
+            : 'Could not log in to the garage dashboard — check your username and password and try again.',
       );
 
       setState(() => _isLoading = false);

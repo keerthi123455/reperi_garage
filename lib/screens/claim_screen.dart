@@ -972,6 +972,30 @@ class _UploadSheetContent extends StatefulWidget {
 }
 
 class _UploadSheetContentState extends State<_UploadSheetContent> {
+  /// Opens the damage-description dialog seeded with whatever's already
+  /// saved — typing and tapping X discards the draft and leaves the saved
+  /// description untouched; OK (once the field isn't empty) commits the
+  /// draft into the claim screen's own
+  /// [_ClaimScreenState._damageDescriptionController].
+  ///
+  /// The dialog itself is [_DamageDescriptionDialog], a dedicated
+  /// StatefulWidget rather than an inline StatefulBuilder — see its own
+  /// dispose() for why the keyboard-dismiss has to live there instead of
+  /// right before each button's Navigator.pop.
+  Future<void> _openDamageDescriptionDialog() async {
+    final state = widget.state;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => _DamageDescriptionDialog(
+        initialText: state._damageDescriptionController.text,
+      ),
+    );
+    if (result != null) {
+      state._damageDescriptionController.text = result;
+    }
+    widget.setSheetState(() {});
+  }
+
   @override
   void dispose() {
     // Whatever closed this sheet — the X button, SUBMIT CLAIM's own pop,
@@ -1159,27 +1183,49 @@ class _UploadSheetContentState extends State<_UploadSheetContent> {
                     ),
 
                     const SizedBox(height: 16),
-                    Text(
-                      'Describe the damage',
-                      style: TextStyle(color: AppColors.txt, fontSize: 16, fontWeight: FontWeight.w900),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Describe the damage',
+                          style: TextStyle(color: AppColors.txt, fontSize: 16, fontWeight: FontWeight.w900),
+                        ),
+                        TextButton.icon(
+                          onPressed: _openDamageDescriptionDialog,
+                          icon: Icon(
+                            state._damageDescriptionController.text.trim().isEmpty
+                                ? Icons.add_circle_outline
+                                : Icons.edit_outlined,
+                            size: 18,
+                            color: const Color(0xFFD4A017),
+                          ),
+                          label: Text(
+                            state._damageDescriptionController.text.trim().isEmpty
+                                ? 'Add Description'
+                                : 'Edit',
+                            style: const TextStyle(
+                              color: Color(0xFFD4A017),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: state._damageDescriptionController,
-                      maxLines: 4,
-                      maxLength: 500,
-                      onChanged: (_) => setSheetState(() {}),
-                      style: TextStyle(color: AppColors.txt, fontSize: 14.5),
-                      decoration: InputDecoration(
-                        hintText: 'Describe the damage, accident details, location, etc.',
-                        hintStyle: TextStyle(color: AppColors.mut, fontSize: 13.5),
-                        filled: true,
-                        fillColor: AppColors.surfaceSunken,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.line)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.line)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFD4A017))),
+                    const SizedBox(height: 8),
+                    if (state._damageDescriptionController.text.trim().isNotEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceSunken,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.line),
+                        ),
+                        child: Text(
+                          state._damageDescriptionController.text.trim(),
+                          style: TextStyle(color: AppColors.txt.withOpacity(0.85), fontSize: 13.5, height: 1.4),
+                        ),
                       ),
-                    ),
 
                     const SizedBox(height: 14),
                     InkWell(
@@ -1233,6 +1279,121 @@ class _UploadSheetContentState extends State<_UploadSheetContent> {
         ),
       ),
       ),
+    );
+  }
+}
+
+/// The "Describe the damage" popup — its own StatefulWidget rather than an
+/// inline StatefulBuilder, specifically so it gets a dispose() lifecycle
+/// hook. Calling FocusManager.instance.primaryFocus?.unfocus() right
+/// before each button's Navigator.pop (X or OK) races the pop's own
+/// teardown of this route and crashed with a
+/// "'_dependents.isEmpty': is not true" assertion on every close,
+/// regardless of button or field content. dispose() always runs exactly
+/// once, strictly after the route has actually been removed, so there's
+/// no teardown left to race — same reasoning _UploadSheetContentState's
+/// own dispose() above already uses for the outer sheet.
+///
+/// X always pops with no result (discarding the draft, whatever it says).
+/// OK pops with the draft text only once it's non-empty; otherwise it
+/// shows an inline error instead of closing.
+class _DamageDescriptionDialog extends StatefulWidget {
+  const _DamageDescriptionDialog({required this.initialText});
+
+  final String initialText;
+
+  @override
+  State<_DamageDescriptionDialog> createState() => _DamageDescriptionDialogState();
+}
+
+class _DamageDescriptionDialogState extends State<_DamageDescriptionDialog> {
+  late final _draftController = TextEditingController(text: widget.initialText);
+  String? _fieldError;
+
+  @override
+  void dispose() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _draftController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_draftController.text.trim().isEmpty) {
+      setState(() => _fieldError = 'Please enter description of the incident');
+      return;
+    }
+    Navigator.pop(context, _draftController.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surfaceRaised,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      titlePadding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Text(
+              'Describe the damage',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w700),
+            ),
+          ),
+          // X always exits — no validation, whatever's typed (or not
+          // typed) is discarded either way.
+          IconButton(
+            icon: Icon(Icons.close, color: AppColors.mut),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+      content: TextField(
+        controller: _draftController,
+        autofocus: true,
+        maxLines: 4,
+        maxLength: 500,
+        style: TextStyle(color: AppColors.txt),
+        decoration: InputDecoration(
+          hintText: 'Describe the damage, accident details, location, etc.',
+          hintStyle: TextStyle(color: AppColors.mut, fontSize: 13.5),
+          errorText: _fieldError,
+          filled: true,
+          fillColor: AppColors.surfaceSunken,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppColors.line),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppColors.line),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFD4A017)),
+          ),
+        ),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      actions: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _submit,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD4A017),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

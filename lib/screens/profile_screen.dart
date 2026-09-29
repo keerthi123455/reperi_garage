@@ -9,6 +9,7 @@ import '../services/vehicle_change_bus.dart';
 import '../widgets/ask_ai_button.dart';
 import '../widgets/bottom_nav_actions.dart';
 import '../widgets/bottom_nav_bar.dart';
+import '../widgets/emergency_status_banner.dart';
 import '../widgets/error_display.dart';
 
 // Brand highlight yellow — a fixed accent, not a themed surface, used for
@@ -1315,7 +1316,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.ink,
-      body: SafeArea(
+      body: EmergencyBannerOverlay(
+        child: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 600),
@@ -1575,6 +1577,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
         ),
+      ),
       ),
       bottomNavigationBar: BottomNavBar(
         currentIndex: 4,

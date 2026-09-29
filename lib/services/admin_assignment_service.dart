@@ -49,8 +49,17 @@ class AdminAssignmentService {
     // including forcedAdminUsername — while this is enabled every booking
     // needs to land on the one demo garage account, not the real
     // 'emergency_service' admin Roadside Assistance would normally force.
-    final reviewAdminId = await AppleReviewAssignmentOverride.resolveAdminId();
-    if (reviewAdminId != null) return reviewAdminId;
+    //
+    // Exception: forced-admin bookings (Roadside Assistance) only take the
+    // override when the customer is the review account itself — every other
+    // customer's emergency booking still goes to the real forced admin.
+    final currentEmail = _supabase.auth.currentUser?.email;
+    final skipReviewOverride = forcedAdminUsername != null &&
+        currentEmail != AppleReviewAssignmentOverride.reviewCustomerEmail;
+    if (!skipReviewOverride) {
+      final reviewAdminId = await AppleReviewAssignmentOverride.resolveAdminId();
+      if (reviewAdminId != null) return reviewAdminId;
+    }
 
     if (forcedAdminUsername != null) {
       return _resolveAdminIdByUsername(forcedAdminUsername);

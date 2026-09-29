@@ -6,6 +6,7 @@ import '../theme/theme_controller.dart';
 import '../widgets/ask_ai_button.dart';
 import '../widgets/bottom_nav_actions.dart';
 import '../widgets/bottom_nav_bar.dart';
+import '../widgets/emergency_status_banner.dart';
 import 'book_service_screen.dart';
 import 'car_spa_screen.dart';
 import 'denting_tinkering_screen.dart';
@@ -1384,7 +1385,8 @@ class _ServicesScreenState extends State<ServicesScreen> {
       // taps fine, same as buttons/cards below it) dismisses the keyboard
       // — HitTestBehavior.opaque so empty space between/around slivers
       // still counts as a tap, not just the widgets drawn on it.
-      body: GestureDetector(
+      body: EmergencyBannerOverlay(
+        child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => FocusScope.of(context).unfocus(),
         child: CustomScrollView(
@@ -1450,6 +1452,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
         ),
+      ),
       ),
       bottomNavigationBar: BottomNavBar(
         currentIndex: 3,

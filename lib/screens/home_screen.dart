@@ -25,6 +25,7 @@ import '../widgets/auto_banner_strip.dart';
 import '../widgets/banner_coverflow.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/dot_indicator_row.dart';
+import '../widgets/emergency_status_banner.dart';
 import '../widgets/error_display.dart';
 import '../widgets/location_row.dart';
 import '../widgets/notification_permission_dialog.dart';
@@ -1250,6 +1251,12 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Center(
                 child: AskAiButton(onTap: _openAiAdvisor),
               ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 134 + bottomInset,
+              child: const EmergencyStatusBanner(),
             ),
             if (_toastMessage != null)
               Positioned(

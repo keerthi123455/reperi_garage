@@ -14,6 +14,7 @@ import '../theme/theme_controller.dart';
 import '../widgets/ask_ai_button.dart';
 import '../widgets/bottom_nav_actions.dart';
 import '../widgets/bottom_nav_bar.dart';
+import '../widgets/emergency_status_banner.dart';
 import '../widgets/error_display.dart';
 import 'booking_tracking_screen.dart';
 
@@ -1509,7 +1510,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
           ),
         ),
       ),
-      body: loading
+      body: EmergencyBannerOverlay(
+        child: loading
           ? const Center(
               child:
                   CircularProgressIndicator(color: Color(0xFFD4A017)),
@@ -2619,6 +2621,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                 ),
               ),
             ),
+      ),
       bottomNavigationBar: BottomNavBar(
         currentIndex: 1,
         onSelect: (i) => handleBottomNavSelect(

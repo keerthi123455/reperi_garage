@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -254,11 +256,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     final filteredClaims = claims;
 
+    // Roadside Assistance bookings, assigned to this admin (see
+    // PaymentScreen — they're stored in `bookings` under this prefix).
+    final emergencyBookings =
+        bookings.where((b) => _isEmergencyBooking(b)).toList();
+
     final activeList = selectedTab == 0
         ? filteredBookings
         : selectedTab == 1
             ? filteredFleet
-            : filteredClaims;
+            : selectedTab == 2
+                ? filteredClaims
+                : emergencyBookings;
 
     return Scaffold(
       backgroundColor: const Color(0xFF262626),
@@ -283,6 +292,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: const Color(0xFF1C1C1C),
+        type: BottomNavigationBarType.fixed,
         currentIndex: selectedTab,
         selectedItemColor: const Color(0xFFD4A017),
         unselectedItemColor: Colors.white54,
@@ -298,6 +308,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           BottomNavigationBarItem(
               icon: Icon(Icons.local_shipping), label: 'FLEET'),
           BottomNavigationBarItem(icon: Icon(Icons.shield), label: 'CLAIMS'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.emergency), label: 'EMERGENCY'),
         ],
       ),
       body: loading
@@ -317,7 +329,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                     ? 'No Bookings Found'
                                     : selectedTab == 1
                                         ? 'No Fleet Requests Found'
-                                        : 'No Claims Found',
+                                        : selectedTab == 2
+                                            ? 'No Claims Found'
+                                            : 'No Emergency Bookings Found',
                                 style: const TextStyle(
                                     color: Colors.white54, fontSize: 18),
                               ),
@@ -332,8 +346,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                     return _buildClientCard(activeList[index]);
                                   } else if (selectedTab == 1) {
                                     return _buildFleetCard(activeList[index]);
-                                  } else {
+                                  } else if (selectedTab == 2) {
                                     return _buildClaimCard(activeList[index]);
+                                  } else {
+                                    return _buildEmergencyCard(activeList[index]);
                                   }
                                 },
                               ),
@@ -376,6 +392,346 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
               ),
             ),
+    );
+  }
+
+  Future<void> _navigateToEmergency(Map booking) async {
+    final lat = booking['pickup_latitude'];
+    final lng = booking['pickup_longitude'];
+    final address = (booking['pickup_address'] ?? '').toString();
+    final destination = (lat != null && lng != null)
+        ? '$lat,$lng'
+        : address;
+    if (destination.isEmpty || destination == 'Not specified') {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No location available for this booking'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    final uri = Uri.https('www.google.com', '/maps/dir/', {
+      'api': '1',
+      'destination': destination,
+      'travelmode': 'driving',
+    });
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open Google Maps'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Generates the completion OTP for an emergency booking — same columns
+  /// and status the normal "mark as done" uses for a no-pickup/drop
+  /// booking (see BookingDetailsScreen._markAsDone). The customer types
+  /// this code into the emergency banner on their home screen, which is
+  /// what closes the booking.
+  Future<void> _markEmergencyDone(Map booking) async {
+    final otp = (1000 + math.Random().nextInt(9000)).toString();
+    final nowIso = DateTime.now().toIso8601String();
+    try {
+      await Supabase.instance.client.from('bookings').update({
+        'booking_status': 'Ready for Pickup',
+        'marked_done_at': nowIso,
+        'return_otp_code': otp,
+        'return_otp_generated_at': nowIso,
+      }).eq('id', booking['id']);
+      if (!mounted) return;
+      setState(() {
+        booking['booking_status'] = 'Ready for Pickup';
+        booking['marked_done_at'] = nowIso;
+        booking['return_otp_code'] = otp;
+        booking['return_otp_generated_at'] = nowIso;
+      });
+      await _showEmergencyOtpDialog(otp);
+    } catch (e) {
+      if (!mounted) return;
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not mark this booking as done. Please try again.',
+      );
+    }
+  }
+
+  Future<void> _showEmergencyOtpDialog(String otp) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Completion OTP',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Ask the customer to enter this code on their home screen to confirm the service is done.',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              otp,
+              style: const TextStyle(
+                color: Color(0xFFE5323B),
+                fontSize: 40,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 12,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text(
+              'OK',
+              style: TextStyle(
+                  color: Color(0xFFD4A017), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Emergency (Roadside Assistance) tile — deliberately not tappable as a
+  /// whole; the only interactive element is the NAVIGATE button.
+  Widget _buildEmergencyCard(Map booking) {
+    const red = Color(0xFFE5323B);
+    final verified = booking['return_otp_verified_at'] != null;
+    final otpCode = booking['return_otp_code']?.toString();
+    final otpPending =
+        !verified && booking['return_otp_generated_at'] != null && otpCode != null;
+    final status = verified
+        ? 'DONE'
+        : (booking['booking_status'] ?? 'PENDING').toString().toUpperCase();
+    final name = (booking['customer_name'] ?? 'Unknown').toString();
+    final phone = (booking['customer_phone'] ?? 'Not provided').toString();
+    final address = (booking['pickup_address'] ?? 'Not specified').toString();
+    final title = (booking['package_name'] ?? 'Roadside Assistance')
+        .toString()
+        .replaceFirst('Roadside Assistance - ', '');
+    final created = booking['created_at'] != null
+        ? DateTime.tryParse(booking['created_at'].toString())
+            ?.toLocal()
+            .toString()
+            .split('.')[0]
+        : null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1C),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: red.withOpacity(0.55), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: red.withOpacity(0.18),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.emergency, color: red, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (verified ? Colors.greenAccent : red).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  status,
+                  style: TextStyle(
+                    color: verified ? Colors.greenAccent : red,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _emergencyRow(Icons.person, name),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: phone == 'Not provided' ? null : () => _callCustomer(phone),
+            borderRadius: BorderRadius.circular(8),
+            child: Row(
+              children: [
+                const Icon(Icons.phone, color: Colors.white54, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    phone,
+                    style: const TextStyle(
+                      color: Color(0xFFD4A017),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (phone != 'Not provided')
+                  const Text(
+                    'CALL',
+                    style: TextStyle(
+                      color: Color(0xFFD4A017),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          _emergencyRow(Icons.location_on, address),
+          if (created != null) ...[
+            const SizedBox(height: 8),
+            _emergencyRow(Icons.schedule, created),
+          ],
+          const SizedBox(height: 16),
+          if (verified)
+            const Center(
+              child: Text(
+                'DONE — confirmed by customer',
+                style: TextStyle(
+                  color: Colors.greenAccent,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            )
+          else ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _navigateToEmergency(booking),
+              icon: const Icon(Icons.navigation, size: 20),
+              label: const Text(
+                'NAVIGATE',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: red,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (otpPending)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF262626),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFD4A017)),
+              ),
+              child: Column(
+                children: [
+                  const Text(
+                    'OTP — customer must enter it in their app',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    otpCode!,
+                    style: const TextStyle(
+                      color: Color(0xFFD4A017),
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 8,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Pull down to refresh once they confirm',
+                    style: TextStyle(color: Colors.white38, fontSize: 11),
+                  ),
+                ],
+              ),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _markEmergencyDone(booking),
+                icon: const Icon(Icons.check_circle_outline, size: 20),
+                label: const Text(
+                  'MARK AS DONE',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.greenAccent,
+                  side: const BorderSide(color: Colors.greenAccent),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _emergencyRow(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: Colors.white54, size: 18),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+        ),
+      ],
     );
   }
 
@@ -542,58 +898,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
               ],
             ),
-          
-            // Customer Name (if available)
-            if (booking['customer_name'] != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  'Customer: ${booking['customer_name']}',
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-            // Emergency Service (Roadside Assistance) has no delivery
-            // partner in the loop at all (see PaymentScreen's
-            // assignsDeliveryPartner: false for this flow) — the admin
-            // dispatching the technician is the only person who can reach
-            // the customer, so a call option is offered right here instead
-            // of only on a delivery dashboard elsewhere. Every other
-            // booking type keeps in-app chat as the way to reach the
-            // customer, so this is deliberately scoped to just this one
-            // service.
-            if (_isEmergencyBooking(booking) && _customerPhone(booking) != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: GestureDetector(
-                  onTap: () => _callCustomer(_customerPhone(booking)!),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD4A017).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.call_rounded, color: Color(0xFFD4A017), size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Call Customer — ${_customerPhone(booking)}',
-                          style: const TextStyle(
-                            color: Color(0xFFD4A017),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
           ],
         ),
       ),

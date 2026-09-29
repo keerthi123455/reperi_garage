@@ -744,7 +744,14 @@ class _PaymentScreenState extends State<PaymentScreen>
 
               // ── Customer Details ──
               'customer_name': profileData?['full_name'] ?? 'Unknown',
-              'customer_phone': profileData?['phone'],
+              'customer_phone': profileData?['phone'] ??
+              // Emergency bookings must always carry a reachable number
+              // for the on-site technician — fall back to the login phone.
+              (widget.forcedAdminUsername != null
+                  ? (user?.phone?.isNotEmpty == true
+                      ? user!.phone
+                      : user?.userMetadata?['phone'] as String?)
+                  : null),
 
               // Admin Assignment (Load-Balanced)
               'assigned_to_admin_id': assignedAdminId,
@@ -878,7 +885,14 @@ class _PaymentScreenState extends State<PaymentScreen>
 
           // ── Customer Details ──
           'customer_name': profileData?['full_name'] ?? 'Unknown',
-          'customer_phone': profileData?['phone'],
+          'customer_phone': profileData?['phone'] ??
+              // Emergency bookings must always carry a reachable number
+              // for the on-site technician — fall back to the login phone.
+              (widget.forcedAdminUsername != null
+                  ? (user?.phone?.isNotEmpty == true
+                      ? user!.phone
+                      : user?.userMetadata?['phone'] as String?)
+                  : null),
 
           // Admin Assignment (Load-Balanced)
           'assigned_to_admin_id': assignedAdminId,
