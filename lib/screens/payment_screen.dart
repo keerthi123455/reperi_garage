@@ -92,6 +92,12 @@ class PaymentScreen extends StatefulWidget {
   /// needs it.
   final bool vehicleRequired;
 
+  /// Called when this screen fills in a vehicle it wasn't given — either
+  /// the customer's existing active vehicle, or one they just added from
+  /// the "ADD A VEHICLE" prompt. Screens that save the booking themselves
+  /// (see [onSuccess]) use it to know which vehicle the booking is for.
+  final ValueChanged<String>? onVehicleResolved;
+
   /// When set, this booking always goes to this exact admin username
   /// (e.g. 'emergency_service' for Roadside Assistance) instead of the
   /// usual vehicle-type rotation — see AdminAssignmentService.getNextAdminId.
@@ -149,6 +155,7 @@ class PaymentScreen extends StatefulWidget {
     this.assignsAdmin = true,
     this.assignsWasher = false,
     this.vehicleRequired = true,
+    this.onVehicleResolved,
     this.forcedAdminUsername,
     this.bookingSection = 'bookings',
   });
@@ -159,6 +166,11 @@ class PaymentScreen extends StatefulWidget {
 
 class _PaymentScreenState extends State<PaymentScreen>
     with SingleTickerProviderStateMixin {
+  /// The vehicle this booking is for. Starts as [PaymentScreen.vehicleId]
+  /// but can be filled in here when that was empty — see
+  /// _resolveVehicleOrAsk.
+  late String _vehicleId = widget.vehicleId;
+
   bool orderPlaced = false;
   bool isProcessing = false;
 
@@ -270,8 +282,8 @@ class _PaymentScreenState extends State<PaymentScreen>
     // adding one — this is the one place that actually needs a real
     // vehicle, so it's the one place that checks. Deferred a frame since
     // showDialog needs the widget tree to have already been laid out.
-    if (widget.vehicleRequired && widget.vehicleId.isEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showVehicleRequiredDialog());
+    if (widget.vehicleRequired && _vehicleId.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resolveVehicleOrAsk());
     }
 
     // ── Initialize address service and load default address ──
@@ -279,14 +291,63 @@ class _PaymentScreenState extends State<PaymentScreen>
     _loadDefaultAddress();
   }
 
+  /// No vehicle was passed in. Package screens opened from Home before
+  /// any vehicle existed keep that empty id even after one is added, so
+  /// first check whether the customer has a vehicle NOW (their active one)
+  /// and just use it — only ask them to add one when there truly is none.
+  Future<void> _resolveVehicleOrAsk() async {
+    final existing = await _findCurrentVehicleId();
+    if (!mounted) return;
+    if (existing != null) {
+      _useVehicle(existing);
+    } else {
+      _showVehicleRequiredDialog();
+    }
+  }
+
+  /// The customer's active vehicle, or any vehicle they own — null if none.
+  Future<String?> _findCurrentVehicleId() async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    if (user == null) return null;
+    try {
+      final profile = await supabase
+          .from('profiles')
+          .select('active_vehicle_id')
+          .eq('id', user.id)
+          .maybeSingle();
+      final active = profile?['active_vehicle_id']?.toString();
+      if (active != null && active.isNotEmpty) return active;
+
+      final rows = await supabase
+          .from('vehicles')
+          .select('id')
+          .eq('user_id', user.id)
+          .limit(1);
+      if ((rows as List).isNotEmpty) return rows.first['id']?.toString();
+    } catch (_) {}
+    return null;
+  }
+
+  void _useVehicle(String vehicleId) {
+    setState(() => _vehicleId = vehicleId);
+    widget.onVehicleResolved?.call(vehicleId);
+  }
+
   /// Shown instead of letting the user proceed to checkout with no
   /// vehicle to book the service against.
+  ///
+  /// FIX: ADD VEHICLE used to REPLACE this screen with Profile, so after
+  /// adding a car the customer fell back to the package screen — which
+  /// still had no vehicle — and got asked again. Now Profile opens on top
+  /// of this screen and closes itself as soon as the vehicle is saved,
+  /// handing back its id, so checkout carries on right here.
   void _showVehicleRequiredDialog() {
     if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: _PayColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
@@ -295,12 +356,27 @@ class _PaymentScreenState extends State<PaymentScreen>
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context); // close dialog
-              Navigator.pushReplacement(
+            onPressed: () async {
+              Navigator.pop(dialogContext); // close dialog
+              final addedId = await Navigator.push<String>(
                 context,
-                MaterialPageRoute(builder: (_) => const ProfileScreen(autoOpenAddVehicle: true)),
+                MaterialPageRoute(
+                  builder: (_) => const ProfileScreen(
+                    autoOpenAddVehicle: true,
+                    returnAddedVehicle: true,
+                  ),
+                ),
               );
+              if (!mounted) return;
+              final vehicleId = addedId ?? await _findCurrentVehicleId();
+              if (!mounted) return;
+              if (vehicleId != null) {
+                _useVehicle(vehicleId);
+              } else {
+                // Backed out of Profile without adding one — nothing to
+                // book against, so leave checkout.
+                Navigator.pop(context);
+              }
             },
             child: const Text('ADD VEHICLE', style: TextStyle(color: _PayColors.blue)),
           ),
@@ -445,10 +521,12 @@ class _PaymentScreenState extends State<PaymentScreen>
 
   /// Navigate to address management screen
   Future<void> _navigateToAddressManagement() async {
+    // returnAfterSave: the address screen closes itself as soon as a new
+    // address is saved, bringing the customer straight back here.
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const AddressManagementScreen(),
+        builder: (_) => const AddressManagementScreen(returnAfterSave: true),
       ),
     );
     // Reload address after returning
@@ -470,7 +548,7 @@ class _PaymentScreenState extends State<PaymentScreen>
   /// (there's no single vehicle to show a dashboard for), so those still
   /// fall back to Home.
   Future<void> _goToBookingDestination() async {
-    if (widget.vehicleId.isEmpty) {
+    if (_vehicleId.isEmpty) {
       _goToHomeScreen();
       return;
     }
@@ -482,7 +560,7 @@ class _PaymentScreenState extends State<PaymentScreen>
       final vehicle = await Supabase.instance.client
           .from('vehicles')
           .select('car_model, car_brand, car_number')
-          .eq('id', widget.vehicleId)
+          .eq('id', _vehicleId)
           .single();
       carModel = (vehicle['car_model'] ?? carModel).toString();
       carBrand = (vehicle['car_brand'] ?? carBrand).toString();
@@ -512,7 +590,7 @@ class _PaymentScreenState extends State<PaymentScreen>
       context,
       MaterialPageRoute(
         builder: (_) => VehicleBookingsScreen(
-          vehicleId: widget.vehicleId,
+          vehicleId: _vehicleId,
           carModel: carModel,
           carBrand: carBrand,
           carNumber: carNumber,
@@ -691,7 +769,7 @@ class _PaymentScreenState extends State<PaymentScreen>
             // in real use or during Apple review.
             final assignedAdminId = widget.assignsAdmin
                 ? await AdminAssignmentService.getNextAdminId(
-                    vehicleId: widget.vehicleId,
+                    vehicleId: _vehicleId,
                     forcedAdminUsername: widget.forcedAdminUsername,
                   )
                 : null;
@@ -719,7 +797,7 @@ class _PaymentScreenState extends State<PaymentScreen>
               // exactly what was turning a successful payment into a
               // "couldn't save your booking" failure. Omit the column
               // entirely instead, leaving it NULL.
-              if (widget.vehicleId.isNotEmpty) 'vehicle_id': widget.vehicleId,
+              if (_vehicleId.isNotEmpty) 'vehicle_id': _vehicleId,
               'package_name': widget.title,
               'package_price': widget.price,
               if (_showPickupDrop)
@@ -838,7 +916,7 @@ class _PaymentScreenState extends State<PaymentScreen>
         // use or during Apple review.
         final assignedAdminId = widget.assignsAdmin
             ? await AdminAssignmentService.getNextAdminId(
-                vehicleId: widget.vehicleId,
+                vehicleId: _vehicleId,
                 forcedAdminUsername: widget.forcedAdminUsername,
               )
             : null;
@@ -862,7 +940,7 @@ class _PaymentScreenState extends State<PaymentScreen>
           // Same reasoning as the online-payment insert above — omit
           // rather than write '' into a uuid column for the no-vehicle
           // flows (Roadside Assistance).
-          if (widget.vehicleId.isNotEmpty) 'vehicle_id': widget.vehicleId,
+          if (_vehicleId.isNotEmpty) 'vehicle_id': _vehicleId,
           'package_name': widget.title,
           'package_price': widget.price,
           if (_showPickupDrop)

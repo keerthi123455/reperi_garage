@@ -26,6 +26,12 @@ class MonthlyWashScreen extends StatefulWidget {
 }
 
 class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
+  /// Filled in by PaymentScreen when this screen was opened before the
+  /// customer had a vehicle (see PaymentScreen.onVehicleResolved), so the
+  /// booking saved below is attached to the right vehicle.
+  String? _resolvedVehicleId;
+  String get _vehicleId => _resolvedVehicleId ?? widget.vehicleId;
+
   String? selectedPlan;
 
   @override
@@ -205,7 +211,7 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
 
       await Supabase.instance.client.from('monthlywash_table').insert({
         'user_id': user.id,
-        'vehicle_id': widget.vehicleId,
+        'vehicle_id': _vehicleId,
         'plan_type': selectedPlan,
         'plan_title': planDetails['title'],
         'price': double.parse(planDetails['price']!),
@@ -370,7 +376,8 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
                                       title: planDetails['title']!,
                                       price: planDetails['price']!,
                                       duration: '1 Month',
-                                      vehicleId: widget.vehicleId,
+                                      vehicleId: _vehicleId,
+                                      onVehicleResolved: (id) => _resolvedVehicleId = id,
                                       onSuccess: _savePlanToDatabase,
                                       showPickupDropOption: false,
                                       bookingSection: 'subscription',

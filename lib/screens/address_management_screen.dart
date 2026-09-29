@@ -14,7 +14,11 @@ const Color goldLight = Color(0xFFE8B923);
 const Color goldDark = Color(0xFFA68410);
 
 class AddressManagementScreen extends StatefulWidget {
-  const AddressManagementScreen({super.key});
+  const AddressManagementScreen({super.key, this.returnAfterSave = false});
+
+  /// When true (opened from PaymentScreen), this screen closes itself as
+  /// soon as a new address is saved, returning the customer to checkout.
+  final bool returnAfterSave;
 
   @override
   State<AddressManagementScreen> createState() =>
@@ -167,6 +171,10 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
           onSaved: () {
             _loadAddresses();
             Navigator.pop(ctx);
+            if (widget.returnAfterSave) {
+              Navigator.pop(context, true); // back to checkout
+              return;
+            }
             _showOverlayMessage('Address saved successfully', isError: false);
           },
           onError: (error) {

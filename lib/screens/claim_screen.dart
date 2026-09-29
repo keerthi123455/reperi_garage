@@ -38,6 +38,12 @@ class ClaimScreen extends StatefulWidget {
 }
 
 class _ClaimScreenState extends State<ClaimScreen> {
+  /// Filled in by PaymentScreen when this screen was opened before the
+  /// customer had a vehicle (see PaymentScreen.onVehicleResolved), so the
+  /// booking saved below is attached to the right vehicle.
+  String? _resolvedVehicleId;
+  String get _vehicleId => _resolvedVehicleId ?? widget.vehicleId;
+
   final _supabase = Supabase.instance.client;
   final _damageDescriptionController = TextEditingController();
   final ImagePicker _imagePicker = ImagePicker();
@@ -365,7 +371,8 @@ class _ClaimScreenState extends State<ClaimScreen> {
           title: 'Claim Assistance Service',
           price: _price,
           duration: 'Doorstep pickup & drop',
-          vehicleId: widget.vehicleId,
+          vehicleId: _vehicleId,
+          onVehicleResolved: (id) => _resolvedVehicleId = id,
           showPickupDropOption: false,
           onlineOnly: true,
           onSuccess: _saveClaim,
@@ -498,7 +505,7 @@ class _ClaimScreenState extends State<ClaimScreen> {
 
       await _supabase.from('claim_table').insert({
         'user_id': user.id,
-        'vehicle_id': widget.vehicleId,
+        'vehicle_id': _vehicleId,
         'assigned_to_admin_id': claimAdminId,
         'claim_status': 'submitted',
         'damage_description': _damageDescriptionController.text.trim(),

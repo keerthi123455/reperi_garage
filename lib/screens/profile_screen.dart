@@ -18,13 +18,22 @@ import '../widgets/error_display.dart';
 const Color _highlightYellow = Color(0xFFFFD600);
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key, this.autoOpenAddVehicle = false});
+  const ProfileScreen({
+    super.key,
+    this.autoOpenAddVehicle = false,
+    this.returnAddedVehicle = false,
+  });
 
   /// When true, opens the "Add Vehicle" sheet as soon as this screen
   /// appears — used by the home screen's "+" tile at the end of the
   /// vehicle carousel, which should land straight in that flow instead of
   /// just the profile screen.
   final bool autoOpenAddVehicle;
+
+  /// When true (opened from PaymentScreen's "ADD A VEHICLE" prompt), this
+  /// screen closes itself right after a vehicle is added and returns the
+  /// new vehicle's id, so the customer lands back on checkout.
+  final bool returnAddedVehicle;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -683,6 +692,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 vehicleChangeBus.notifyVehicleUpdated();
 
                 if (!mounted) return;
+                if (widget.returnAddedVehicle) {
+                  // Back to checkout with the new vehicle.
+                  Navigator.pop(context, inserted['id']?.toString());
+                  return;
+                }
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: const Row(

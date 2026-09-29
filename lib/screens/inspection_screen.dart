@@ -158,6 +158,12 @@ const Map<String, int> kInspectionVehicleTypePrices = {
 };
 
 class _InspectionScreenState extends State<InspectionScreen> {
+  /// Filled in by PaymentScreen when this screen was opened before the
+  /// customer had a vehicle (see PaymentScreen.onVehicleResolved), so the
+  /// booking saved below is attached to the right vehicle.
+  String? _resolvedVehicleId;
+  String get _vehicleId => _resolvedVehicleId ?? widget.vehicleId;
+
   final Set<int> _expanded = {};
 
   // Captured from the PLAN INSPECTION popup flow just before handing off
@@ -269,7 +275,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
 
       await Supabase.instance.client.from('inspection_booking').insert({
         'user_id': user.id,
-        'vehicle_id': widget.vehicleId,
+        'vehicle_id': _vehicleId,
         'razorpay_order_id': orderId,
         'razorpay_payment_id': paymentId,
         'pickup_address': defaultAddr?['address'],
@@ -336,7 +342,8 @@ class _InspectionScreenState extends State<InspectionScreen> {
           title: 'Vehicle Health Check',
           price: '₹$_selectedPrice',
           duration: 'Quick turnaround',
-          vehicleId: widget.vehicleId,
+          vehicleId: _vehicleId,
+          onVehicleResolved: (id) => _resolvedVehicleId = id,
           showPickupDropOption: false,
           onSuccess: _saveInspectionBooking,
           bookingSection: 'inspection',

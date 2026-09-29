@@ -36,6 +36,12 @@ class PollutionScreen extends StatefulWidget {
 }
 
 class _PollutionScreenState extends State<PollutionScreen> {
+  /// Filled in by PaymentScreen when this screen was opened before the
+  /// customer had a vehicle (see PaymentScreen.onVehicleResolved), so the
+  /// booking saved below is attached to the right vehicle.
+  String? _resolvedVehicleId;
+  String get _vehicleId => _resolvedVehicleId ?? widget.vehicleId;
+
   @override
   void initState() {
     super.initState();
@@ -88,7 +94,7 @@ class _PollutionScreenState extends State<PollutionScreen> {
 
     await Supabase.instance.client.from('pollution_booking').insert({
       'user_id': user.id,
-      'vehicle_id': widget.vehicleId,
+      'vehicle_id': _vehicleId,
       'price': PollutionScreen._price,
       'razorpay_order_id': orderId,
       'razorpay_payment_id': paymentId,
@@ -118,7 +124,8 @@ class _PollutionScreenState extends State<PollutionScreen> {
           title: 'Pollution Certificate Check',
           price: PollutionScreen._price,
           duration: 'Same day',
-          vehicleId: widget.vehicleId,
+          vehicleId: _vehicleId,
+          onVehicleResolved: (id) => _resolvedVehicleId = id,
           showPickupDropOption: false,
           onSuccess: _savePollutionBooking,
           bookingSection: 'pollution',
