@@ -165,6 +165,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     );
     if (image == null) return;
     final bytes = await image.readAsBytes();
+    if (!mounted) return;
     setState(() => selectedImageBytes = bytes);
   }
 

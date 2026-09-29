@@ -552,8 +552,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       vehicleChangeBus.notifyVehicleUpdated();
 
       if (!mounted) return;
+      // Grab the messenger BEFORE popping — this screen's context is on
+      // its way out once Navigator.pop runs.
+      final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(
           content: Text('Vehicle deleted successfully'),
           backgroundColor: Colors.green,
@@ -643,7 +646,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       .toList(),
                   selectedKey: selectedVehicleType,
                 );
-                if (picked != null) {
+                if (picked != null && ctx.mounted) {
                   setSheetState(() {
                     selectedVehicleType = picked;
                     if (!_kBrandsByType[selectedVehicleType]!.contains(selectedBrand)) {
@@ -663,7 +666,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       .toList(),
                   selectedKey: selectedBrand,
                 );
-                if (picked != null) {
+                if (picked != null && ctx.mounted) {
                   setSheetState(() => selectedBrand = picked);
                 }
               },
@@ -721,7 +724,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                   'car_number': carNumberController.text.trim(),
                 }).eq('id', widget.vehicleId);
 
-                setSheetState(() {
+                if (ctx.mounted) setSheetState(() {
                   saving = false;
                   success = true;
                 });
@@ -730,7 +733,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                 await Future.delayed(const Duration(milliseconds: 550));
 
                 if (!mounted) return;
-                Navigator.pop(ctx);
+                // The sheet may have been swiped away during the save — popping
+                // with its dead context would close this screen instead.
+                if (ctx.mounted) Navigator.pop(ctx);
                 setState(() {
                   _carModel = carModelController.text.trim();
                   _carBrand = selectedBrand;
@@ -764,7 +769,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                 );
               } catch (e) {
                 if (!mounted) return;
-                setSheetState(() {
+                if (ctx.mounted) setSheetState(() {
                   saving = false;
                   errorText = 'Could not update vehicle: $e';
                 });
@@ -2116,9 +2121,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                         ),
                                         const SizedBox(height: 8),
                                         Text(
-                                          DateTime.parse(update['created_at'])
-                                              .toString()
-                                              .split('.')[0],
+                                          (DateTime.tryParse('${update['created_at'] ?? ''}')
+                                              ?.toString()
+                                              .split('.')[0] ?? ''),
                                           style: TextStyle(
                                             color: AppColors.mut,
                                             fontSize: 12,

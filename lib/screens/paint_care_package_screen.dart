@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
+import '../widgets/error_display.dart';
 
 /// Static, hardcoded package data for the "Paint Care" (Car360) category —
 /// same structural pattern as the other package screens, plus a separate
@@ -1087,11 +1088,11 @@ class _AddedConfirmationDialogState extends State<_AddedConfirmationDialog>
     );
     _iconController.forward();
 
-    // Self-dismissing, same pattern as ErrorDisplay's premium toast — pops
-    // this dialog's own route via its own context, so it can never end up
-    // popping something else pushed on top of it in the meantime.
+    // Self-dismissing, same pattern as ErrorDisplay's premium toast —
+    // closes this dialog's own route only (Navigator.of(context).pop()
+    // closed whatever was on top at that moment, not necessarily this).
     Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) ErrorDisplay.closeOwnRoute(context);
     });
   }
 

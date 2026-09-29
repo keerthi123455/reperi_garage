@@ -1310,8 +1310,12 @@ class _BatteryEnquirySheetState extends State<_BatteryEnquirySheet> {
       });
 
       if (!mounted) return;
+      // Grab the messenger BEFORE popping — this sheet's own context is on
+      // its way out once Navigator.pop runs, and looking anything up from
+      // it afterwards is what triggers the "'_dependents.isEmpty'" crash.
+      final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(content: Text('Enquiry submitted — our team will reach out shortly.')),
       );
     } catch (e) {

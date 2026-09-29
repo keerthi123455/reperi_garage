@@ -136,275 +136,27 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
   // that code — proving the requester owns the inbox — and only then
   // calls fleet-reset-password, which hashes the new password
   // server-side.
-  void _showForgotPasswordDialog() {
-    final emailController = TextEditingController();
-    final usernameController = TextEditingController();
-    final otpController = TextEditingController();
-    final passwordController = TextEditingController();
-
-    // A throwaway client, isolated from Supabase.instance.client. The OTP
-    // dance below (signInWithOtp/verifyOTP) sets whatever client runs it
-    // as "logged in" — running it on the app-wide client would silently
-    // replace/destroy a real customer's session if one was active on this
-    // device. This client's session lives only in memory and is disposed
-    // when the dialog closes, so it can never touch the customer-facing
-    // auth state.
-    final otpClient = SupabaseClient(
-      _supabaseUrl,
-      _supabaseAnonKey,
-      // PKCE (the default flow) needs a persistent storage backend to hold
-      // a code verifier across steps — this client never persists
-      // anything and never survives a redirect, so implicit flow (which
-      // doesn't need that storage) is the right fit here.
-      authOptions: const AuthClientOptions(authFlowType: AuthFlowType.implicit),
+  //
+  // FIX: the popup is now its own StatefulWidget
+  // ([_FleetForgotPasswordDialog]) — same fix as login_screen.dart's
+  // garage/client reset popups. The old inline showDialog+StatefulBuilder
+  // version unfocused the keyboard right before Navigator.pop and never
+  // disposed its controllers, which is what causes the
+  // "'_dependents.isEmpty': is not true" red screen. The success dialog
+  // is now shown from here, with this sheet's own live context.
+  Future<void> _showForgotPasswordDialog() async {
+    final didReset = await showDialog<bool>(
+      context: context,
+      builder: (_) => _FleetForgotPasswordDialog(onError: _showErrorDialog),
     );
 
-    InputDecoration fieldDecoration(String hint) => InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(color: Colors.white54),
-          filled: true,
-          fillColor: const Color(0xFF3A3A3A),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFF333333)),
-          ),
-        );
-
-    Widget fieldLabel(String text) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            text,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        );
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        bool isLoading = false;
-        int step = 0; // 0 = enter email/username, 1 = enter code + new password
-
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            Future<void> sendCode() async {
-              final email = emailController.text.trim();
-              final username = usernameController.text.trim();
-
-              if (email.isEmpty || username.isEmpty) {
-                _showErrorDialog('Missing Fields', 'Email and username are required.');
-                return;
-              }
-
-              setDialogState(() => isLoading = true);
-              try {
-                final verify = await Supabase.instance.client.functions.invoke(
-                  'fleet-verify-identity',
-                  body: {'email': email, 'username': username},
-                );
-                final verifyData = verify.data as Map<String, dynamic>?;
-
-                if (verifyData?['valid'] != true) {
-                  if (!context.mounted) return;
-                  setDialogState(() => isLoading = false);
-                  _showErrorDialog(
-                    'No Match Found',
-                    'Email and username do not match our records. Please verify and try again.',
-                  );
-                  return;
-                }
-
-                await otpClient.auth.signInWithOtp(
-                  email: email,
-                  shouldCreateUser: true,
-                );
-
-                if (!context.mounted) return;
-                setDialogState(() {
-                  isLoading = false;
-                  step = 1;
-                });
-              } catch (e) {
-                if (!context.mounted) return;
-                setDialogState(() => isLoading = false);
-                ErrorDisplay.showPremiumError(
-                  context,
-                  error: e,
-                  customMessage: 'Could not send your verification code. Please try again.',
-                );
-              }
-            }
-
-            Future<void> confirmReset() async {
-              final email = emailController.text.trim();
-              final username = usernameController.text.trim();
-              final code = otpController.text.trim();
-              final newPassword = passwordController.text.trim();
-
-              if (code.isEmpty || newPassword.isEmpty) {
-                _showErrorDialog('Missing Fields', 'Enter the code and a new password.');
-                return;
-              }
-              if (newPassword.length < 6) {
-                _showErrorDialog('Weak Password', 'Password must be at least 6 characters long.');
-                return;
-              }
-
-              setDialogState(() => isLoading = true);
-              try {
-                final verifyResponse = await otpClient.auth.verifyOTP(
-                  email: email,
-                  token: code,
-                  type: OtpType.email,
-                );
-
-                final accessToken = verifyResponse.session?.accessToken;
-                if (accessToken == null) {
-                  throw Exception('No session returned for that code');
-                }
-
-                // Passed explicitly rather than relying on the app-wide
-                // client's current session — that session was never
-                // touched by this flow in the first place (see otpClient
-                // above), so it wouldn't have this OTP session anyway.
-                final reset = await Supabase.instance.client.functions.invoke(
-                  'fleet-reset-password',
-                  body: {'username': username, 'newPassword': newPassword},
-                  headers: {'Authorization': 'Bearer $accessToken'},
-                );
-
-                final resetData = reset.data as Map<String, dynamic>?;
-                if (!context.mounted) return;
-
-                if (resetData?['success'] == true) {
-                  FocusManager.instance.primaryFocus?.unfocus();
-                  Navigator.pop(context);
-                  _showSuccessDialog(
-                    'Password Reset',
-                    'Password reset successfully! Please login with your new password.',
-                    () {},
-                  );
-                } else {
-                  setDialogState(() => isLoading = false);
-                  _showErrorDialog(
-                    'Reset Failed',
-                    'Could not reset password. Please try again or contact support.',
-                  );
-                }
-              } catch (e) {
-                if (!context.mounted) return;
-                setDialogState(() => isLoading = false);
-                ErrorDisplay.showPremiumError(
-                  context,
-                  error: e,
-                  customMessage: 'That code is invalid or has expired. Please try again.',
-                );
-              }
-            }
-
-            return AlertDialog(
-              title: const Text('Reset Password'),
-              backgroundColor: const Color(0xFF262626),
-              titleTextStyle: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: step == 0
-                      ? [
-                          fieldLabel('Email registered with Reperi'),
-                          TextField(
-                            controller: emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            style: const TextStyle(color: Colors.white),
-                            enabled: !isLoading,
-                            decoration: fieldDecoration('your@email.com'),
-                          ),
-                          const SizedBox(height: 16),
-                          fieldLabel('Username registered with Reperi'),
-                          TextField(
-                            controller: usernameController,
-                            style: const TextStyle(color: Colors.white),
-                            enabled: !isLoading,
-                            decoration: fieldDecoration('your_username'),
-                          ),
-                        ]
-                      : [
-                          Text(
-                            'We sent a 6-digit code to ${emailController.text.trim()}',
-                            style: const TextStyle(color: Colors.white70, fontSize: 13),
-                          ),
-                          const SizedBox(height: 16),
-                          fieldLabel('Verification Code'),
-                          TextField(
-                            controller: otpController,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white),
-                            enabled: !isLoading,
-                            decoration: fieldDecoration('123456'),
-                          ),
-                          const SizedBox(height: 16),
-                          fieldLabel('New Password'),
-                          TextField(
-                            controller: passwordController,
-                            obscureText: true,
-                            style: const TextStyle(color: Colors.white),
-                            enabled: !isLoading,
-                            decoration: fieldDecoration('Enter new password'),
-                          ),
-                        ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isLoading
-                      ? null
-                      : () {
-                          // Dropping focus before popping avoids a rare
-                          // Flutter crash ('_dependents.isEmpty' assertion)
-                          // that can fire if this dialog's TextField still
-                          // has focus (and the keyboard is mid-animation)
-                          // when its route gets torn down.
-                          FocusManager.instance.primaryFocus?.unfocus();
-                          Navigator.pop(context);
-                        },
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(color: Color(0xFFD4A017)),
-                  ),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD4A017),
-                  ),
-                  onPressed: isLoading ? null : (step == 0 ? sendCode : confirmReset),
-                  child: isLoading
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
-                          ),
-                        )
-                      : Text(
-                          step == 0 ? 'Send Code' : 'Reset Password',
-                          style: const TextStyle(color: Colors.black),
-                        ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    ).then((_) => otpClient.dispose());
+    if (didReset == true && mounted) {
+      _showSuccessDialog(
+        'Password Reset',
+        'Password reset successfully! Please login with your new password.',
+        () {},
+      );
+    }
   }
 
   @override
@@ -724,6 +476,285 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
               const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
       ),
+    );
+  }
+}
+
+/// Fleet forgot-password popup — same logic and look as before, moved into
+/// its own StatefulWidget so its controllers, throwaway client and
+/// keyboard-dismiss are cleaned up in dispose(), which runs strictly after
+/// the route has been fully removed (nothing left to race).
+class _FleetForgotPasswordDialog extends StatefulWidget {
+  const _FleetForgotPasswordDialog({required this.onError});
+
+  /// The sheet's own _showErrorDialog — kept so validation/"no match"
+  /// errors look exactly the same as before.
+  final void Function(String title, String message) onError;
+
+  @override
+  State<_FleetForgotPasswordDialog> createState() =>
+      _FleetForgotPasswordDialogState();
+}
+
+class _FleetForgotPasswordDialogState
+    extends State<_FleetForgotPasswordDialog> {
+  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
+  final _otpController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  // A throwaway client, isolated from Supabase.instance.client. The OTP
+  // dance below (signInWithOtp/verifyOTP) sets whatever client runs it
+  // as "logged in" — running it on the app-wide client would silently
+  // replace/destroy a real customer's session if one was active on this
+  // device. This client's session lives only in memory and is disposed
+  // with this dialog, so it can never touch the customer-facing auth
+  // state.
+  late final _otpClient = SupabaseClient(
+    _supabaseUrl,
+    _supabaseAnonKey,
+    // PKCE (the default flow) needs a persistent storage backend to hold
+    // a code verifier across steps — this client never persists
+    // anything and never survives a redirect, so implicit flow (which
+    // doesn't need that storage) is the right fit here.
+    authOptions: const AuthClientOptions(authFlowType: AuthFlowType.implicit),
+  );
+
+  bool _isLoading = false;
+  int _step = 0; // 0 = enter email/username, 1 = enter code + new password
+
+  @override
+  void dispose() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _emailController.dispose();
+    _usernameController.dispose();
+    _otpController.dispose();
+    _passwordController.dispose();
+    _otpClient.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _fieldDecoration(String hint) => InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Colors.white54),
+        filled: true,
+        fillColor: const Color(0xFF3A3A3A),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFF333333)),
+        ),
+      );
+
+  Widget _fieldLabel(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+
+  Future<void> _sendCode() async {
+    final email = _emailController.text.trim();
+    final username = _usernameController.text.trim();
+
+    if (email.isEmpty || username.isEmpty) {
+      widget.onError('Missing Fields', 'Email and username are required.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final verify = await Supabase.instance.client.functions.invoke(
+        'fleet-verify-identity',
+        body: {'email': email, 'username': username},
+      );
+      final verifyData = verify.data as Map<String, dynamic>?;
+
+      if (verifyData?['valid'] != true) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        widget.onError(
+          'No Match Found',
+          'Email and username do not match our records. Please verify and try again.',
+        );
+        return;
+      }
+
+      await _otpClient.auth.signInWithOtp(
+        email: email,
+        shouldCreateUser: true,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _step = 1;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'Could not send your verification code. Please try again.',
+      );
+    }
+  }
+
+  Future<void> _confirmReset() async {
+    final email = _emailController.text.trim();
+    final username = _usernameController.text.trim();
+    final code = _otpController.text.trim();
+    final newPassword = _passwordController.text.trim();
+
+    if (code.isEmpty || newPassword.isEmpty) {
+      widget.onError('Missing Fields', 'Enter the code and a new password.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      widget.onError('Weak Password', 'Password must be at least 6 characters long.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final verifyResponse = await _otpClient.auth.verifyOTP(
+        email: email,
+        token: code,
+        type: OtpType.email,
+      );
+
+      final accessToken = verifyResponse.session?.accessToken;
+      if (accessToken == null) {
+        throw Exception('No session returned for that code');
+      }
+
+      // Passed explicitly rather than relying on the app-wide client's
+      // current session — that session was never touched by this flow in
+      // the first place (see _otpClient above).
+      final reset = await Supabase.instance.client.functions.invoke(
+        'fleet-reset-password',
+        body: {'username': username, 'newPassword': newPassword},
+        headers: {'Authorization': 'Bearer $accessToken'},
+      );
+
+      final resetData = reset.data as Map<String, dynamic>?;
+      if (!mounted) return;
+
+      if (resetData?['success'] == true) {
+        // Success dialog is shown by FleetLoginSheet._showForgotPasswordDialog.
+        Navigator.pop(context, true);
+      } else {
+        setState(() => _isLoading = false);
+        widget.onError(
+          'Reset Failed',
+          'Could not reset password. Please try again or contact support.',
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage: 'That code is invalid or has expired. Please try again.',
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reset Password'),
+      backgroundColor: const Color(0xFF262626),
+      titleTextStyle: const TextStyle(
+        color: Colors.white,
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: _step == 0
+              ? [
+                  _fieldLabel('Email registered with Reperi'),
+                  TextField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    style: const TextStyle(color: Colors.white),
+                    enabled: !_isLoading,
+                    decoration: _fieldDecoration('your@email.com'),
+                  ),
+                  const SizedBox(height: 16),
+                  _fieldLabel('Username registered with Reperi'),
+                  TextField(
+                    controller: _usernameController,
+                    style: const TextStyle(color: Colors.white),
+                    enabled: !_isLoading,
+                    decoration: _fieldDecoration('your_username'),
+                  ),
+                ]
+              : [
+                  Text(
+                    'We sent a 6-digit code to ${_emailController.text.trim()}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  _fieldLabel('Verification Code'),
+                  TextField(
+                    controller: _otpController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white),
+                    enabled: !_isLoading,
+                    decoration: _fieldDecoration('123456'),
+                  ),
+                  const SizedBox(height: 16),
+                  _fieldLabel('New Password'),
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    enabled: !_isLoading,
+                    decoration: _fieldDecoration('Enter new password'),
+                  ),
+                ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          // Keyboard dismiss now happens in dispose(), not here — doing it
+          // right before pop is what raced the route teardown.
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: Color(0xFFD4A017)),
+          ),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFD4A017),
+          ),
+          onPressed: _isLoading ? null : (_step == 0 ? _sendCode : _confirmReset),
+          child: _isLoading
+              ? const SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                  ),
+                )
+              : Text(
+                  _step == 0 ? 'Send Code' : 'Reset Password',
+                  style: const TextStyle(color: Colors.black),
+                ),
+        ),
+      ],
     );
   }
 }

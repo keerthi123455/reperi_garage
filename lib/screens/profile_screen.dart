@@ -550,7 +550,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       .toList(),
                   selectedKey: selectedVehicleType,
                 );
-                if (picked != null) {
+                if (picked != null && ctx.mounted) {
                   setSheetState(() {
                     selectedVehicleType = picked;
                     selectedBrand = brandsByType[selectedVehicleType]!.first;
@@ -569,7 +569,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       .toList(),
                   selectedKey: selectedBrand,
                 );
-                if (picked != null) {
+                if (picked != null && ctx.mounted) {
                   setSheetState(() => selectedBrand = picked);
                 }
               },
@@ -665,7 +665,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   }).eq('id', user.id);
                 }
 
-                setSheetState(() {
+                if (ctx.mounted) setSheetState(() {
                   saving = false;
                   success = true;
                 });
@@ -674,7 +674,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 await Future.delayed(const Duration(milliseconds: 550));
 
                 if (!mounted) return;
-                Navigator.pop(ctx);
+                // The sheet may have been swiped away during the save — popping
+                // with its dead context would close this screen instead.
+                if (ctx.mounted) Navigator.pop(ctx);
                 await fetchVehicles();
                 vehicleChangeBus.notifyVehicleUpdated();
 
@@ -705,7 +707,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               } catch (e) {
                 if (!mounted) return;
                 final errorMessage = ErrorHandler.getUserMessage(e);
-                setSheetState(() {
+                if (ctx.mounted) setSheetState(() {
                   saving = false;
                   errorText = errorMessage;
                 });
@@ -888,7 +890,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       .toList(),
                   selectedKey: selectedVehicleType,
                 );
-                if (picked != null) {
+                if (picked != null && ctx.mounted) {
                   setSheetState(() {
                     selectedVehicleType = picked;
                     if (!brandsByType[selectedVehicleType]!.contains(selectedBrand)) {
@@ -908,7 +910,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       .toList(),
                   selectedKey: selectedBrand,
                 );
-                if (picked != null) {
+                if (picked != null && ctx.mounted) {
                   setSheetState(() => selectedBrand = picked);
                 }
               },
@@ -966,7 +968,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   'car_number': carNumberController.text.trim(),
                 }).eq('id', vehicle['id']);
 
-                setSheetState(() {
+                if (ctx.mounted) setSheetState(() {
                   saving = false;
                   success = true;
                 });
@@ -975,7 +977,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 await Future.delayed(const Duration(milliseconds: 550));
 
                 if (!mounted) return;
-                Navigator.pop(ctx);
+                // The sheet may have been swiped away during the save — popping
+                // with its dead context would close this screen instead.
+                if (ctx.mounted) Navigator.pop(ctx);
                 await fetchVehicles();
                 vehicleChangeBus.notifyVehicleUpdated();
 
@@ -1006,7 +1010,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               } catch (e) {
                 if (!mounted) return;
                 final errorMessage = ErrorHandler.getUserMessage(e);
-                setSheetState(() {
+                if (ctx.mounted) setSheetState(() {
                   saving = false;
                   errorText = errorMessage;
                 });

@@ -3,6 +3,23 @@ import '../services/error_handler.dart';
 
 /// Modern error display utilities for consistent error UX across the app
 class ErrorDisplay {
+  /// Closes ONLY the dialog/route that [context] belongs to — for
+  /// self-dismissing popups (toasts, success animations) on a timer.
+  /// A plain Navigator.of(context).pop() closes whatever is on top at that
+  /// moment, which may be a different dialog, sheet or screen opened in
+  /// the meantime.
+  static void closeOwnRoute(BuildContext context) {
+    if (!context.mounted) return;
+    final route = ModalRoute.of(context);
+    if (route == null || !route.isActive) return;
+    final navigator = Navigator.of(context);
+    if (route.isCurrent) {
+      navigator.pop();
+    } else {
+      navigator.removeRoute(route);
+    }
+  }
+
   /// Show error as a styled snackbar (bottom sheet message)
   /// Best for: Quick errors, non-blocking operations, field validation
   static void showErrorSnackBar(
@@ -11,6 +28,11 @@ class ErrorDisplay {
     Duration duration = const Duration(seconds: 4),
     VoidCallback? onRetry,
   }) {
+    // Called with a context whose widget was already removed (e.g. a
+    // dialog's context right after Navigator.pop) this lookup is what
+    // throws the "'_dependents.isEmpty': is not true" red screen — skip
+    // quietly instead.
+    if (!context.mounted) return;
     final scaffold = ScaffoldMessenger.of(context);
     scaffold.hideCurrentSnackBar();
 
@@ -73,6 +95,7 @@ class ErrorDisplay {
     VoidCallback? onAction,
     VoidCallback? onRetry,
   }) {
+    if (!context.mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -248,6 +271,9 @@ class ErrorDisplay {
     VoidCallback? onRetry,
     Duration duration = const Duration(milliseconds: 2400),
   }) {
+    // Same guard as showErrorSnackBar — a toast requested from a context
+    // that's already been popped is dropped instead of crashing.
+    if (!context.mounted) return;
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
@@ -341,12 +367,35 @@ class _PremiumToast extends StatefulWidget {
 }
 
 class _PremiumToastState extends State<_PremiumToast> {
+  ModalRoute<dynamic>? _route;
+
   @override
   void initState() {
     super.initState();
-    Future.delayed(widget.duration, () {
-      if (mounted) Navigator.of(context).pop();
-    });
+    Future.delayed(widget.duration, _dismiss);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route ??= ModalRoute.of(context);
+  }
+
+  /// Closes THIS toast's own route only. The old Navigator.pop() closed
+  /// whatever route happened to be on top when the timer fired — if a
+  /// dialog/sheet/screen had been opened or closed in the meantime, it
+  /// closed that instead and left the toast (and its tap-blocking
+  /// barrier) stuck on screen.
+  void _dismiss() {
+    if (!mounted) return;
+    final route = _route;
+    if (route == null || !route.isActive) return;
+    final navigator = Navigator.of(context);
+    if (route.isCurrent) {
+      navigator.pop();
+    } else {
+      navigator.removeRoute(route);
+    }
   }
 
   @override
@@ -399,7 +448,7 @@ class _PremiumToastState extends State<_PremiumToast> {
                     const SizedBox(width: 12),
                     GestureDetector(
                       onTap: () {
-                        Navigator.of(context).pop();
+                        _dismiss();
                         widget.onRetry!();
                       },
                       child: Text(

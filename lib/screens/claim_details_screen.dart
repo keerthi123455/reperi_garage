@@ -86,6 +86,7 @@ class _ClaimDetailsScreenState
           .eq('claim_id', widget.claimId)
           .order('created_at', ascending: false);
 
+      if (!mounted) return;
       setState(() {
         claim = claimResponse;
         updates = updatesResponse;
@@ -564,9 +565,9 @@ class _ClaimDetailsScreenState
               ),
               const SizedBox(height: 8),
               Text(
-                DateTime.parse(update['created_at'])
-                    .toString()
-                    .split('.')[0],
+                (DateTime.tryParse('${update['created_at'] ?? ''}')
+                    ?.toString()
+                    .split('.')[0] ?? ''),
                 style: TextStyle(
                   color: Colors.grey.withOpacity(0.5),
                   fontSize: 10,

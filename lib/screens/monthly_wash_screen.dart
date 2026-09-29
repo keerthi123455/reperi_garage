@@ -358,9 +358,13 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
                         onTap: selectedPlan != null
                             ? () {
                                 final planDetails = _getPlanDetails();
-                                Navigator.pop(context);
-                                Navigator.push(
-                                  context,
+                                // Grab the navigator BEFORE popping — `context`
+                                // here is this dialog's own, which is on its way
+                                // out once pop runs, so pushing from it after is
+                                // unsafe.
+                                final navigator = Navigator.of(context);
+                                navigator.pop();
+                                navigator.push(
                                   MaterialPageRoute(
                                     builder: (_) => PaymentScreen(
                                       title: planDetails['title']!,

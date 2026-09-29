@@ -1383,7 +1383,13 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
           },
         );
       },
-    ).then((_) => othersController.dispose());
+    // No manual othersController.dispose() here any more — the dialog's
+    // future completes the moment it starts closing, while its "Others"
+    // TextField is still on screen animating out; disposing then is what
+    // throws "A TextEditingController was used after being disposed".
+    // Once the dialog is gone nothing references the controller, so it's
+    // simply garbage-collected.
+    );
   }
 
   /// Saves the booking first, then only shows the success animation once
@@ -1427,6 +1433,11 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     String serviceName, {
     String? preferredBrand,
   }) {
+    // Tracks whether this dialog is still open, so the 3-second auto-close
+    // below never pops something else (the Android back button can close
+    // it early even though barrierDismissible is false — the timer then
+    // used to pop this whole screen instead).
+    bool dialogOpen = true;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1573,12 +1584,12 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
           ],
         ),
       ),
-    );
+    ).then((_) => dialogOpen = false);
 
     // The booking is already saved by this point — this just auto-closes
     // the confirmation animation after a moment.
     Future.delayed(const Duration(seconds: 3), () {
-      if (mounted && Navigator.canPop(context)) {
+      if (mounted && dialogOpen && Navigator.canPop(context)) {
         Navigator.pop(context);
       }
     });

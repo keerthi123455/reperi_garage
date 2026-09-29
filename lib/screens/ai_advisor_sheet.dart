@@ -388,6 +388,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       );
       if (file != null) {
         final bytes = await file.readAsBytes();
+        if (!mounted) return;
         setState(() => _attachedImage = bytes);
       }
     } catch (e) {
@@ -1411,7 +1412,8 @@ class _NewChatToastState extends State<_NewChatToast> {
   void initState() {
     super.initState();
     Future.delayed(const Duration(milliseconds: 1100), () {
-      if (mounted) Navigator.of(context).pop();
+      // Closes only this toast's own route, not whatever is on top.
+      if (mounted) ErrorDisplay.closeOwnRoute(context);
     });
   }
 
@@ -1493,7 +1495,8 @@ class _PremiumToastState extends State<_PremiumToast> {
   void initState() {
     super.initState();
     Future.delayed(const Duration(milliseconds: 2000), () {
-      if (mounted) Navigator.of(context).pop();
+      // Closes only this toast's own route, not whatever is on top.
+      if (mounted) ErrorDisplay.closeOwnRoute(context);
     });
   }
 

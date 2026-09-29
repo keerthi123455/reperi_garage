@@ -1086,6 +1086,7 @@ class _FleetRequestDetailsScreenState
         await _picker.pickImage(source: source, imageQuality: 70);
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
+    if (!mounted) return;
     setState(() => _adminImageBytes = bytes);
   }
 

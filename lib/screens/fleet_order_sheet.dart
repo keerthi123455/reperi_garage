@@ -55,6 +55,7 @@ class _FleetOrderSheetState
     // readAsBytes() works identically on web, mobile, and desktop.
     final bytes = await picked.readAsBytes();
 
+    if (!mounted) return;
     setState(() {
       _imageBytes = bytes;
     });

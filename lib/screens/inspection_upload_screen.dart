@@ -69,6 +69,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
 
       for (var image in images) {
         final bytes = await image.readAsBytes();
+        if (!mounted) return;
         setState(() {
           selectedImages.add(bytes);
           imageNames.add(image.name);
@@ -103,6 +104,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
       if (image == null) return;
 
       final bytes = await image.readAsBytes();
+      if (!mounted) return;
       setState(() {
         selectedImages.add(bytes);
         imageNames.add(image.name);
@@ -178,9 +180,11 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
           'photo_order': i,
         });
 
-        setState(() {
-          uploadProgress = ((i + 1) / selectedImages.length * 100).toInt();
-        });
+        if (mounted) {
+          setState(() {
+            uploadProgress = ((i + 1) / selectedImages.length * 100).toInt();
+          });
+        }
       }
 
       if (!mounted) return;
@@ -203,7 +207,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
       );
     }
 
-    setState(() => loading = false);
+    if (mounted) setState(() => loading = false);
   }
 
   @override

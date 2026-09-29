@@ -68,6 +68,7 @@ class _RoadsideAssistanceScreenState
                 LocationPermission.denied ||
             permission ==
                 LocationPermission.deniedForever) {
+          if (!mounted) return;
           setState(() {
             address = "Location unavailable";
           });
@@ -89,11 +90,13 @@ class _RoadsideAssistanceScreenState
 
       final place = placemarks.first;
 
+      if (!mounted) return;
       setState(() {
         address =
             "${place.locality}, ${place.administrativeArea}";
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         address = "Location unavailable";
       });

@@ -396,31 +396,31 @@ class _ClaimScreenState extends State<ClaimScreen> {
         // Profile might not exist, continue with null values
       }
 
-      setState(() => uploadStatus = 'Uploading RC Copy...');
+      if (mounted) setState(() => uploadStatus = 'Uploading RC Copy...');
       final rcUrl = await _uploadFile(
           rcCopyFile!, 'rc-copies', 'claim-$claimId-rc.pdf');
 
-      setState(() => uploadStatus = 'Uploading Driving License...');
+      if (mounted) setState(() => uploadStatus = 'Uploading Driving License...');
       final licenseUrl = await _uploadFile(
           drivingLicenseFile!, 'driving-licenses', 'claim-$claimId-license.pdf');
 
-      setState(() => uploadStatus = 'Uploading Aadhaar...');
+      if (mounted) setState(() => uploadStatus = 'Uploading Aadhaar...');
       final aadhaarUrl = await _uploadFile(
           aadhaarFile!, 'aadhaar', 'claim-$claimId-aadhaar.pdf');
 
-      setState(() => uploadStatus = 'Uploading PAN...');
+      if (mounted) setState(() => uploadStatus = 'Uploading PAN...');
       final panUrl = await _uploadFile(
           panFile!, 'pan', 'claim-$claimId-pan.pdf');
 
-      setState(() => uploadStatus = 'Uploading Insurance Copy...');
+      if (mounted) setState(() => uploadStatus = 'Uploading Insurance Copy...');
       final insuranceUrl = await _uploadFile(
           insuranceCopyFile!, 'insurance-copies', 'claim-$claimId-insurance.pdf');
 
-      setState(() => uploadStatus = 'Uploading Damage Photo...');
+      if (mounted) setState(() => uploadStatus = 'Uploading Damage Photo...');
       final photoUrl = await _uploadFile(
           damagePhotoFile!, 'damage-photos', 'claim-$claimId-damage.jpg');
 
-      setState(() => uploadStatus = 'Saving claim details...');
+      if (mounted) setState(() => uploadStatus = 'Saving claim details...');
       await _supabase.from('claim_table').insert({
         'user_id': user.id,
         'vehicle_id': widget.vehicleId,
@@ -993,6 +993,7 @@ class _UploadSheetContentState extends State<_UploadSheetContent> {
     if (result != null) {
       state._damageDescriptionController.text = result;
     }
+    if (!mounted) return;
     widget.setSheetState(() {});
   }
 
