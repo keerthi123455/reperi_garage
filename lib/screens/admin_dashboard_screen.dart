@@ -91,22 +91,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final isReviewAdmin = AppleReviewAssignmentOverride.enabled &&
         adminUsername == AppleReviewAssignmentOverride.adminUsername;
 
-    // Fleet requests always go to exactly one admin — haya_autogears
-    // normally, or the review admin while Apple review routing is
-    // enabled. A full swap rather than an addition, since this fetch has
-    // no per-request filter (whoever passes this gate sees every fleet
-    // request that exists) — haya_autogears is meant to stop seeing them
-    // while review mode has this rerouted, not see them alongside the
-    // review admin.
-    final fleetGateUsername = AppleReviewAssignmentOverride.enabled
-        ? AppleReviewAssignmentOverride.adminUsername
-        : 'haya_autogears';
-    final fleetResponse = adminUsername == fleetGateUsername
-        ? await supabase
-            .from('fleet_pickup_requests')
-            .select()
-            .order('created_at', ascending: false)
-        : [];
+    // Fleet requests are split by the fleet account that sent them:
+    //  - the review fleet account (AppleReviewAssignmentOverride
+    //    .reviewFleetUsername) -> only the review garage sees them
+    //  - every real fleet company -> only haya_autogears sees them
+    final List<dynamic> fleetResponse;
+    if (isReviewAdmin) {
+      fleetResponse = await supabase
+          .from('fleet_pickup_requests')
+          .select()
+          .eq('username', AppleReviewAssignmentOverride.reviewFleetUsername)
+          .order('created_at', ascending: false);
+    } else if (adminUsername == 'haya_autogears') {
+      fleetResponse = await supabase
+          .from('fleet_pickup_requests')
+          .select()
+          // .neq alone would also hide rows whose username is NULL
+          // (NULL != x is not true in SQL) — keep those for haya_autogears.
+          .or('username.is.null,username.neq."${AppleReviewAssignmentOverride.reviewFleetUsername}"')
+          .order('created_at', ascending: false);
+    } else {
+      fleetResponse = [];
+    }
 
     // Only fetch claims if admin is newexpert_care (or the review admin —
     // see isReviewAdmin above). claim_table.assigned_to_admin_id is a

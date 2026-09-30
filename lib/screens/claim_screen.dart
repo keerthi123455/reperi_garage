@@ -451,7 +451,8 @@ class _ClaimScreenState extends State<ClaimScreen> {
       // review would still land on the real CLAIM_ADMIN_ID admin instead
       // of the demo garage account.
       final claimAdminId =
-          await AppleReviewAssignmentOverride.resolveAdminId() ?? CLAIM_ADMIN_ID;
+          await AppleReviewAssignmentOverride.resolveAdminIdForCurrentCustomer() ??
+              CLAIM_ADMIN_ID;
 
       // Snapshotted here rather than joined later — the delivery dashboard
       // runs on the anon key and has no route to auth.users, so this is

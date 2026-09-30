@@ -27,7 +27,39 @@ class AppleReviewAssignmentOverride {
   /// subscription is left with no washer_id, exactly like today.
   static const String reviewCustomerEmail = 'appreview@gmail.com';
 
+  /// The fleet login (fleet_pickup_requests.username) Apple reviews with.
+  /// Only this account's fleet requests show on the review garage; every
+  /// real fleet company's requests stay with haya_autogears.
+  static const String reviewFleetUsername = 'appreview@gmail.com';
+
   static final _supabase = Supabase.instance.client;
+
+  /// True only while [enabled] AND the customer logged in right now is the
+  /// review customer ([reviewCustomerEmail]). Every booking-time override
+  /// (garage, delivery partner, claim garage, washer) is gated on this, so
+  /// a normal customer's booking always follows the normal assignment
+  /// rotation — only the review customer's bookings go to the review
+  /// garage / delivery / washer accounts.
+  static bool get isReviewCustomer {
+    if (!enabled) return false;
+    final email = _supabase.auth.currentUser?.email?.trim().toLowerCase();
+    return email == reviewCustomerEmail;
+  }
+
+  /// [resolveAdminId], but only for the review customer — null for anyone
+  /// else, so callers fall through to their normal assignment.
+  static Future<String?> resolveAdminIdForCurrentCustomer() async {
+    if (!isReviewCustomer) return null;
+    return resolveAdminId();
+  }
+
+  /// [resolveDeliveryPartnerId], but only for the review customer — null
+  /// for anyone else, so callers fall through to their normal assignment.
+  static Future<int?> resolveDeliveryPartnerIdForCurrentCustomer() async {
+    if (!isReviewCustomer) return null;
+    return resolveDeliveryPartnerId();
+  }
+
   static String? _cachedAdminId;
   static int? _cachedDeliveryPartnerId;
   static int? _cachedWasherId;

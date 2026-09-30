@@ -29,7 +29,10 @@ class DeliveryPartnerAssignmentService {
     // and alternating logic below — every doorstep table (bookings,
     // inspection_booking, pollution_booking, claim_table) needs to reach
     // the one demo delivery partner while this is enabled.
-    final reviewPartnerId = await AppleReviewAssignmentOverride.resolveDeliveryPartnerId();
+    // Only for the review customer (appreview@gmail.com) — everyone else
+    // follows the normal logic below.
+    final reviewPartnerId = await AppleReviewAssignmentOverride
+        .resolveDeliveryPartnerIdForCurrentCustomer();
     if (reviewPartnerId != null) return reviewPartnerId;
 
     if (_dedicatedPartnerTables.contains(table)) {
