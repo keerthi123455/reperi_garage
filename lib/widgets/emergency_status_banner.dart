@@ -375,7 +375,6 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
               // Text leaves early on collapse and arrives late on expand.
               final textOpacity = (1 - t / 0.32).clamp(0.0, 1.0);
               final hPad = lerpDouble(14, (_circleSize - 42) / 2, sizeT)!;
-              final vPad = (height - 42) / 2;
               final pulse = _pulse.value;
               final pressScale = _pressed ? 0.965 : 1.0;
 
@@ -448,9 +447,14 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
                                     maxWidth: pillWidth,
                                     minHeight: height,
                                     maxHeight: height,
-                                    child: Padding(
+                                    // The row gets the shape's full height
+                                    // (no vertical padding) and text size is
+                                    // capped, so the 3-line text always fits.
+                                    child: MediaQuery.withClampedTextScaling(
+                                      maxScaleFactor: 1.0,
+                                      child: Padding(
                                       padding: EdgeInsets.fromLTRB(
-                                          hPad, vPad, 14, vPad),
+                                          hPad, 0, 14, 0),
                                       child: _PillContent(
                                         glow: glow,
                                         isDark: isDark,
@@ -458,6 +462,7 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
                                         textOpacity: textOpacity,
                                         otpRequested: _otpRequested,
                                       ),
+                                    ),
                                     ),
                                   ),
                                 ),
