@@ -3,17 +3,21 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
 
-/// Static, hardcoded package data for the "Washing" (QuickCare) category —
-/// deliberately NOT fetched from Supabase, matching the pattern used for
-/// the Servicing screen. Presented as three tabs (Browse / Compare /
+/// "Washing" (QuickCare) packages — names, prices and highlights come from
+/// the Supabase `services` table (screen 'washing'). Who each wash goes to
+/// (washer vs garage) and whether pickup & drop is offered is decided by
+/// the server from that same table. Presented as three tabs (Browse / Compare /
 /// Details) instead of one long scroll, with a sticky bottom "BOOK NOW"
 /// bar that goes straight to PaymentScreen. EXPRESS WASH / PREMIUM WASH
 /// get no pickup/drop add-on at all — a doorstep wash is handled entirely
 /// by the washer at the customer's own location — but SIGNATURE DETAILING
 /// is a bigger job that still goes through a real garage admin, with the
-/// normal optional pickup/drop toggle (see _goToPayment's _washerOnlyTiers).
+/// normal optional pickup/drop toggle (services.pickup_mode / washer_pool).
 class _Tier {
+  final String key;
   final String name;
   final String price;
   final String tagline;
@@ -23,6 +27,7 @@ class _Tier {
   final List<String> highlights;
 
   const _Tier({
+    required this.key,
     required this.name,
     required this.price,
     required this.tagline,
@@ -33,72 +38,32 @@ class _Tier {
   });
 }
 
-const _tiers = [
-  _Tier(
-    name: 'EXPRESS WASH',
-    price: '₹299',
-    tagline: 'A quick refresh for your car',
-    bestFor: 'Weekly cleaning or after a long drive.',
-    accent: Color(0xFF4FA3E3),
-    highlights: [
-      'High-Pressure Exterior Wash',
-      'Premium Foam Wash',
-      'Microfiber Hand Drying',
-      'Tyre Cleaning',
-      'Alloy Wheel Cleaning',
-      'Exterior Glass Cleaning',
-      'Tyre Shine Dressing',
-      'Final Quality Inspection',
-    ],
-  ),
-  _Tier(
-    name: 'PREMIUM WASH',
-    price: '₹599',
-    tagline: 'Inside & out, clean and refreshed',
-    bestFor: 'Monthly maintenance and everyday use.',
-    accent: Color(0xFFD4A017),
-    popular: true,
-    highlights: [
-      'Everything in Express Wash',
-      'Interior Vacuum Cleaning',
-      'Dashboard & Console Cleaning',
-      'Door Panel Wipe Down',
-      'Interior Glass Cleaning',
-      'Floor Mat Cleaning',
-      'Boot (Trunk) Vacuum',
-      'Air Freshener Application',
-      'Plastic Trim Dressing',
-      'Final Quality Inspection',
-    ],
-  ),
-  _Tier(
-    name: 'SIGNATURE DETAILING',
-    price: '₹2,999',
-    tagline: "Restore your car's showroom shine",
-    bestFor:
-        'Festive seasons, before resale, special occasions, or when you want your car looking its absolute best.',
-    accent: Color(0xFFF5C842),
-    highlights: [
-      'Everything in Premium Wash',
-      'Snow Foam Pre-Wash',
-      'Two-Bucket Safe Hand Wash',
-      'Bug & Tar Removal',
-      'Clay Bar Surface Decontamination',
-      'Machine Wax / Paint Sealant Application',
-      'Exterior Plastic Trim Restoration',
-      'Tyre & Alloy Deep Cleaning',
-      'Engine Bay Surface Cleaning',
-      'Interior Deep Vacuum',
-      'Leather/Fabric Seat Cleaning',
-      'Dashboard UV Protection',
-      'Door Jamb Cleaning',
-      'Interior Steam Sanitization (where applicable)',
-      'Premium Glass Treatment',
-      'Long-Lasting Air Freshener',
-      'Final Multi-Point Quality Inspection',
-    ],
-  ),
-];
+// Card accents by position — purely visual, so they stay in the app.
+const _tierAccents = [Color(0xFF4FA3E3), Color(0xFFD4A017), Color(0xFFF5C842)];
+
+/// The tiers, live from the services table (same objects until it changes).
+List<_Tier>? _tiersCache;
+int _tiersRevision = -1;
+List<_Tier> get _tiers {
+  if (_tiersCache == null || _tiersRevision != CatalogService.revision.value) {
+    final items = CatalogService.forScreen('washing').where((i) => !i.isAddon).toList();
+    _tiersCache = [
+      for (var i = 0; i < items.length; i++)
+        _Tier(
+          key: items[i].key,
+          name: items[i].name.toUpperCase(),
+          price: items[i].priceText,
+          tagline: items[i].description,
+          bestFor: items[i].detail('best_for'),
+          accent: _tierAccents[i % _tierAccents.length],
+          popular: items[i].popular,
+          highlights: items[i].features,
+        ),
+    ];
+    _tiersRevision = CatalogService.revision.value;
+  }
+  return _tiersCache!;
+}
 
 // (feature, express, premium, signature)
 const _comparisonRows = [
@@ -141,26 +106,40 @@ class WashingPackageScreen extends StatefulWidget {
 class _WashingPackageScreenState extends State<WashingPackageScreen>
     with SingleTickerProviderStateMixin {
   int _selectedTier = 1; // default to Premium Wash, matching "Most Popular"
+
+  /// [_selectedTier], kept in range if packages are switched off remotely.
+  int get _sel => _tiers.isEmpty ? 0 : (_selectedTier < 0 ? 0 : (_selectedTier >= _tiers.length ? _tiers.length - 1 : _selectedTier));
   late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    if (widget.highlightPackage != null) {
-      final target = widget.highlightPackage!.toLowerCase();
-      final match = _tiers.indexWhere((t) => t.name.toLowerCase() == target);
-      if (match != -1) {
-        _selectedTier = match;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _tabController.animateTo(2);
-        });
-      }
-    }
+    // Packages come from the catalog, which may still be loading.
+    CatalogService.ensureLoaded().then((_) {
+      if (mounted) _applyCatalogSelection();
+    }).catchError((_) {});
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
+  }
+
+  void _applyCatalogSelection() {
+    final tiers = _tiers;
+    if (tiers.isEmpty) return;
+    var index = tiers.indexWhere((t) => t.popular);
+    var openDetails = false;
+    if (widget.highlightPackage != null) {
+      final target = widget.highlightPackage!.toLowerCase();
+      final match = tiers.indexWhere((t) => t.name.toLowerCase() == target);
+      if (match != -1) {
+        index = match;
+        openDetails = true;
+      }
+    }
+    setState(() => _selectedTier = index == -1 ? 0 : index);
+    if (openDetails) _tabController.animateTo(2);
   }
 
   void _onThemeChanged() {
@@ -187,33 +166,18 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
   // admin + optional pickup/drop flow like any other premium service.
   // EXPRESS WASH / PREMIUM WASH stay washer-only, handled entirely at the
   // customer's location with no garage visit at all.
-  static const _washerOnlyTiers = {'EXPRESS WASH', 'PREMIUM WASH'};
-
   void _goToPayment(_Tier tier) {
-    final washerOnly = _washerOnlyTiers.contains(tier.name);
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: tier.name,
-          price: tier.price,
-          duration: '1-2 hrs',
+          duration: CatalogService.byKey(tier.key)?.duration ?? '',
           vehicleId: widget.vehicleId,
-          assignsWasher: washerOnly,
-          // A doorstep wash is handled entirely by the washer — no garage
-          // admin and no separate delivery partner are involved at all,
-          // in real use or during Apple review. Signature Detailing keeps
-          // the normal defaults (admin assigned, pickup/drop optional).
-          assignsAdmin: !washerOnly,
-          assignsDeliveryPartner: !washerOnly,
-          // The wash happens at the customer's own location, same as
-          // Monthly Wash (which never had this toggle either) — there's no
-          // vehicle being taken anywhere, so no pickup/drop option makes
-          // sense here. Leaving it on would let a customer pay the +₹100
-          // fee for a pickup that (with assignsDeliveryPartner false)
-          // would never actually happen. Signature Detailing shows the
-          // normal optional toggle instead, same as any other package.
-          showPickupDropOption: !washerOnly,
+          // Doorstep washes go to a washer with no pickup & drop; Signature
+          // Detailing goes to a garage — the server decides from the
+          // services table (washer_pool / admin_pool / pickup_mode).
+          serviceKeys: [tier.key],
         ),
       ),
     );
@@ -221,7 +185,10 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
 
   @override
   Widget build(BuildContext context) {
-    final selected = _tiers[_selectedTier];
+    return CatalogGate(builder: (context) {
+    if (_tiers.isEmpty) return const CatalogEmpty();
+
+    final selected = _tiers[_sel];
 
     return Scaffold(
       backgroundColor: AppColors.ink,
@@ -254,6 +221,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
         ),
       ),
     );
+    });
   }
 
   // ── HEADER ──
@@ -719,7 +687,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
 
   // ── TAB 3: DETAILS (full specs for the selected tier) ──
   Widget _buildDetailsView() {
-    final tier = _tiers[_selectedTier];
+    final tier = _tiers[_sel];
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       child: Column(

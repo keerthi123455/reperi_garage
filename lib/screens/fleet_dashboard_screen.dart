@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fleet_order_sheet.dart';
 import 'fleet_request_view_screen.dart';
+import 'home_screen.dart';
 import 'login_screen.dart';
 import '../services/push_notification_service.dart';
 import '../widgets/error_display.dart';
@@ -69,17 +70,46 @@ class _FleetDashboardScreenState
     }
   }
 
+  /// Fleet logout only ends the FLEET session — the customer's own
+  /// Supabase Auth session is left untouched, so they land back on their
+  /// client HomeScreen still signed in. Tapping Fleet Login again from the
+  /// drawer then shows the username/password sheet, since the fleet keys
+  /// below are gone.
   Future<void> _logout() async {
-    PushNotificationService.logout();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('fleet_logged_in');
     await prefs.remove('fleet_user_id');
     await prefs.remove('fleet_company');
     await prefs.remove('fleet_username');
+
+    final customer = Supabase.instance.client.auth.currentUser;
+    if (customer != null) {
+      // Hand this device's push identity back to the customer instead of
+      // logging it out entirely (loginAsFleet had taken it over).
+      PushNotificationService.loginAsCustomer(customer.id);
+    } else {
+      PushNotificationService.logout();
+    }
+
     if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    _goToClientHome();
+  }
+
+  /// Back to the client HomeScreen. Pops when HomeScreen is underneath
+  /// (the normal case — fleet login is opened from inside it); otherwise
+  /// rebuilds the stack with HomeScreen, or LoginScreen if no customer is
+  /// signed in at all.
+  void _goToClientHome() {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+    final signedIn = Supabase.instance.client.auth.currentUser != null;
+    navigator.pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => signedIn ? const HomeScreen() : const LoginScreen(),
+      ),
       (route) => false,
     );
   }
@@ -112,6 +142,13 @@ class _FleetDashboardScreenState
       appBar: AppBar(
         backgroundColor: const Color(0xFF1C1C1C),
         centerTitle: true,
+        // Always shown — not left to automaticallyImplyLeading, which
+        // hides it whenever there's no route underneath.
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFFD4A017)),
+          tooltip: 'Back to home',
+          onPressed: _goToClientHome,
+        ),
         title: Text(
           widget.fleetUser['company_name'] ?? 'Fleet',
         ),

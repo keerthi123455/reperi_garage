@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../services/address_service.dart';
-import '../services/delivery_partner_assignment_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
 
 /// Pollution-certificate pickup/drop-off offer screen.
 ///
@@ -29,7 +28,9 @@ class PollutionScreen extends StatefulWidget {
   final VoidCallback? onAvail;
 
   static const _heroAsset = 'assets/images/pollution_hero.jpg';
-  static const _price = '₹299';
+  /// The service in the Supabase `services` table — its price is shown
+  /// here and charged by the server.
+  static const _serviceKey = 'pollution_check';
 
   @override
   State<PollutionScreen> createState() => _PollutionScreenState();
@@ -65,69 +66,19 @@ class _PollutionScreenState extends State<PollutionScreen> {
     await launchUrl(Uri(scheme: 'tel', path: '9353094672'));
   }
 
-  /// Records the completed booking in its own table rather than the
-  /// generic `bookings` one — a pollution certificate check isn't a
-  /// pickup/drop package booking, so it gets its own home.
-  Future<void> _savePollutionBooking(String orderId, String paymentId) async {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
-
-    final defaultAddr = await AddressService().getDefaultAddress();
-    // Alternates between delivery partner 1 and 2 for every booking.
-    final deliveryPartnerId =
-        await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('pollution_booking');
-
-    // Snapshotted here rather than joined later — the delivery dashboard
-    // runs on the anon key and has no route to auth.users, so this is what
-    // lets it show/call the customer directly (see
-    // web/deliverydashboard.html's renderCustomerContactRow).
-    Map<String, dynamic>? profileData;
-    try {
-      profileData = await Supabase.instance.client
-          .from('profiles')
-          .select('full_name, phone')
-          .eq('id', user.id)
-          .single();
-    } catch (e) {
-      // Profile might not exist, continue with null values
-    }
-
-    await Supabase.instance.client.from('pollution_booking').insert({
-      'user_id': user.id,
-      'vehicle_id': _vehicleId,
-      'price': PollutionScreen._price,
-      'razorpay_order_id': orderId,
-      'razorpay_payment_id': paymentId,
-      'pickup_address': defaultAddr?['address'],
-      'pickup_latitude': defaultAddr?['latitude'],
-      'pickup_longitude': defaultAddr?['longitude'],
-      'pickup_address_name': defaultAddr?['name'],
-      'dropoff_address': defaultAddr?['address'],
-      'dropoff_latitude': defaultAddr?['latitude'],
-      'dropoff_longitude': defaultAddr?['longitude'],
-      'dropoff_address_name': defaultAddr?['name'],
-      'delivery_partner_id': deliveryPartnerId,
-      // Always yes — a pollution certificate check is doorstep
-      // pickup/drop by nature, no opt-out toggle for this service.
-      'pickupdrop': 'yes',
-      'status': 'booked',
-      'customer_name': profileData?['full_name'] ?? 'Unknown',
-      'customer_phone': profileData?['phone'],
-    });
-  }
 
   void _bookNow() {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
-          title: 'Pollution Certificate Check',
-          price: PollutionScreen._price,
-          duration: 'Same day',
+          title: CatalogService.byKey(PollutionScreen._serviceKey)?.name ?? 'Pollution Certificate Check',
+          duration: CatalogService.byKey(PollutionScreen._serviceKey)?.duration ?? 'Same day',
           vehicleId: _vehicleId,
           onVehicleResolved: (id) => _resolvedVehicleId = id,
-          showPickupDropOption: false,
-          onSuccess: _savePollutionBooking,
+          // Saved to `pollution_booking` by the server, with doorstep
+          // pickup & drop and the dedicated delivery partner.
+          serviceKeys: const [PollutionScreen._serviceKey],
           bookingSection: 'pollution',
         ),
       ),
@@ -136,6 +87,11 @@ class _PollutionScreenState extends State<PollutionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+    if (CatalogService.byKey(PollutionScreen._serviceKey) == null) {
+      return const CatalogEmpty(message: 'Pollution certificate pickup isn\'t available right now. Please check back soon.');
+    }
+
     return Scaffold(
       backgroundColor: AppColors.ink,
       body: CustomScrollView(
@@ -182,7 +138,7 @@ class _PollutionScreenState extends State<PollutionScreen> {
                   ),
                   const SizedBox(height: 26),
                   _PriceCard(
-                    price: PollutionScreen._price,
+                    price: CatalogService.byKey(PollutionScreen._serviceKey)?.priceText ?? '',
                     onAvail: widget.onAvail ?? _bookNow,
                     onCall: _callSupport,
                   ),
@@ -195,6 +151,7 @@ class _PollutionScreenState extends State<PollutionScreen> {
         ],
       ),
     );
+    });
   }
 }
 

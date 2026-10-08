@@ -3,6 +3,7 @@ import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/catalog_gate.dart';
 
 class PaintCareScreen extends StatefulWidget {
   final Map<String, dynamic> vehicle;
@@ -39,136 +40,80 @@ class _PaintCareScreenState extends State<PaintCareScreen> {
   int selectedPackage = -1;
   final List<GlobalKey> _cardKeys = [];
 
-  List<Map<String, dynamic>> packages = [
-    {
-      'title': 'QUICK POLISH',
-      'subtitle': 'Basic Shine Enhancement',
-      'price': '₹599',
-      'duration': '45 mins',
-      'icon': Icons.auto_awesome_outlined,
-      'features': [
-        'Exterior wash',
-        'Quick buffing',
-        'Tyre shine',
-        'Water spot removal',
-        'Gloss enhancement',
-      ],
-      'details':
-          'Perfect for restoring daily shine and improving overall exterior appearance quickly.',
-    },
-    {
-      'title': 'SCRATCH CONTROL',
-      'subtitle': 'Scratch & Swirl Correction',
-      'price': '₹1499',
-      'duration': '2 hrs',
-      'icon': Icons.cleaning_services_outlined,
-      'features': [
-        'Scratch removal',
-        'Swirl correction',
-        'Paint enhancement',
-        'Machine buffing',
-        'Gloss restoration',
-      ],
-      'details':
-          'Designed to remove minor scratches, swirl marks and restore paint smoothness.',
-    },
-    {
-      'title': 'RUST CONTROL',
-      'subtitle': 'Anti-Rust Protection',
-      'price': '₹2999',
-      'duration': '3 hrs',
-      'icon': Icons.shield_outlined,
-      'features': [
-        'Underbody coating',
-        'Rust treatment',
-        'Corrosion prevention',
-        'Protective sealant',
-        'Metal protection layer',
-      ],
-      'details':
-          'Advanced anti-rust treatment protecting your vehicle body from corrosion and damage.',
-    },
-    {
-      'title': 'PREMIUM PAINT RESTORE',
-      'subtitle': 'Paint Correction & Restoration',
-      'price': '₹4999',
-      'duration': '5 hrs',
-      'icon': Icons.format_paint_outlined,
-      'features': [
-        'Paint correction',
-        'Multi-stage polishing',
-        'Deep gloss enhancement',
-        'Oxidation removal',
-        'Premium machine finish',
-      ],
-      'details':
-          'Restores dull paint, oxidation and faded surfaces back to premium glossy finish.',
-    },
-    {
-      'title': 'VINYL & WRAP STUDIO',
-      'subtitle': 'Exterior Customization',
-      'price': '₹7999',
-      'duration': '1 day',
-      'icon': Icons.layers_outlined,
-      'features': [
-        'Vinyl wrap installation',
-        'Gloss/matte finish',
-        'Roof wrap',
-        'Mirror accents',
-        'Color customization',
-        'Paint-safe removal',
-      ],
-      'details':
-          'Premium wrapping solutions for luxury styling, customization and exterior transformation.',
-    },
-    {
-      'title': 'SHOWROOM SHINE+',
-      'subtitle': 'Luxury Exterior Restoration',
-      'price': '₹10999',
-      'duration': '2 days',
-      'icon': Icons.diamond_outlined,
-      'features': [
-        'Ceramic coating',
-        'Deep detailing',
-        'Paint refinement',
-        'Hydrophobic protection',
-        'Luxury polishing',
-        'Exterior rejuvenation',
-        'PPF enhancement',
-      ],
-      'details':
-          'Ultimate luxury package delivering showroom-level shine, protection and exterior perfection.',
-    },
+  // Card icons by position — purely visual, so they stay in the app.
+  static const _icons = <IconData>[
+    Icons.auto_awesome_outlined,
+    Icons.cleaning_services_outlined,
+    Icons.shield_outlined,
+    Icons.format_paint_outlined,
+    Icons.layers_outlined,
+    Icons.diamond_outlined,
   ];
+
+  /// The packages, live from the Supabase `services` table (screen
+  /// 'paint_care') — same objects until the catalog changes.
+  List<Map<String, dynamic>>? _packagesCache;
+  int _packagesRevision = -1;
+  List<Map<String, dynamic>> get packages {
+    if (_packagesCache == null || _packagesRevision != CatalogService.revision.value) {
+      final items = CatalogService.forScreen('paint_care').where((i) => !i.isAddon).toList();
+      _packagesCache = [
+        for (var i = 0; i < items.length; i++)
+          <String, dynamic>{
+            'key': items[i].key,
+            'title': items[i].name.toUpperCase(),
+            'subtitle': items[i].detail('subtitle'),
+            'price': items[i].priceText,
+            'duration': items[i].duration,
+            'details': items[i].description,
+            'features': items[i].features,
+            'icon': _icons[i % _icons.length],
+          },
+      ];
+      _packagesRevision = CatalogService.revision.value;
+    }
+    return _packagesCache!;
+  }
 
   @override
   void initState() {
     super.initState();
-    _cardKeys.addAll(List.generate(packages.length, (_) => GlobalKey()));
-    if (widget.highlightPackage != null) {
-      final target = widget.highlightPackage!.toLowerCase();
-      final match = packages.indexWhere(
-          (p) => (p['title'] as String).toLowerCase() == target);
-      if (match != -1) selectedPackage = match;
-    }
+    // Packages come from the catalog, which may still be loading.
+    CatalogService.ensureLoaded().then((_) {
+      if (mounted) _applyHighlight();
+    }).catchError((_) {});
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
-    _fetchPackageData();
-    if (widget.highlightPackage != null && selectedPackage != -1) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx = _cardKeys[selectedPackage].currentContext;
-        if (ctx != null) {
-          Scrollable.ensureVisible(
-            ctx,
-            duration: const Duration(milliseconds: 450),
-            curve: Curves.easeInOut,
-            alignment: 0.1,
-          );
-        }
-      });
+  }
+
+  /// Scroll target for card [i] — grows with the catalog.
+  GlobalKey _cardKey(int i) {
+    while (_cardKeys.length <= i) {
+      _cardKeys.add(GlobalKey());
     }
+    return _cardKeys[i];
+  }
+
+  void _applyHighlight() {
+    if (widget.highlightPackage == null || packages.isEmpty) return;
+    final target = widget.highlightPackage!.toLowerCase();
+    final match = packages.indexWhere(
+        (p) => (p['title'] as String).toLowerCase() == target);
+    if (match == -1) return;
+    setState(() => selectedPackage = match);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _cardKey(selectedPackage).currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeInOut,
+          alignment: 0.1,
+        );
+      }
+    });
   }
 
   void _onThemeChanged() {
@@ -181,46 +126,13 @@ class _PaintCareScreenState extends State<PaintCareScreen> {
     super.dispose();
   }
 
-  Future<void> _fetchPackageData() async {
-    try {
-      final rows = await CatalogService.fetchByCategory('Paint Care');
-      if (!mounted) return;
-
-      final byKey = {for (final row in rows) row['key'] as String: row};
-
-      const keyOrder = [
-        'paint_quick_polish',
-        'paint_scratch_control',
-        'paint_rust_control',
-        'paint_premium_restore',
-        'paint_vinyl_wrap_studio',
-        'paint_showroom_shine_plus',
-      ];
-
-      setState(() {
-        for (var i = 0; i < keyOrder.length && i < packages.length; i++) {
-          final row = byKey[keyOrder[i]];
-          if (row != null) {
-            // Falls back to the existing hardcoded value on a NULL DB
-            // field instead of storing null into fields rendered with a
-            // non-nullable `as String` cast further down this screen.
-            packages[i]['price'] = row['price'] ?? packages[i]['price'];
-            packages[i]['duration'] = row['duration'] ?? packages[i]['duration'];
-            packages[i]['details'] = row['details'] ?? packages[i]['details'];
-            if (row['services'] != null) {
-              packages[i]['features'] = List<String>.from(row['services']);
-            }
-          }
-        }
-      });
-    } catch (e) {
-      // Keep the hardcoded fallback values above if the fetch fails.
-    }
-  }
 
   // ── Build ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+    if (packages.isEmpty) return const CatalogEmpty();
+
     return Scaffold(
       backgroundColor: _bg,
       body: Stack(
@@ -256,6 +168,7 @@ class _PaintCareScreenState extends State<PaintCareScreen> {
         ],
       ),
     );
+    });
   }
 
   // ── HERO ─────────────────────────────────────────────────────────
@@ -396,7 +309,7 @@ class _PaintCareScreenState extends State<PaintCareScreen> {
             final selected = selectedPackage == index;
 
             return GestureDetector(
-              key: _cardKeys[index],
+              key: _cardKey(index),
               onTap: () {
                 setState(() {
                   selectedPackage = index;
@@ -707,16 +620,16 @@ class _PaintCareScreenState extends State<PaintCareScreen> {
               return;
             }
 
-            final selected = packages[selectedPackage];
+            final selected = packages[(selectedPackage < 0 ? 0 : (selectedPackage >= packages.length ? packages.length - 1 : selectedPackage))];
 
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => PaymentScreen(
                   title: selected['title'],
-                  price: selected['price'],
                   duration: selected['duration'],
                   vehicleId: widget.vehicle['id'].toString(),
+                  serviceKeys: [selected['key'] as String],
                 ),
               ),
             );

@@ -4,13 +4,18 @@ import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
 import '../widgets/error_display.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
+import '../models/catalog_item.dart';
 
-/// Static, hardcoded package data for the "Paint Care" (Car360) category —
+/// "Paint Care" (Car360) packages and add-ons, live from the Supabase
+/// `services` table (screen 'paint_package'; add-ons have is_addon = true) —
 /// same structural pattern as the other package screens, plus a separate
 /// "Premium Add-On Services" section for higher-cost individual upgrades
 /// (ceramic coating, graphene coating, PPF, paint correction) that are
-/// deliberately NOT bundled into the ₹2,999 package.
+/// deliberately NOT bundled into the packages.
 class _Tier {
+  final String key;
   final String name;
   final String price;
   final String tagline;
@@ -21,6 +26,7 @@ class _Tier {
   final List<String> highlights;
 
   const _Tier({
+    required this.key,
     required this.name,
     required this.price,
     required this.tagline,
@@ -30,118 +36,93 @@ class _Tier {
     required this.highlights,
     this.recommended = false,
   });
+
+  // Same package (by service key) even after the catalog refreshes.
+  @override
+  bool operator ==(Object other) => other is _Tier && other.key == key;
+
+  @override
+  int get hashCode => key.hashCode;
 }
 
 class _AddOn {
+  final String key;
   final String name;
   final String startingPrice;
   final IconData icon;
   final List<String> highlights;
 
   const _AddOn({
+    required this.key,
     required this.name,
     required this.startingPrice,
     required this.icon,
     required this.highlights,
   });
+
+  // Same package (by service key) even after the catalog refreshes.
+  @override
+  bool operator ==(Object other) => other is _AddOn && other.key == key;
+
+  @override
+  int get hashCode => key.hashCode;
 }
 
-const _tiers = [
-  _Tier(
-    name: 'PAINT SHINE PACKAGE',
-    price: '₹1,999',
-    tagline: 'Restore gloss and protect your paint',
-    protection: 'Up to 2–3 months',
-    bestFor: "Dull paint, light swirl marks, and maintaining your car's shine.",
-    accent: Color(0xFF4FA3E3),
-    highlights: [
-      'Premium Snow Foam Wash',
-      'Surface Decontamination Wash',
-      'Bug & Tar Removal',
-      'Paint Gloss Enhancement Polish',
-      'Machine Wax Application',
-      'Exterior Plastic Trim Dressing',
-      'Tyre Shine',
-      'Exterior Glass Cleaning',
-      'Paint Condition Inspection',
-    ],
-  ),
-  _Tier(
-    name: 'PAINT PROTECTION PACKAGE',
-    price: '₹2,999',
-    tagline: 'Long-lasting shine with enhanced paint protection',
-    protection: 'Up to 6 months',
-    bestFor:
-        'Customers wanting better protection and an easier-to-clean finish.',
-    accent: Color(0xFFD4A017),
-    recommended: true,
-    highlights: [
-      'Everything in Paint Shine Package',
-      'One-Step Machine Paint Correction',
-      'Ceramic Spray Coating',
-      'Hydrophobic Water-Repellent Protection',
-      'UV Protection for Paint',
-      'Minor Scratch & Swirl Reduction',
-      'Alloy Wheel Protection',
-      'Exterior Plastic Restoration',
-      'Rain-Repellent Glass Treatment',
-      'Final Paint Gloss Inspection',
-    ],
-  ),
+// Card accents / add-on icons by position — purely visual, so they stay
+// in the app.
+const _tierAccents = [Color(0xFF4FA3E3), Color(0xFFD4A017), Color(0xFFF5C842)];
+const _addOnIcons = [
+  Icons.shield_rounded,
+  Icons.diamond_rounded,
+  Icons.layers_rounded,
+  Icons.auto_fix_high_rounded,
 ];
 
-const _addOns = [
-  _AddOn(
-    name: 'Ceramic Coating',
-    startingPrice: '₹12,999',
-    icon: Icons.shield_rounded,
-    highlights: [
-      '1–3 Year Paint Protection',
-      'Deep Gloss Finish',
-      'Hydrophobic Water Beading',
-      'UV Protection',
-      'Easier Cleaning',
-      'Chemical Resistance',
-    ],
-  ),
-  _AddOn(
-    name: 'Graphene Coating',
-    startingPrice: '₹16,999',
-    icon: Icons.diamond_rounded,
-    highlights: [
-      'Enhanced Ceramic Protection',
-      'Better Heat Resistance',
-      'Superior Gloss',
-      'Water & Dirt Repellency',
-      'Increased Durability',
-    ],
-  ),
-  _AddOn(
-    name: 'Paint Protection Film (PPF)',
-    startingPrice: '₹49,999',
-    icon: Icons.layers_rounded,
-    highlights: [
-      'Self-Healing Film',
-      'Stone Chip Protection',
-      'Scratch Resistance',
-      'UV Protection',
-      'High Gloss or Matte Finish',
-      'Long-Term Paint Preservation',
-    ],
-  ),
-  _AddOn(
-    name: 'Paint Correction',
-    startingPrice: '₹7,999',
-    icon: Icons.auto_fix_high_rounded,
-    highlights: [
-      'Multi-Stage Machine Polishing',
-      'Removes Swirl Marks',
-      'Removes Oxidation',
-      'Restores Paint Clarity',
-      'High Gloss Finish',
-    ],
-  ),
-];
+/// The paint packages, live from the services table (same objects until it changes).
+List<_Tier>? _tiersCache;
+int _tiersRevision = -1;
+List<_Tier> get _tiers {
+  if (_tiersCache == null || _tiersRevision != CatalogService.revision.value) {
+    final items = CatalogService.forScreen('paint_package').where((i) => !i.isAddon).toList();
+    _tiersCache = [
+      for (var i = 0; i < items.length; i++)
+        _Tier(
+          key: items[i].key,
+          name: items[i].name.toUpperCase(),
+          price: items[i].priceText,
+          tagline: items[i].description,
+          protection: items[i].detail('protection'),
+          bestFor: items[i].detail('best_for'),
+          accent: _tierAccents[i % _tierAccents.length],
+          recommended: items[i].popular,
+          highlights: items[i].features,
+        ),
+    ];
+    _tiersRevision = CatalogService.revision.value;
+  }
+  return _tiersCache!;
+}
+
+/// The premium add-ons (is_addon rows), live from the services table.
+List<_AddOn>? _addOnsCache;
+int _addOnsRevision = -1;
+List<_AddOn> get _addOns {
+  if (_addOnsCache == null || _addOnsRevision != CatalogService.revision.value) {
+    final items = CatalogService.forScreen('paint_package').where((i) => i.isAddon).toList();
+    _addOnsCache = [
+      for (var i = 0; i < items.length; i++)
+        _AddOn(
+          key: items[i].key,
+          name: items[i].name,
+          startingPrice: items[i].price != null ? formatRupees(items[i].price!) : items[i].priceText,
+          icon: _addOnIcons[i % _addOnIcons.length],
+          highlights: items[i].features,
+        ),
+    ];
+    _addOnsRevision = CatalogService.revision.value;
+  }
+  return _addOnsCache!;
+}
 
 // (feature, ₹1,999, ₹2,999)
 const _comparisonRows = [
@@ -174,6 +155,9 @@ class PaintCarePackageScreen extends StatefulWidget {
 class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
   int _selectedTier = 1; // default to Paint Protection Package (recommended)
 
+  /// [_selectedTier], kept in range if packages are switched off remotely.
+  int get _sel => _tiers.isEmpty ? 0 : (_selectedTier < 0 ? 0 : (_selectedTier >= _tiers.length ? _tiers.length - 1 : _selectedTier));
+
   // ── Booking selection ───────────────────────────────────────────────
   // Separate from `_selectedTier` above, which only tracks which card is
   // being *viewed* in the horizontal scroller. A package is only actually
@@ -200,13 +184,19 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.highlightPackage != null) {
-      final target = widget.highlightPackage!.toLowerCase();
-      final match = _tiers.indexWhere((t) => t.name.toLowerCase() == target);
-      if (match != -1) {
-        _selectedTier = match;
+    // Packages come from the catalog, which may still be loading.
+    CatalogService.ensureLoaded().then((_) {
+      if (!mounted) return;
+      final tiers = _tiers;
+      if (tiers.isEmpty) return;
+      var index = tiers.indexWhere((t) => t.recommended);
+      if (widget.highlightPackage != null) {
+        final target = widget.highlightPackage!.toLowerCase();
+        final match = tiers.indexWhere((t) => t.name.toLowerCase() == target);
+        if (match != -1) index = match;
       }
-    }
+      setState(() => _selectedTier = index == -1 ? 0 : index);
+    }).catchError((_) {});
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
@@ -445,24 +435,19 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
 
   void _book() {
     if (_bookedItemCount == 0) return;
-    final items = <Map<String, dynamic>>[
-      if (_includedTier != null)
-        {
-          'name': _includedTier!.name,
-          'price': _parsePrice(_includedTier!.price),
-        },
-      for (final addOn in _selectedAddOns)
-        {'name': addOn.name, 'price': _parsePrice(addOn.startingPrice)},
+    // The server prices the package + add-ons itself (and itemizes the bill).
+    final keys = <String>[
+      if (_includedTier != null) _includedTier!.key,
+      for (final addOn in _selectedAddOns) addOn.key,
     ];
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: _includedTier?.name ?? 'Paint Care Add-Ons',
-          price: '₹$_totalRupees',
-          duration: '2-3 hrs',
+          duration: (_includedTier != null ? CatalogService.byKey(_includedTier!.key)?.duration : null) ?? '2-3 hrs',
           vehicleId: widget.vehicleId,
-          billItems: items,
+          serviceKeys: keys,
         ),
       ),
     );
@@ -470,6 +455,9 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+    if (_tiers.isEmpty) return const CatalogEmpty();
+
     // A warm, gold-tinted card for the "recommended" tier — blended over
     // the current mode's surface so it stays subtle in both themes instead
     // of a fixed near-black tint that would look wrong in light mode.
@@ -605,7 +593,7 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
                   child: _buildPackageCard(
-                      _tiers[_selectedTier], recommendedCardColor),
+                      _tiers[_sel], recommendedCardColor),
                 ),
               ),
 
@@ -855,6 +843,7 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
         ],
       ),
     );
+    });
   }
 }
 

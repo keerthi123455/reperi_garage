@@ -5,6 +5,7 @@ import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/catalog_gate.dart';
 
 class TyreCareScreen extends StatefulWidget {
   final Map<String, dynamic> vehicle;
@@ -56,89 +57,70 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
   // Index 0 ('featured': true) is the combo package — shown as its own
   // large tile above the horizontal scroll of the other three, rather
   // than mixed in among them (see _buildPackagesSection).
-  List<Map<String, dynamic>> _packages = [
-    {
-      'name': 'WHEEL ALIGNMENT AND BALANCING',
-      'price': '₹799',
-      'duration': '60 mins',
-      'description':
-          'Our most complete wheel care combo — precise computerized alignment and dynamic balancing together, in one visit.',
-      'icon': Icons.architecture_rounded,
-      'featured': true,
-      'hasExtraCharge': true,
-      'features': [
-        'Computerized alignment',
-        'Dynamic balancing',
-        'Steering correction',
-        'Wheel weight calibration',
-        'Road stability testing',
-      ],
-    },
-    {
-      'name': 'QUICK AIR & CHECK',
-      'price': '₹299',
-      'duration': '20 mins',
-      'description': 'Perfect for routine tyre maintenance and maximizing tyre life.',
-      'icon': Icons.air_rounded,
-      'featured': false,
-      'hasExtraCharge': false,
-      'features': [
-        'Tyre pressure check',
-        'Nitrogen refill',
-        'Air leakage inspection',
-        'Valve inspection',
-        'Tread inspection',
-      ],
-    },
-    {
-      'name': 'WHEEL ALIGNMENT',
-      'price': '₹499',
-      'duration': '45 mins',
-      'description':
-          'Recommended if your vehicle pulls to one side or steering feels off-center.',
-      'icon': Icons.architecture_rounded,
-      'featured': false,
-      'hasExtraCharge': false,
-      'features': [
-        'Computerized alignment',
-        'Steering correction',
-        'Camber adjustment',
-        'Wheel angle optimization',
-        'Road stability testing',
-      ],
-    },
-    {
-      'name': 'WHEEL BALANCING',
-      'price': '₹299',
-      'duration': '30 mins',
-      'description': 'Improves ride quality and tyre longevity through precise dynamic balancing.',
-      'icon': Icons.balance_rounded,
-      'featured': false,
-      'hasExtraCharge': true,
-      'features': [
-        'Dynamic balancing',
-        'Wheel weight calibration',
-        'Vibration reduction',
-        'High-speed balancing',
-      ],
-    },
-  ];
+  // Card icons by service key — purely visual, so they stay in the app.
+  static const _iconsByKey = <String, IconData>{
+    'wheel_alignment_balancing': Icons.architecture_rounded,
+    'tyre_quick_air_check': Icons.air_rounded,
+    'wheel_alignment': Icons.architecture_rounded,
+    'wheel_balancing': Icons.balance_rounded,
+  };
+
+  /// The packages, live from the Supabase `services` table (screen
+  /// 'tyre_care'). Wheel alignment/balancing are the same services (and
+  /// price) as on the Wheel Management screen, with tyre-specific wording
+  /// from details.display.tyre_care.
+  List<Map<String, dynamic>>? _packagesCache;
+  int _packagesRevision = -1;
+  List<Map<String, dynamic>> get _packages {
+    if (_packagesCache == null || _packagesRevision != CatalogService.revision.value) {
+      _packagesCache = [
+        for (final item in CatalogService.forScreen('tyre_care').where((i) => !i.isAddon))
+          <String, dynamic>{
+            'key': item.key,
+            'name': item.name.toUpperCase(),
+            'price': item.priceText,
+            'duration': item.duration,
+            'description': item.displayText('tyre_care', 'description', item.description),
+            'icon': _iconsByKey[item.key] ?? Icons.tire_repair_rounded,
+            'featured': item.displayBool('tyre_care', 'featured', item.detailBool('featured')),
+            'hasExtraCharge': item.displayBool('tyre_care', 'has_extra_charge', item.detailBool('has_extra_charge')),
+            'features': item.displayFeatures('tyre_care'),
+          },
+      ];
+      _packagesRevision = CatalogService.revision.value;
+    }
+    return _packagesCache!;
+  }
 
   @override
   void initState() {
     super.initState();
-    _packageCardKeys.addAll(List.generate(_packages.length, (_) => GlobalKey()));
-    _fetchPackageData();
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
 
+    // Packages come from the catalog, which may still be loading.
+    CatalogService.ensureLoaded().then((_) {
+      if (mounted) _applyHighlight();
+    }).catchError((_) {});
+  }
+
+  /// Scroll target for package card [i] — grows with the catalog.
+  GlobalKey _cardKey(int i) {
+    while (_packageCardKeys.length <= i) {
+      _packageCardKeys.add(GlobalKey());
+    }
+    return _packageCardKeys[i];
+  }
+
+  void _applyHighlight() {
     if (widget.highlightPackage != null) {
       final target = widget.highlightPackage!.toLowerCase();
       final idx = _packages.indexWhere(
           (p) => (p['name'] as String).toLowerCase() == target);
       if (idx != -1) {
+        setState(() {});
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           final sectionCtx = _packagesKey.currentContext;
           if (sectionCtx != null) {
@@ -148,7 +130,7 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
               curve: Curves.easeInOut,
             );
           }
-          final cardCtx = _packageCardKeys[idx].currentContext;
+          final cardCtx = _cardKey(idx).currentContext;
           if (cardCtx != null) {
             await Scrollable.ensureVisible(
               cardCtx,
@@ -173,50 +155,6 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
     super.dispose();
   }
 
-  Future<void> _fetchPackageData() async {
-    try {
-      final rows = await CatalogService.fetchByCategory('Tyre Care');
-      if (!mounted) return;
-
-      final byKey = {for (final row in rows) row['key'] as String: row};
-
-      // Positional against _packages above. Most entries are `null` —
-      // the combo tile and the new standalone Wheel Alignment (₹499) /
-      // Wheel Balancing (₹299) prices were just fixed deliberately, so a
-      // stale catalog row from before this pricing change must not
-      // silently overwrite them. Only Quick Air & Check is unchanged
-      // from before and still safe to sync from the catalog.
-      const List<String?> keyOrder = [
-        null, // WHEEL ALIGNMENT AND BALANCING
-        'tyre_quick_air_check',
-        null, // WHEEL ALIGNMENT
-        null, // WHEEL BALANCING
-      ];
-
-      setState(() {
-        for (var i = 0; i < keyOrder.length && i < _packages.length; i++) {
-          final key = keyOrder[i];
-          if (key == null) continue;
-          final row = byKey[key];
-          if (row != null) {
-            // Falls back to the existing hardcoded value on a NULL DB
-            // field (e.g. an admin row with pricing left blank) instead of
-            // storing null into fields _PackageCard renders with a
-            // non-nullable `as String` cast — a NULL here used to crash
-            // the screen on the very next rebuild.
-            _packages[i]['price'] = row['price'] ?? _packages[i]['price'];
-            _packages[i]['duration'] = row['duration'] ?? _packages[i]['duration'];
-            _packages[i]['description'] = row['details'] ?? _packages[i]['description'];
-            if (row['services'] != null) {
-              _packages[i]['features'] = List<String>.from(row['services']);
-            }
-          }
-        }
-      });
-    } catch (e) {
-      // Keep the hardcoded fallback values above if the fetch fails.
-    }
-  }
 
   void _showPackageSheet(Map<String, dynamic> package) {
     showModalBottomSheet(
@@ -270,6 +208,9 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
   // ── Build ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+    if (_packages.isEmpty) return const CatalogEmpty();
+
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     return Scaffold(
       backgroundColor: AppColors.ink,
@@ -307,6 +248,7 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
         ],
       ),
     );
+    });
   }
 
   // ── HERO ─────────────────────────────────────────────────────────
@@ -452,7 +394,7 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: _FeaturedPackageTile(
-                key: _packageCardKeys[featuredIndex],
+                key: _cardKey(featuredIndex),
                 package: _packages[featuredIndex],
                 onTap: () => _showPackageSheet(_packages[featuredIndex]),
               ),
@@ -478,7 +420,7 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
                 return _FadeSlideIn(
                   index: i,
                   child: _PackageCard(
-                    key: _packageCardKeys[packageIndex],
+                    key: _cardKey(packageIndex),
                     package: _packages[packageIndex],
                     onTap: () => _showPackageSheet(_packages[packageIndex]),
                   ),
@@ -1425,9 +1367,9 @@ class _PackageSheet extends StatelessWidget {
                   MaterialPageRoute(
                     builder: (_) => PaymentScreen(
                       title: name,
-                      price: price,
                       duration: duration,
                       vehicleId: vehicleId,
+                      serviceKeys: [package['key'] as String],
                     ),
                   ),
                 );

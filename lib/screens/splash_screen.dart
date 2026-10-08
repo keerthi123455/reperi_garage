@@ -126,18 +126,33 @@ _navigate();
       if (prefs.getBool('fleet_logged_in') == true) {
         final fleetUserId = prefs.getString('fleet_user_id');
         if (fleetUserId != null) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => FleetDashboardScreen(
-                fleetUser: {
-                  'id': fleetUserId,
-                  'company_name': prefs.getString('fleet_company') ?? 'N/A',
-                  'username': prefs.getString('fleet_username') ?? '',
-                },
-              ),
+          final fleetDashboard = MaterialPageRoute(
+            builder: (_) => FleetDashboardScreen(
+              fleetUser: {
+                'id': fleetUserId,
+                'company_name': prefs.getString('fleet_company') ?? 'N/A',
+                'username': prefs.getString('fleet_username') ?? '',
+              },
             ),
           );
+
+          // Fleet login is only reachable from inside the customer
+          // HomeScreen, so restore that same stack on a cold start:
+          // HomeScreen underneath, FleetDashboard on top. That keeps the
+          // dashboard's back button working (back -> client home) instead
+          // of stranding the user on a dashboard with nowhere to go.
+          final navigator = Navigator.of(context);
+          if (Supabase.instance.client.auth.currentUser != null) {
+            navigator.pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const HomeScreen()),
+              (route) => false,
+            );
+            navigator.push(fleetDashboard);
+          } else {
+            // No customer session to go back to — dashboard alone; its
+            // back button falls back to LoginScreen.
+            navigator.pushReplacement(fleetDashboard);
+          }
           return;
         }
       }

@@ -3,6 +3,7 @@ import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/catalog_gate.dart';
 
 class CarSpaScreen extends StatefulWidget {
   final Map<String, dynamic> vehicle;
@@ -27,152 +28,83 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
 
   static const Color _gold = Color(0xFFD4A017);
 
-  List<Map<String, dynamic>> packages = [
-    {
-      'title': 'QUICK REFRESH',
-      'subtitle': 'Exterior Basic Care',
-      'price': '₹399',
-      'duration': '30 mins',
-      'icon': Icons.water_drop_outlined,
-      'details': 'Fast maintenance with essential exterior and basic interior cleaning.',
-      'features': [
-        'Pressure Water Wash',
-        'pH Neutral Foam Wash',
-        'Exterior Hand Wash',
-        'Microfiber Drying',
-        'Tyre Cleaning',
-        'Tyre Polish',
-        'Wheel Rim Cleaning',
-        'Exterior Glass Cleaning',
-        'Dashboard Dusting',
-        'Interior Vacuum Cleaning',
-        'Door Jamb Cleaning',
-        'Final Quality Inspection',
-      ],
-    },
-    {
-      'title': 'PREMIUM SPA',
-      'subtitle': 'Interior Deep Clean',
-      'price': '₹999',
-      'duration': '90 mins',
-      'icon': Icons.chair_outlined,
-      'details': 'Everything in Quick Refresh, plus deep interior cleaning and protective treatments.',
-      'features': [
-        'Pressure Water Wash',
-        'Premium Foam Wash',
-        'Exterior Hand Drying',
-        'Complete Interior Vacuum',
-        'Dashboard Detailing',
-        'Door Panel Cleaning',
-        'Seat Deep Cleaning',
-        'Floor Mat Cleaning',
-        'Interior Plastic Dressing',
-        'Interior Steam Cleaning',
-        'AC Vent Cleaning',
-        'Odour Removal Treatment',
-        'Interior UV Protection',
-        'Tyre Polish',
-        'Exterior Glass Cleaning',
-        'Final Quality Inspection',
-      ],
-    },
-    {
-      'title': 'SIGNATURE SPA+',
-      'subtitle': 'Complete Car Restoration',
-      'price': '₹2499',
-      'duration': '150 mins',
-      'icon': Icons.diamond_outlined,
-      'details': 'Complete restoration with paint treatment, engine bay detailing, and premium finishing.',
-      'features': [
-        'Premium Foam Wash',
-        'Paint Decontamination',
-        'Clay Bar Treatment',
-        'Machine Wax Polish',
-        'Paint Gloss Enhancement',
-        'Exterior Plastic Restoration',
-        'Wheel Arch Cleaning',
-        'Alloy Wheel Detailing',
-        'Tyre Dressing',
-        'Complete Interior Vacuum',
-        'Dashboard Restoration',
-        'Leather / Fabric Seat Cleaning',
-        'Carpet Shampooing',
-        'Roof Lining Cleaning',
-        'Door Panel Restoration',
-        'Interior Steam Sanitization',
-        'AC Vent Sanitization',
-        'Engine Bay Cleaning',
-        'Exterior Glass Treatment',
-        'Premium Perfume Finish',
-        'Final Quality Inspection',
-      ],
-    },
+  // Card icons by position — purely visual, so they stay in the app.
+  static const _icons = <IconData>[
+    Icons.water_drop_outlined,
+    Icons.chair_outlined,
+    Icons.diamond_outlined,
   ];
+
+  /// The packages, live from the Supabase `services` table (screen
+  /// 'car_spa') — same objects until the catalog changes.
+  List<Map<String, dynamic>>? _packagesCache;
+  int _packagesRevision = -1;
+  List<Map<String, dynamic>> get packages {
+    if (_packagesCache == null || _packagesRevision != CatalogService.revision.value) {
+      final items = CatalogService.forScreen('car_spa').where((i) => !i.isAddon).toList();
+      _packagesCache = [
+        for (var i = 0; i < items.length; i++)
+          <String, dynamic>{
+            'key': items[i].key,
+            'title': items[i].name.toUpperCase(),
+            'subtitle': items[i].detail('subtitle'),
+            'price': items[i].priceText,
+            'duration': items[i].duration,
+            'details': items[i].description,
+            'features': items[i].features,
+            'icon': _icons[i % _icons.length],
+          },
+      ];
+      _packagesRevision = CatalogService.revision.value;
+    }
+    return _packagesCache!;
+  }
 
   @override
   void initState() {
     super.initState();
-    _cardKeys.addAll(List.generate(packages.length, (_) => GlobalKey()));
-    if (widget.highlightPackage != null) {
-      final target = widget.highlightPackage!.toLowerCase();
-      final match = packages.indexWhere(
-          (p) => (p['title'] as String).toLowerCase() == target);
-      if (match != -1) selectedPackage = match;
-    }
-    _fetchPackageData();
+    // Packages come from the catalog, which may still be loading.
+    CatalogService.ensureLoaded().then((_) {
+      if (mounted) _applyHighlight();
+    }).catchError((_) {});
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
-    if (widget.highlightPackage != null && selectedPackage != -1) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx = _cardKeys[selectedPackage].currentContext;
-        if (ctx != null) {
-          Scrollable.ensureVisible(
-            ctx,
-            duration: const Duration(milliseconds: 450),
-            curve: Curves.easeInOut,
-            alignment: 0.1,
-          );
-        }
-      });
+  }
+
+  /// Scroll target for card [i] — grows with the catalog.
+  GlobalKey _cardKey(int i) {
+    while (_cardKeys.length <= i) {
+      _cardKeys.add(GlobalKey());
     }
+    return _cardKeys[i];
+  }
+
+  void _applyHighlight() {
+    if (widget.highlightPackage == null || packages.isEmpty) return;
+    final target = widget.highlightPackage!.toLowerCase();
+    final match = packages.indexWhere(
+        (p) => (p['title'] as String).toLowerCase() == target);
+    if (match == -1) return;
+    setState(() => selectedPackage = match);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _cardKey(selectedPackage).currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeInOut,
+          alignment: 0.1,
+        );
+      }
+    });
   }
 
   void _onThemeChanged() {
     if (mounted) setState(() {});
   }
 
-  Future<void> _fetchPackageData() async {
-    try {
-      final rows = await CatalogService.fetchByCategory('Car Spa');
-      if (!mounted) return;
-
-      final byKey = {for (final row in rows) row['key'] as String: row};
-
-      // Falls back to the existing hardcoded price/duration on a NULL DB
-      // field (e.g. an admin row with pricing left blank) instead of
-      // storing null into fields that reach PaymentScreen's non-nullable
-      // `required String price`/`duration` — a NULL here used to crash the
-      // app the moment the customer tapped "Proceed".
-      setState(() {
-        if (byKey['car_spa_quick_refresh'] != null) {
-          packages[0]['price'] = byKey['car_spa_quick_refresh']!['price'] ?? packages[0]['price'];
-          packages[0]['duration'] = byKey['car_spa_quick_refresh']!['duration'] ?? packages[0]['duration'];
-        }
-        if (byKey['car_spa_premium'] != null) {
-          packages[1]['price'] = byKey['car_spa_premium']!['price'] ?? packages[1]['price'];
-          packages[1]['duration'] = byKey['car_spa_premium']!['duration'] ?? packages[1]['duration'];
-        }
-        if (byKey['car_spa_signature_plus'] != null) {
-          packages[2]['price'] = byKey['car_spa_signature_plus']!['price'] ?? packages[2]['price'];
-          packages[2]['duration'] = byKey['car_spa_signature_plus']!['duration'] ?? packages[2]['duration'];
-        }
-      });
-    } catch (e) {
-      // Keep fallback values
-    }
-  }
 
   @override
   void dispose() {
@@ -183,16 +115,16 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
   // ── Proceed to payment — the doorstep pickup/drop add-on is now asked
   // on PaymentScreen itself, not here.
   void _proceedToPayment() {
-    final selectedPkg = packages[selectedPackage];
+    final selectedPkg = packages[(selectedPackage < 0 ? 0 : (selectedPackage >= packages.length ? packages.length - 1 : selectedPackage))];
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: selectedPkg['title'] as String,
-          price: selectedPkg['price'] as String,
           duration: selectedPkg['duration'] as String,
           vehicleId: widget.vehicle['id'].toString(),
+          serviceKeys: [selectedPkg['key'] as String],
         ),
       ),
     );
@@ -200,6 +132,9 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+    if (packages.isEmpty) return const CatalogEmpty();
+
     return Scaffold(
       backgroundColor: AppColors.ink,
       body: SafeArea(
@@ -349,7 +284,7 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
                             final isSelected = index == selectedPackage;
 
                             return Padding(
-                              key: _cardKeys[index],
+                              key: _cardKey(index),
                               padding: EdgeInsets.only(
                                 bottom: index == packages.length - 1 ? 0 : 16,
                               ),
@@ -617,5 +552,6 @@ class _CarSpaScreenState extends State<CarSpaScreen> {
         ),
       ),
     );
+    });
   }
 }

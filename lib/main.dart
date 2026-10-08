@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/login_screen.dart';
 import 'screens/reset_password_screen.dart';
+import 'services/catalog_service.dart';
 import 'services/push_notification_service.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -35,6 +36,11 @@ Future<void> main() async {
   );
 
   await PushNotificationService.init();
+
+  // Package names and prices come from the Supabase `services` table —
+  // start loading them now (from the on-device cache first, then the
+  // network) so package screens open instantly.
+  CatalogService.ensureLoaded().catchError((_) {});
 
   Supabase.instance.client.auth.onAuthStateChange.listen((data) {
     if (data.event == AuthChangeEvent.passwordRecovery) {

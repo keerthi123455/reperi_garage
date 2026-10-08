@@ -4,14 +4,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
-import '../services/address_service.dart';
-import '../services/apple_review_assignment_override.dart';
-import '../services/delivery_partner_assignment_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../utils/secure_storage_path.dart';
 import '../widgets/error_display.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
 
 class ClaimScreen extends StatefulWidget {
   final String vehicleId;
@@ -60,11 +59,6 @@ class _ClaimScreenState extends State<ClaimScreen> {
   // after payment succeeds, while the picked files are actually uploaded.
   bool isUploading = false;
 
-  // One claim id per Razorpay payment. If saving fails after the customer
-  // has already paid, RETRY re-uses this same id — same storage paths,
-  // same row — so a retry can never create a second claim or clash with
-  // files the first attempt already uploaded.
-  final Map<String, String> _claimIdByPayment = {};
   String uploadStatus = '';
 
   // Explicit consent for sharing sensitive ID documents (Aadhaar, PAN,
@@ -73,14 +67,11 @@ class _ClaimScreenState extends State<ClaimScreen> {
   // elsewhere in the app.
   bool _consentGiven = false;
 
-  // Constant for claim admin — the 'newexpert_care' admin's actual
-  // admin.id (a uuid), not their username. claim_table.assigned_to_admin_id
-  // is a foreign key to admin.id, so this must be the id, not the name.
-  static const String CLAIM_ADMIN_ID = '1bcf9d81-6625-4c01-ac23-f0c237462eb7';
-
-  // Fixed fee for the full doorstep pickup -> garage -> return service —
-  // same 3-partner-pool/online-only pattern as pollution/inspection.
-  static const String _price = '₹3999';
+  // The claim service in the Supabase `services` table. Its price is shown
+  // here and charged by the server, which also assigns the claims garage
+  // and delivery partner (services.admin_pool / delivery_pool).
+  static const String _serviceKey = 'claim_assistance';
+  static String get _price => CatalogService.byKey(_serviceKey)?.priceText ?? '';
 
   // Same support number home_screen.dart's _callSupport already calls —
   // reused here for the circular call button below.
@@ -323,27 +314,84 @@ class _ClaimScreenState extends State<ClaimScreen> {
       damagePhotoFile != null &&
       _damageDescriptionController.text.trim().isNotEmpty;
 
-  /// Validates everything's in place, then hands off to PaymentScreen —
-  /// the actual upload + claim insert only happens in
-  /// _saveClaim, once payment actually succeeds. Mirrors
-  /// pollution_screen.dart / inspection_screen.dart's onSuccess pattern.
-  void _confirmAndPay() {
+  // ── Pre-payment preparation ──────────────────────────────────────────
+  // Everything that can realistically fail (six file uploads, admin and
+  // delivery-partner lookups) now happens BEFORE PaymentScreen opens. If
+  // any of it fails, the customer sees an error and has paid nothing.
+  // After payment, the only work left is one claim_table insert.
+  String? _preparedClaimId;
+  Map<String, String>? _uploadedPaths;
+  String? _uploadedSignature; // which picked files _uploadedPaths belong to
+
+  /// Identifies the exact set of picked files, so already-uploaded files
+  /// are reused only if the customer hasn't swapped any of them since.
+  String get _pickedFilesSignature => [
+        rcCopyFile?.path,
+        drivingLicenseFile?.path,
+        aadhaarFile?.path,
+        panFile?.path,
+        insuranceCopyFile?.path,
+        damagePhotoFile?.path,
+      ].join('|');
+
+  /// Uploads every document. Throws on any failure — the caller then stops
+  /// BEFORE payment.
+  Future<void> _prepareClaimBeforePayment() async {
+    final signature = _pickedFilesSignature;
+    final alreadyUploaded = _uploadedPaths != null &&
+        _uploadedSignature == signature &&
+        _preparedClaimId != null;
+
+    if (!alreadyUploaded) {
+      final claimId =
+          '${DateTime.now().millisecondsSinceEpoch}-${secureStorageToken()}';
+
+      if (mounted) setState(() => uploadStatus = 'Uploading RC Copy...');
+      final rc = await _uploadFile(rcCopyFile!, 'rc-copies', 'claim-$claimId-rc.pdf');
+
+      if (mounted) setState(() => uploadStatus = 'Uploading Driving License...');
+      final license = await _uploadFile(
+          drivingLicenseFile!, 'driving-licenses', 'claim-$claimId-license.pdf');
+
+      if (mounted) setState(() => uploadStatus = 'Uploading Aadhaar...');
+      final aadhaar = await _uploadFile(aadhaarFile!, 'aadhaar', 'claim-$claimId-aadhaar.pdf');
+
+      if (mounted) setState(() => uploadStatus = 'Uploading PAN...');
+      final pan = await _uploadFile(panFile!, 'pan', 'claim-$claimId-pan.pdf');
+
+      if (mounted) setState(() => uploadStatus = 'Uploading Insurance Copy...');
+      final insurance = await _uploadFile(
+          insuranceCopyFile!, 'insurance-copies', 'claim-$claimId-insurance.pdf');
+
+      if (mounted) setState(() => uploadStatus = 'Uploading Damage Photo...');
+      final photo = await _uploadFile(
+          damagePhotoFile!, 'damage-photos', 'claim-$claimId-damage.jpg');
+
+      _preparedClaimId = claimId;
+      _uploadedPaths = {
+        'rc': rc!,
+        'license': license!,
+        'aadhaar': aadhaar!,
+        'pan': pan!,
+        'insurance': insurance!,
+        'photo': photo!,
+      };
+      _uploadedSignature = signature;
+    }
+  }
+
+  /// Validates the form, uploads everything, and only then opens
+  /// PaymentScreen. Payment is never offered unless the documents are
+  /// safely stored.
+  Future<void> _confirmAndPay() async {
     // The description field is very likely still focused (this is the
-    // SUBMIT CLAIM button right below it) — unfocus explicitly rather than
-    // relying on the sheet's dispose to do it. Popping the sheet and
-    // immediately pushing PaymentScreen in the same frame was racing with
-    // the keyboard's own dismiss animation, leaving it stuck on screen
-    // through the navigation transition. FocusManager.instance is used
-    // (rather than FocusScope.of(context)) since this method runs with
-    // the screen's own context, not the modal sheet's, where the actually
-    // focused field lives.
+    // SUBMIT CLAIM button right below it) — unfocus explicitly so the
+    // keyboard doesn't get stuck on screen through the navigation.
     FocusManager.instance.primaryFocus?.unfocus();
 
     if (!_allDocsReady) {
-      // A plain SnackBar renders behind an open modal bottom sheet's route
-      // — showPremiumToast is an overlay-based toast built for exactly
-      // this case (see booking_tracking_screen.dart's block/unblock/report
-      // toasts for the same fix).
+      // showPremiumToast renders above the open bottom sheet (a plain
+      // SnackBar would render behind it).
       ErrorDisplay.showPremiumToast(
         context,
         message: 'Please upload all documents and add a description',
@@ -363,304 +411,79 @@ class _ClaimScreenState extends State<ClaimScreen> {
       return;
     }
 
+    if (_supabase.auth.currentUser == null) {
+      ErrorDisplay.showPremiumToast(
+        context,
+        message: 'Please sign in again to submit your claim',
+        icon: Icons.error_outline_rounded,
+        accent: const Color(0xFFE5484D),
+      );
+      return;
+    }
+
     Navigator.pop(context); // close the upload sheet
+
+    setState(() {
+      isUploading = true;
+      uploadStatus = 'Uploading documents...';
+    });
+
+    try {
+      await _prepareClaimBeforePayment();
+    } catch (e) {
+      debugPrint('Claim preparation failed (no payment taken): $e');
+      if (!mounted) return;
+      setState(() {
+        isUploading = false;
+        uploadStatus = '';
+      });
+      // Picked files stay selected, so SUBMIT CLAIM can simply be tapped
+      // again once the connection is back.
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage:
+            'We couldn\'t upload your documents, so no payment was taken. '
+            'Please check your connection and tap SUBMIT CLAIM again.',
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      isUploading = false;
+      uploadStatus = '';
+    });
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
-          title: 'Claim Assistance Service',
-          price: _price,
-          duration: 'Doorstep pickup & drop',
+          title: CatalogService.byKey(_serviceKey)?.name ?? 'Claim Assistance Service',
+          duration: CatalogService.byKey(_serviceKey)?.duration ?? 'Doorstep pickup & drop',
           vehicleId: _vehicleId,
           onVehicleResolved: (id) => _resolvedVehicleId = id,
-          showPickupDropOption: false,
-          onlineOnly: true,
-          onSuccess: _saveClaim,
+          // Online only, with doorstep pickup & drop — both set on the
+          // service row. The server saves the claim with these documents
+          // after the payment is verified.
+          serviceKeys: const [_serviceKey],
+          bookingOptions: {
+            'claim': {
+              'description': _damageDescriptionController.text.trim(),
+              'rc': _uploadedPaths!['rc'],
+              'license': _uploadedPaths!['license'],
+              'aadhaar': _uploadedPaths!['aadhaar'],
+              'pan': _uploadedPaths!['pan'],
+              'insurance': _uploadedPaths!['insurance'],
+              'photo': _uploadedPaths!['photo'],
+            },
+          },
           bookingSection: 'claim',
         ),
       ),
     );
   }
 
-  /// Called by PaymentScreen only AFTER Razorpay has confirmed the
-  /// payment. Uploads every document/photo, then inserts the claim row —
-  /// a full doorstep pickup/garage/return trip just like a regular service
-  /// booking (see web/deliverydashboard.html and claim_details_screen.dart).
-  ///
-  /// FIX: this used to catch every error and return normally, so a failed
-  /// upload/insert still made PaymentScreen show ORDER PLACED — customer
-  /// charged, no claim saved, no way to retry. Now a failure shows a popup
-  /// that stays until the customer taps RETRY (same payment, same claim id,
-  /// never charged again) or CONTACT SUPPORT; only then does the error go
-  /// back to PaymentScreen, which shows its "your payment went through"
-  /// message instead of ORDER PLACED.
-  Future<void> _saveClaim(String orderId, String paymentId) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) return;
-
-    final claimId = _claimIdByPayment.putIfAbsent(
-      paymentId,
-      () => '${DateTime.now().millisecondsSinceEpoch}-${secureStorageToken()}',
-    );
-
-    while (true) {
-      if (mounted) {
-        setState(() {
-          isUploading = true;
-          uploadStatus = 'Uploading documents...';
-        });
-      }
-
-      try {
-        await _uploadAndSaveClaim(user, claimId, orderId, paymentId);
-        if (mounted) {
-          setState(() {
-            isUploading = false;
-            uploadStatus = '';
-          });
-          await _showSubmittedDialog();
-        }
-        return;
-      } catch (e) {
-        debugPrint('Claim save failed after payment $paymentId: $e');
-        if (mounted) {
-          setState(() {
-            isUploading = false;
-            uploadStatus = '';
-          });
-        }
-        if (!mounted) rethrow;
-        final retry = await _showPaidButNotSavedDialog(paymentId);
-        if (!retry) rethrow;
-      }
-    }
-  }
-
-  Future<void> _uploadAndSaveClaim(
-    User user,
-    String claimId,
-    String orderId,
-    String paymentId,
-  ) async {
-      final defaultAddr = await AddressService().getDefaultAddress();
-      final deliveryPartnerId =
-          await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('claim_table');
-      // Claims bypass AdminAssignmentService entirely (always going to one
-      // fixed admin instead of rotating), so the Apple review override has
-      // to be checked here directly too — otherwise a claim made during
-      // review would still land on the real CLAIM_ADMIN_ID admin instead
-      // of the demo garage account.
-      final claimAdminId =
-          await AppleReviewAssignmentOverride.resolveAdminIdForCurrentCustomer() ??
-              CLAIM_ADMIN_ID;
-
-      // Snapshotted here rather than joined later — the delivery dashboard
-      // runs on the anon key and has no route to auth.users, so this is
-      // what lets it show/call the customer directly (see
-      // web/deliverydashboard.html's renderCustomerContactRow).
-      Map<String, dynamic>? profileData;
-      try {
-        profileData = await _supabase
-            .from('profiles')
-            .select('full_name, phone')
-            .eq('id', user.id)
-            .single();
-      } catch (e) {
-        // Profile might not exist, continue with null values
-      }
-
-      if (mounted) setState(() => uploadStatus = 'Uploading RC Copy...');
-      final rcUrl = await _uploadFile(
-          rcCopyFile!, 'rc-copies', 'claim-$claimId-rc.pdf');
-
-      if (mounted) setState(() => uploadStatus = 'Uploading Driving License...');
-      final licenseUrl = await _uploadFile(
-          drivingLicenseFile!, 'driving-licenses', 'claim-$claimId-license.pdf');
-
-      if (mounted) setState(() => uploadStatus = 'Uploading Aadhaar...');
-      final aadhaarUrl = await _uploadFile(
-          aadhaarFile!, 'aadhaar', 'claim-$claimId-aadhaar.pdf');
-
-      if (mounted) setState(() => uploadStatus = 'Uploading PAN...');
-      final panUrl = await _uploadFile(
-          panFile!, 'pan', 'claim-$claimId-pan.pdf');
-
-      if (mounted) setState(() => uploadStatus = 'Uploading Insurance Copy...');
-      final insuranceUrl = await _uploadFile(
-          insuranceCopyFile!, 'insurance-copies', 'claim-$claimId-insurance.pdf');
-
-      if (mounted) setState(() => uploadStatus = 'Uploading Damage Photo...');
-      final photoUrl = await _uploadFile(
-          damagePhotoFile!, 'damage-photos', 'claim-$claimId-damage.jpg');
-
-      if (mounted) setState(() => uploadStatus = 'Saving claim details...');
-      // A RETRY after the row was actually saved (e.g. the connection
-      // dropped right after the insert went through) must not add a
-      // second claim for the same payment.
-      final alreadySaved = await _supabase
-          .from('claim_table')
-          .select('id')
-          .eq('razorpay_payment_id', paymentId)
-          .limit(1);
-      if ((alreadySaved as List).isNotEmpty) return;
-
-      await _supabase.from('claim_table').insert({
-        'user_id': user.id,
-        'vehicle_id': _vehicleId,
-        'assigned_to_admin_id': claimAdminId,
-        'claim_status': 'submitted',
-        'damage_description': _damageDescriptionController.text.trim(),
-        'rc_copy_url': rcUrl,
-        'driving_license_url': licenseUrl,
-        'owner_aadhaar_url': aadhaarUrl,
-        'owner_pan_url': panUrl,
-        'insurance_copy_url': insuranceUrl,
-        'damage_photo_url': photoUrl,
-        'has_unread_update': true,
-        // .toUtc() matters here: a naive local (IST) timestamp with no
-        // offset gets stored into this timestamptz column as if it were
-        // already UTC, making the row look ~5.5 hours old the moment
-        // it's created — which is exactly what broke the 2-minute cancel
-        // window (it read as ~331 minutes remaining instead of ~2).
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-        // Doorstep pickup/drop — same shape as 'bookings'.
-        'delivery_partner_id': deliveryPartnerId,
-        'pickupdrop': 'yes',
-        'pickup_address': defaultAddr?['address'],
-        'pickup_latitude': defaultAddr?['latitude'],
-        'pickup_longitude': defaultAddr?['longitude'],
-        'pickup_address_name': defaultAddr?['name'],
-        'dropoff_address': defaultAddr?['address'],
-        'dropoff_latitude': defaultAddr?['latitude'],
-        'dropoff_longitude': defaultAddr?['longitude'],
-        'dropoff_address_name': defaultAddr?['name'],
-        'package_price': _price,
-        'payment_status': 'paid',
-        'razorpay_order_id': orderId,
-        'razorpay_payment_id': paymentId,
-        'customer_name': profileData?['full_name'] ?? 'Unknown',
-        'customer_phone': profileData?['phone'],
-      });
-
-  }
-
-  /// Shown when the claim couldn't be saved even though the payment went
-  /// through. Can't be dismissed by tapping outside or swiping back — the
-  /// customer has to choose, so they never land on a screen with a live
-  /// "pay" button while an unsaved paid claim is pending.
-  /// Returns true for RETRY, false for CONTACT SUPPORT.
-  Future<bool> _showPaidButNotSavedDialog(String paymentId) async {
-    final retry = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          backgroundColor: AppColors.surfaceRaised,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          icon: const Icon(Icons.cloud_upload_rounded, color: Color(0xFFD4A017), size: 32),
-          title: Text(
-            'Payment received',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w900, fontSize: 16),
-          ),
-          content: Text(
-            'Your $_price payment went through, but we couldn\'t finish uploading '
-            'your claim documents — usually a weak connection. Tap RETRY to try '
-            'again. You will not be charged again.\n\nPayment ref: $paymentId',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.mut, fontSize: 13, height: 1.5),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text('CONTACT SUPPORT', style: TextStyle(color: AppColors.mut)),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFD4A017),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              child: const Text(
-                'RETRY',
-                style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.5),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (retry != true) await _callSupport();
-    return retry == true;
-  }
-
-  Future<void> _showSubmittedDialog() {
-    return showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: AppColors.surfaceRaised,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 30),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.verified_rounded, color: Colors.green, size: 36),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                'Claim Submitted',
-                style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w900, fontSize: 18),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Your claim has been submitted and assigned to our '
-                'partner garage. A delivery partner will reach out to pick up '
-                'your vehicle — you\'ll get updates at every step.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.mut, fontSize: 13.5, height: 1.5),
-              ),
-              const SizedBox(height: 22),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: () {
-                    // Only close this popup. The extra Navigator.pop(context)
-                    // that used to follow closed the PaymentScreen underneath
-                    // it too — PaymentScreen is what shows ORDER PLACED and
-                    // then opens the vehicle dashboard (with the Claims
-                    // section highlighted), so closing it early left the
-                    // customer stuck back on the claim screen instead.
-                    Navigator.pop(dialogContext);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD4A017),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: const Text(
-                    'DONE',
-                    style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   /// One-time privacy notice shown before the upload sheet opens — the
   /// "pop up" explaining what the documents are used for, rather than
@@ -822,6 +645,11 @@ class _ClaimScreenState extends State<ClaimScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+    if (CatalogService.byKey(_serviceKey) == null) {
+      return const CatalogEmpty(message: 'Claim assistance isn\'t available right now. Please call us for help.');
+    }
+
     return Scaffold(
       backgroundColor: AppColors.ink,
       appBar: AppBar(
@@ -965,6 +793,7 @@ class _ClaimScreenState extends State<ClaimScreen> {
               ),
             ),
     );
+    });
   }
 }
 

@@ -1346,27 +1346,14 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
                                   MaterialPageRoute(
                                     builder: (_) => PaymentScreen(
                                       title: 'Fleet Service — ${req['company_name'] ?? ''}',
-                                      price: '₹${req['total_amount']}',
                                       duration: '',
                                       vehicleId: '',
                                       vehicleRequired: false,
-                                      billItems: List<Map<String, dynamic>>.from(req['bill_items'] ?? []),
-                                      showPickupDropOption: false,
-                                      onlineOnly: true,
-                                      onSuccess: (orderId, paymentId) async {
-                                        try {
-                                          await Supabase.instance.client
-                                              .from('fleet_pickup_requests')
-                                              .update({
-                                                'payment_status': 'paid',
-                                                'razorpay_order_id': orderId,
-                                                'razorpay_payment_id': paymentId,
-                                              })
-                                              .eq('id', req['id']);
-                                        } catch (e) {
-                                          debugPrint('Error updating fleet payment status: $e');
-                                        }
-                                      },
+                                      // Priced by the server from this request's
+                                      // total_amount / bill_items (set by the
+                                      // garage) and marked paid there after the
+                                      // payment is verified.
+                                      fleetRequestId: '${req['id']}',
                                     ),
                                   ),
                                 );

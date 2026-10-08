@@ -3,14 +3,16 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
 
-/// Static, hardcoded package data for the "AC Service" category —
-/// deliberately NOT fetched from Supabase, matching the pattern used for
-/// the Washing/Servicing screens. Presented as three tabs (Browse /
+/// "AC Service" packages, live from the Supabase `services` table
+/// (screen 'ac') — same pattern as the Washing/Servicing screens. Presented as three tabs (Browse /
 /// Compare / Details) instead of one long scroll, with a sticky bottom
 /// "BOOK NOW" bar that goes straight to PaymentScreen — the optional
 /// doorstep pickup/drop add-on is asked there now, not here.
 class _Tier {
+  final String key;
   final String name;
   final String price;
   final String tagline;
@@ -20,6 +22,7 @@ class _Tier {
   final List<String> highlights;
 
   const _Tier({
+    required this.key,
     required this.name,
     required this.price,
     required this.tagline,
@@ -30,46 +33,32 @@ class _Tier {
   });
 }
 
-const _tiers = [
-  _Tier(
-    name: 'AC SERVICE',
-    price: '₹1,500',
-    tagline: 'Complete AC inspection and cooling refresh',
-    bestFor: 'Regular maintenance and early signs of reduced cooling.',
-    accent: Color(0xFF4FA3E3),
-    highlights: [
-      'AC System Inspection',
-      'AC Gas Pressure Check',
-      'AC Filter Cleaning',
-      'AC Evaporator Cleaning',
-      'AC Condenser Cleaning',
-      'AC Vent Cleaning',
-      'AC Sanitization',
-      'Cooling Performance Check',
-      'Leak Inspection',
-    ],
-  ),
-  _Tier(
-    name: 'PREMIUM AC SERVICE',
-    price: '₹2,500',
-    tagline: 'Deep clean, recharge, and odour-free cooling',
-    bestFor: 'Poor cooling, bad odour, or complete AC care.',
-    accent: Color(0xFFD4A017),
-    popular: true,
-    highlights: [
-      'Everything in ₹1,500 Package',
-      'AC Deep Cleaning',
-      'AC Gas Top-up',
-      'AC Evaporator Deep Cleaning',
-      'AC Condenser Deep Cleaning',
-      'AC Blower Cleaning',
-      'AC Sanitization',
-      'AC Odour & Bacteria Treatment',
-      'Cooling Performance Optimization',
-      'Complete AC System Inspection',
-    ],
-  ),
-];
+// Card accents by position — purely visual, so they stay in the app.
+const _tierAccents = [Color(0xFF4FA3E3), Color(0xFFD4A017), Color(0xFFF5C842)];
+
+/// The AC tiers, live from the services table (same objects until it changes).
+List<_Tier>? _tiersCache;
+int _tiersRevision = -1;
+List<_Tier> get _tiers {
+  if (_tiersCache == null || _tiersRevision != CatalogService.revision.value) {
+    final items = CatalogService.forScreen('ac').where((i) => !i.isAddon).toList();
+    _tiersCache = [
+      for (var i = 0; i < items.length; i++)
+        _Tier(
+          key: items[i].key,
+          name: items[i].name.toUpperCase(),
+          price: items[i].priceText,
+          tagline: items[i].description,
+          bestFor: items[i].detail('best_for'),
+          accent: _tierAccents[i % _tierAccents.length],
+          popular: items[i].popular,
+          highlights: items[i].features,
+        ),
+    ];
+    _tiersRevision = CatalogService.revision.value;
+  }
+  return _tiersCache!;
+}
 
 // (feature, ₹1,500, ₹2,500)
 const _comparisonRows = [
@@ -103,12 +92,20 @@ class AcPackageScreen extends StatefulWidget {
 class _AcPackageScreenState extends State<AcPackageScreen>
     with SingleTickerProviderStateMixin {
   int _selectedTier = 1; // default to Premium AC Service, "Most Popular"
+
+  /// [_selectedTier], kept in range if packages are switched off remotely.
+  int get _sel => _tiers.isEmpty ? 0 : (_selectedTier < 0 ? 0 : (_selectedTier >= _tiers.length ? _tiers.length - 1 : _selectedTier));
   late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    CatalogService.ensureLoaded().then((_) {
+      if (!mounted || _tiers.isEmpty) return;
+      final popular = _tiers.indexWhere((t) => t.popular);
+      setState(() => _selectedTier = popular == -1 ? 0 : popular);
+    }).catchError((_) {});
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
@@ -155,9 +152,9 @@ class _AcPackageScreenState extends State<AcPackageScreen>
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: tier.name,
-          price: tier.price,
-          duration: '1-2 hrs',
+          duration: CatalogService.byKey(tier.key)?.duration ?? '',
           vehicleId: widget.vehicleId,
+          serviceKeys: [tier.key],
         ),
       ),
     );
@@ -165,7 +162,10 @@ class _AcPackageScreenState extends State<AcPackageScreen>
 
   @override
   Widget build(BuildContext context) {
-    final selected = _tiers[_selectedTier];
+    return CatalogGate(builder: (context) {
+    if (_tiers.isEmpty) return const CatalogEmpty();
+
+    final selected = _tiers[_sel];
 
     return Scaffold(
       backgroundColor: AppColors.ink,
@@ -198,6 +198,7 @@ class _AcPackageScreenState extends State<AcPackageScreen>
         ),
       ),
     );
+    });
   }
 
   // ── HEADER ──
@@ -658,7 +659,7 @@ class _AcPackageScreenState extends State<AcPackageScreen>
 
   // ── TAB 3: DETAILS (full specs for the selected tier) ──
   Widget _buildDetailsView() {
-    final tier = _tiers[_selectedTier];
+    final tier = _tiers[_sel];
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       child: Column(

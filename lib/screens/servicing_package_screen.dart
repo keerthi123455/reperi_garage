@@ -3,12 +3,15 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
 
-/// Static, hardcoded package data for the "Servicing" (21-Step Inspection)
-/// category — deliberately NOT fetched from Supabase, per request.
-/// Presented as three tabs (Browse / Compare / Details) instead of one
+/// "Servicing" (21-Step Inspection) packages — names, prices, taglines and
+/// highlights come from the Supabase `services` table (screen 'servicing'),
+/// so they can be edited without an app update. Presented as three tabs (Browse / Compare / Details) instead of one
 /// long scroll, with a sticky bottom "BOOK NOW" bar.
 class _Tier {
+  final String key;
   final String name;
   final String price;
   final String tagline;
@@ -17,6 +20,7 @@ class _Tier {
   final List<String> highlights;
 
   const _Tier({
+    required this.key,
     required this.name,
     required this.price,
     required this.tagline,
@@ -26,69 +30,31 @@ class _Tier {
   });
 }
 
-const _tiers = [
-  _Tier(
-    name: 'ESSENTIAL',
-    price: '₹999',
-    tagline: 'Perfect for routine service',
-    accent: Color(0xFF4FA3E3),
-    highlights: [
-      'Engine Oil Change',
-      'Oil Filter Change',
-      'Brake Inspection',
-      'AC Cooling Check',
-      'Battery Health Test',
-      'Tyre Inspection',
-      'Fluid Level Check',
-      '21-Point Diagnostics',
-      'Digital Health Report',
-    ],
-  ),
-  _Tier(
-    name: 'PREMIUM CARE',
-    price: '₹3,999',
-    tagline: 'Most Popular',
-    accent: Color(0xFFD4A017),
-    popular: true,
-    highlights: [
-      'Everything in Essential',
-      'Premium Engine Oil',
-      'Oil Filter Replacement',
-      'Brake Fluid Top-up',
-      'AC Performance Service',
-      'Air Filter Cleaning',
-      'Cabin Filter Cleaning',
-      'Steering Check',
-      'Suspension Check',
-      'Car Wash',
-      'Interior Vacuum',
-      '35-Point Diagnostics',
-    ],
-  ),
-  _Tier(
-    name: 'SIGNATURE SERVICE',
-    price: '₹5,999',
-    tagline: 'Ultimate Protection',
-    accent: Color(0xFFF5C842),
-    highlights: [
-      'Everything in Premium',
-      'Synthetic Engine Oil',
-      'Brake Fluid Replacement',
-      'Air Filter Replacement',
-      'Cabin Filter Replacement',
-      'Battery Load Test',
-      'Fuel System Check',
-      'Complete Brake Service',
-      'Wheel Alignment Check',
-      'Underbody Inspection',
-      'Deep Interior Cleaning',
-      'Foam Exterior Wash',
-      '50+ Point Diagnostics',
-      'Photo Health Report',
-      'Priority Support',
-    ],
-  ),
-];
+// Card accents by position — purely visual, so they stay in the app.
+const _tierAccents = [Color(0xFF4FA3E3), Color(0xFFD4A017), Color(0xFFF5C842)];
+
+/// The tiers, live from the services table (same objects until it changes).
+List<_Tier>? _tiersCache;
+int _tiersRevision = -1;
+List<_Tier> get _tiers {
+  if (_tiersCache == null || _tiersRevision != CatalogService.revision.value) {
+    final items = CatalogService.forScreen('servicing').where((i) => !i.isAddon).toList();
+    _tiersCache = [
+      for (var i = 0; i < items.length; i++)
+        _Tier(
+          key: items[i].key,
+          name: items[i].name.toUpperCase(),
+          price: items[i].priceText,
+          tagline: items[i].description,
+          accent: _tierAccents[i % _tierAccents.length],
+          popular: items[i].popular,
+          highlights: items[i].features,
+        ),
+    ];
+    _tiersRevision = CatalogService.revision.value;
+  }
+  return _tiersCache!;
+}
 
 const _fullChecklist = {
   'Engine': [
@@ -153,6 +119,9 @@ class ServicingPackageScreen extends StatefulWidget {
 class _ServicingPackageScreenState extends State<ServicingPackageScreen>
     with SingleTickerProviderStateMixin {
   int _selectedTier = 1; // default to Premium Care, matching "Most Popular"
+
+  /// [_selectedTier], kept in range if packages are switched off remotely.
+  int get _sel => _tiers.isEmpty ? 0 : (_selectedTier < 0 ? 0 : (_selectedTier >= _tiers.length ? _tiers.length - 1 : _selectedTier));
   bool _checklistExpanded = false;
   late final TabController _tabController;
 
@@ -160,20 +129,31 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    if (widget.highlightPackage != null) {
-      final target = widget.highlightPackage!.toLowerCase();
-      final match = _tiers.indexWhere((t) => t.name.toLowerCase() == target);
-      if (match != -1) {
-        _selectedTier = match;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _tabController.animateTo(2);
-        });
-      }
-    }
+    // Packages come from the catalog, which may still be loading.
+    CatalogService.ensureLoaded().then((_) {
+      if (mounted) _applyCatalogSelection();
+    }).catchError((_) {});
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
+  }
+
+  void _applyCatalogSelection() {
+    final tiers = _tiers;
+    if (tiers.isEmpty) return;
+    var index = tiers.indexWhere((t) => t.popular);
+    var openDetails = false;
+    if (widget.highlightPackage != null) {
+      final target = widget.highlightPackage!.toLowerCase();
+      final match = tiers.indexWhere((t) => t.name.toLowerCase() == target);
+      if (match != -1) {
+        index = match;
+        openDetails = true;
+      }
+    }
+    setState(() => _selectedTier = index == -1 ? 0 : index);
+    if (openDetails) _tabController.animateTo(2);
   }
 
   void _onThemeChanged() {
@@ -214,9 +194,9 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen>
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: tier.name,
-          price: tier.price,
-          duration: '3-4 hrs',
+          duration: CatalogService.byKey(tier.key)?.duration ?? '',
           vehicleId: widget.vehicleId,
+          serviceKeys: [tier.key],
         ),
       ),
     );
@@ -224,7 +204,10 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen>
 
   @override
   Widget build(BuildContext context) {
-    final selected = _tiers[_selectedTier];
+    return CatalogGate(builder: (context) {
+    if (_tiers.isEmpty) return const CatalogEmpty();
+
+    final selected = _tiers[_sel];
 
     return Scaffold(
       backgroundColor: AppColors.ink,
@@ -257,6 +240,7 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen>
         ),
       ),
     );
+    });
   }
 
   // ── HEADER ──
@@ -665,7 +649,7 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen>
 
   // ── TAB 3: DETAILS (full specs + checklist for the selected tier) ──
   Widget _buildDetailsView() {
-    final tier = _tiers[_selectedTier];
+    final tier = _tiers[_sel];
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       child: Column(

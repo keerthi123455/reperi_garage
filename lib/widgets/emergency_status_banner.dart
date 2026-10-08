@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -72,10 +75,11 @@ class EmergencyStatusBanner extends StatefulWidget {
 }
 
 class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   /// An emergency booking older than this is treated as over even if
   /// nobody ever marked it completed, so the banner can't stick forever.
   static const Duration _maxAge = Duration(hours: 24);
+
   static const Set<String> _closedStatuses = {
     'completed',
     'cancelled',
@@ -84,13 +88,72 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
     'delivered',
   };
 
+  // ── Geometry ──────────────────────────────────────────────────────────
+  static const double _sideInset = 16; // gap from screen edges
+  static const double _pillHeight = 66;
+  static const double _circleSize = 56;
+  static const double _pillRadius = 22;
+
+  /// How far (px) the finger has to travel for a full pill → circle morph.
+  static const double _dragDistance = 150;
+
+  /// Shared spring for every snap — critically-ish damped so it settles
+  /// with a soft, premium overshoot rather than a bounce.
+  static final SpringDescription _spring = SpringDescription.withDampingRatio(
+    mass: 1,
+    stiffness: 240,
+    ratio: 0.82,
+  );
+
+  // ── Collapsed state, shared by every banner instance ──────────────────
+  // Home, Services, Profile and Bookings each mount their own banner, so
+  // the collapsed choice lives here (and in SharedPreferences) rather than
+  // in one instance — tuck it away once and it stays tucked everywhere,
+  // even after an app restart. It's keyed to the booking id, so a NEW
+  // emergency booking always starts as the full, unmissable pill.
+  static const String _prefsKey = 'emergency_banner_collapsed_booking';
+  static final ValueNotifier<String?> _collapsedBookingId =
+      ValueNotifier<String?>(null);
+  static bool _prefsLoaded = false;
+
+  static Future<void> _loadCollapsedPref() async {
+    if (_prefsLoaded) return;
+    _prefsLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _collapsedBookingId.value = prefs.getString(_prefsKey);
+    } catch (_) {}
+  }
+
+  static Future<void> _saveCollapsedPref(String? bookingId) async {
+    _collapsedBookingId.value = bookingId;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (bookingId == null) {
+        await prefs.remove(_prefsKey);
+      } else {
+        await prefs.setString(_prefsKey, bookingId);
+      }
+    } catch (_) {}
+  }
+
+  /// Slow, calm glow — the old 1.1 s pulse read as an alarm.
   late final AnimationController _pulse = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1100),
+    duration: const Duration(milliseconds: 1800),
   )..repeat(reverse: true);
+
+  /// 0 = full pill, 1 = corner circle. Unbounded so the spring can
+  /// overshoot a hair and settle, which is what makes it feel physical.
+  late final AnimationController _morph = AnimationController.unbounded(
+    vsync: this,
+    value: 0,
+  );
 
   Timer? _poll;
   bool _active = false;
+  bool _pressed = false;
+  bool _crossedThreshold = false;
 
   /// The open booking's id, and whether the technician has already tapped
   /// "mark as done" (which generates the completion OTP the customer types
@@ -98,9 +161,14 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
   String? _bookingId;
   bool _otpRequested = false;
 
+  bool get _isCollapsed =>
+      _bookingId != null && _collapsedBookingId.value == _bookingId;
+
   @override
   void initState() {
     super.initState();
+    _collapsedBookingId.addListener(_onSharedCollapseChanged);
+    _loadCollapsedPref().then((_) => _syncToSharedState(animate: false));
     _refresh();
     _poll = Timer.periodic(const Duration(seconds: 30), (_) => _refresh());
     // AppColors are swapped in place on a light/dark toggle — rebuild so
@@ -112,11 +180,27 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
     if (mounted) setState(() {});
   }
 
+  /// Another screen's banner collapsed/expanded — follow it.
+  void _onSharedCollapseChanged() => _syncToSharedState(animate: true);
+
+  void _syncToSharedState({required bool animate}) {
+    if (!mounted) return;
+    final target = _isCollapsed ? 1.0 : 0.0;
+    if ((_morph.value - target).abs() < 0.001 || _morph.isAnimating) return;
+    if (animate && _active) {
+      _springTo(target);
+    } else {
+      _morph.value = target;
+    }
+  }
+
   @override
   void dispose() {
+    _collapsedBookingId.removeListener(_onSharedCollapseChanged);
     themeController.removeListener(_onThemeChanged);
     _poll?.cancel();
     _pulse.dispose();
+    _morph.dispose();
     super.dispose();
   }
 
@@ -148,14 +232,18 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
       if (!mounted) return;
       final active = open != null;
       final otpRequested = open?['return_otp_generated_at'] != null;
+      final bookingId = open?['id']?.toString();
       if (active != _active ||
           otpRequested != _otpRequested ||
-          open?['id']?.toString() != _bookingId) {
+          bookingId != _bookingId) {
         setState(() {
           _active = active;
           _otpRequested = otpRequested;
-          _bookingId = open?['id']?.toString();
+          _bookingId = bookingId;
         });
+        // A different (or no) booking: jump straight to whatever that
+        // booking's saved state is — no animation on first appearance.
+        _morph.value = _isCollapsed ? 1.0 : 0.0;
       }
     } catch (_) {
       // Non-fatal — keep whatever the banner showed last.
@@ -175,6 +263,68 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
     );
   }
 
+  // ── Motion ───────────────────────────────────────────────────────────
+
+  void _springTo(double target, {double velocity = 0}) {
+    _morph.animateWith(
+      SpringSimulation(_spring, _morph.value, target, velocity),
+    );
+  }
+
+  void _collapse({double velocity = 0}) {
+    HapticFeedback.lightImpact();
+    _springTo(1, velocity: velocity);
+    _saveCollapsedPref(_bookingId);
+  }
+
+  void _expand({double velocity = 0}) {
+    HapticFeedback.lightImpact();
+    _springTo(0, velocity: velocity);
+    _saveCollapsedPref(null);
+  }
+
+  void _onDragStart(DragStartDetails _) {
+    _morph.stop();
+    _crossedThreshold = false;
+    setState(() => _pressed = false);
+  }
+
+  void _onDragUpdate(DragUpdateDetails d) {
+    // Follows the finger 1:1 between the two states, then turns heavy
+    // past either end (rubber-band) so it feels weighted, not loose.
+    final delta = (d.primaryDelta ?? 0) / _dragDistance;
+    final v = _morph.value;
+    final outside = (v < 0 && delta < 0) || (v > 1 && delta > 0);
+    _morph.value = (v + (outside ? delta * 0.25 : delta)).clamp(-0.08, 1.08);
+    // One soft tick the moment the gesture has gone far enough to commit.
+    final past = _morph.value > 0.5;
+    if (past != _crossedThreshold) {
+      _crossedThreshold = past;
+      HapticFeedback.selectionClick();
+    }
+  }
+
+  void _onDragEnd(DragEndDetails d) {
+    final v = (d.primaryVelocity ?? 0) / _dragDistance; // units per second
+    final shouldCollapse = v > 1.2 || (v > -1.2 && _morph.value > 0.35);
+    if (shouldCollapse) {
+      _collapse(velocity: v);
+    } else {
+      _expand(velocity: v);
+    }
+  }
+
+  void _onTap() {
+    if (_morph.value > 0.5) {
+      // Circle → grow back into the pill (no sheet yet).
+      _expand();
+    } else {
+      _openSheet();
+    }
+  }
+
+  // ── Build ────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     if (!_active) return const SizedBox.shrink();
@@ -192,188 +342,285 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
             const Color(0xFFFFF1F2).withOpacity(0.96),
             const Color(0xFFFFE3E5).withOpacity(0.98),
           ];
+    final dropShadow = Colors.black.withOpacity(isDark ? 0.35 : 0.10);
+
+    return SizedBox(
+      height: _pillHeight,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final fullWidth = constraints.maxWidth;
+          final pillWidth = fullWidth - _sideInset * 2;
+          final circleLeft = fullWidth - _sideInset - _circleSize;
+
+          return AnimatedBuilder(
+            animation: Listenable.merge([_morph, _pulse]),
+            builder: (context, _) {
+              final raw = _morph.value;
+              final t = raw.clamp(0.0, 1.0);
+              // Width/height ease in a little later than position so the
+              // shape "gathers itself" before travelling to the corner.
+              final sizeT = Curves.easeInOutCubic.transform(t);
+              final moveT = Curves.easeInOutCubic.transform(t);
+
+              final width = lerpDouble(pillWidth, _circleSize, sizeT)!;
+              final height = lerpDouble(_pillHeight, _circleSize, sizeT)!;
+              // Position uses the raw (overshooting) value so the circle
+              // glides a hair past its spot and settles back.
+              final left = lerpDouble(_sideInset, circleLeft,
+                  moveT + (raw - t) * 0.6)!;
+              final radius = lerpDouble(_pillRadius, _circleSize / 2, sizeT)!;
+              // A gentle downward arc while morphing — reads as the pill
+              // being "tucked down" into the corner.
+              final dip = sin(pi * t) * 10;
+              // Text leaves early on collapse and arrives late on expand.
+              final textOpacity = (1 - t / 0.32).clamp(0.0, 1.0);
+              final hPad = lerpDouble(14, (_circleSize - 42) / 2, sizeT)!;
+              final vPad = (height - 42) / 2;
+              final pulse = _pulse.value;
+              final pressScale = _pressed ? 0.965 : 1.0;
+
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    left: left,
+                    bottom: -dip,
+                    width: width,
+                    height: height,
+                    child: AnimatedScale(
+                      scale: pressScale,
+                      duration: const Duration(milliseconds: 140),
+                      curve: Curves.easeOut,
+                      child: Semantics(
+                        button: true,
+                        label: t > 0.5
+                            ? 'Emergency assistance on the way. Tap to expand.'
+                            : 'Emergency assistance is on the way. Tap for help and contacts. Swipe down to minimise.',
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (_) => setState(() => _pressed = true),
+                          onTapCancel: () => setState(() => _pressed = false),
+                          onTapUp: (_) => setState(() => _pressed = false),
+                          onTap: _onTap,
+                          onVerticalDragStart: _onDragStart,
+                          onVerticalDragUpdate: _onDragUpdate,
+                          onVerticalDragEnd: _onDragEnd,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(radius),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: glow.withOpacity(0.14 + 0.12 * pulse),
+                                  blurRadius: 24 + 10 * pulse,
+                                  spreadRadius: 1 + pulse,
+                                  offset: Offset(0, lerpDouble(10, 6, t)!),
+                                ),
+                                BoxShadow(
+                                  color: dropShadow,
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(radius),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(radius),
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: bgColors,
+                                    ),
+                                    border: Border.all(
+                                      color: glow.withOpacity(isDark ? 0.55 : 0.45),
+                                      width: 1.2,
+                                    ),
+                                  ),
+                                  // Content is always laid out at full pill
+                                  // width and simply clipped by the shrinking
+                                  // shape — no overflow, no re-layout jank.
+                                  child: OverflowBox(
+                                    alignment: Alignment.centerLeft,
+                                    minWidth: pillWidth,
+                                    maxWidth: pillWidth,
+                                    minHeight: height,
+                                    maxHeight: height,
+                                    child: Padding(
+                                      padding: EdgeInsets.fromLTRB(
+                                          hPad, vPad, 14, vPad),
+                                      child: _PillContent(
+                                        glow: glow,
+                                        isDark: isDark,
+                                        pulse: pulse,
+                                        textOpacity: textOpacity,
+                                        otpRequested: _otpRequested,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// The pill's inner row: pulsing emergency icon, LIVE label, title,
+/// subtitle and chevron. Only the icon survives into the circle — the rest
+/// fades with [textOpacity].
+class _PillContent extends StatelessWidget {
+  const _PillContent({
+    required this.glow,
+    required this.isDark,
+    required this.pulse,
+    required this.textOpacity,
+    required this.otpRequested,
+  });
+
+  final Color glow;
+  final bool isDark;
+  final double pulse;
+  final double textOpacity;
+  final bool otpRequested;
+
+  @override
+  Widget build(BuildContext context) {
     final titleColor = isDark ? Colors.white : AppColors.txt;
     final subtitleColor = isDark ? Colors.white.withOpacity(0.62) : AppColors.mut;
     final chevronBg = isDark ? Colors.white.withOpacity(0.06) : AppColors.txt.withOpacity(0.05);
     final chevronBorder = isDark ? Colors.white.withOpacity(0.10) : AppColors.line;
     final chevronIcon = isDark ? Colors.white70 : AppColors.mut;
-    final dropShadow = Colors.black.withOpacity(isDark ? 0.35 : 0.10);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: AnimatedBuilder(
-        animation: _pulse,
-        builder: (context, child) {
-          final t = _pulse.value; // 0 -> 1 -> 0
-          return DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: [
-                BoxShadow(
-                  color: glow.withOpacity(0.16 + 0.14 * t),
-                  blurRadius: 28 + 10 * t,
-                  spreadRadius: 1 + t,
-                  offset: const Offset(0, 10),
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 42,
+          height: 42,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 42 * (0.7 + 0.3 * pulse),
+                height: 42 * (0.7 + 0.3 * pulse),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: glow.withOpacity(0.30 * (1 - pulse)),
                 ),
-                BoxShadow(
-                  color: dropShadow,
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: child,
-          );
-        },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(22),
-                onTap: _openSheet,
-                splashColor: glow.withOpacity(0.12),
-                highlightColor: glow.withOpacity(0.06),
-                child: Ink(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(22),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: bgColors,
-                    ),
-                    border: Border.all(
-                      color: glow.withOpacity(isDark ? 0.55 : 0.45),
-                      width: 1.2,
-                    ),
+              ),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFFF5A63), Color(0xFFB3121E)],
                   ),
-                  child: Row(
+                  boxShadow: [
+                    BoxShadow(color: glow.withOpacity(0.5), blurRadius: 10),
+                  ],
+                ),
+                child: const Icon(Symbols.emergency,
+                    color: Colors.white, size: 18, weight: 600),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Opacity(
+            opacity: textOpacity,
+            child: Transform.translate(
+              // Text drifts slightly left as it fades, so it feels pulled
+              // into the icon rather than just vanishing.
+              offset: Offset(-12 * (1 - textOpacity), 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
                     children: [
-                      SizedBox(
-                        width: 42,
-                        height: 42,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            AnimatedBuilder(
-                              animation: _pulse,
-                              builder: (context, _) => Container(
-                                width: 42 * (0.7 + 0.3 * _pulse.value),
-                                height: 42 * (0.7 + 0.3 * _pulse.value),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: glow
-                                      .withOpacity(0.30 * (1 - _pulse.value)),
-                                ),
-                              ),
-                            ),
-                            Container(
-                              width: 34,
-                              height: 34,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: const LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [Color(0xFFFF5A63), Color(0xFFB3121E)],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: glow.withOpacity(0.5),
-                                    blurRadius: 10,
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(Symbols.emergency,
-                                  color: Colors.white, size: 18, weight: 600),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 6,
-                                  height: 6,
-                                  margin: const EdgeInsets.only(right: 6),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: glow,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: glow.withOpacity(0.8),
-                                        blurRadius: 5,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Text(
-                                  'LIVE',
-                                  style: GoogleFonts.manrope(
-                                    fontSize: 9.5,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.6,
-                                    color: glow,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              'Emergency assistance is on the way',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.manrope(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.1,
-                                color: titleColor,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _otpRequested
-                                  ? 'Work finished · tap to enter your OTP'
-                                  : 'Hold tight · tap for help & contacts',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.manrope(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: subtitleColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.all(6),
+                        width: 6,
+                        height: 6,
+                        margin: const EdgeInsets.only(right: 6),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: chevronBg,
-                          border: Border.all(color: chevronBorder),
+                          color: glow,
+                          boxShadow: [
+                            BoxShadow(color: glow.withOpacity(0.8), blurRadius: 5),
+                          ],
                         ),
-                        child: Icon(Symbols.chevron_right,
-                            color: chevronIcon, size: 18),
+                      ),
+                      Text(
+                        'LIVE',
+                        style: GoogleFonts.manrope(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.6,
+                          color: glow,
+                        ),
                       ),
                     ],
                   ),
-                ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Emergency assistance is on the way',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.manrope(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.1,
+                      color: titleColor,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    otpRequested
+                        ? 'Work finished · tap to enter your OTP'
+                        : 'Tap for help · swipe down to minimise',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: subtitleColor,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
-      ),
+        const SizedBox(width: 6),
+        Opacity(
+          opacity: textOpacity,
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: chevronBg,
+              border: Border.all(color: chevronBorder),
+            ),
+            child: Icon(Symbols.chevron_right, color: chevronIcon, size: 18),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -4,6 +4,7 @@ import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/catalog_gate.dart';
 
 class BookServiceScreen extends StatefulWidget {
 
@@ -30,114 +31,77 @@ class _BookServiceScreenState
   int selectedIndex = 0;
   final List<GlobalKey> _cardKeys = [];
 
-  List<Map<String, dynamic>> services = [
-
-    {
-      "title": "Quick Service",
-      "price": "₹1999",
-      "time": "90 mins",
-      "icon": Icons.build_rounded,
-
-      "features": [
-
-        "Engine oil replacement",
-        "Oil filter cleaning",
-        "Brake inspection",
-        "Fluid top-up",
-        "Battery check",
-      ],
-
-      "details":
-          "A fast maintenance package designed for regular upkeep and smoother daily performance.",
-    },
-
-    {
-      "title": "Full Service",
-      "price": "₹4999",
-      "time": "4 hrs",
-      "icon": Icons.car_repair,
-
-      "features": [
-
-        "Complete engine inspection",
-        "Full oil replacement",
-        "Air filter replacement",
-        "Wheel balancing",
-        "Suspension check",
-        "Brake servicing",
-      ],
-
-      "details":
-          "Comprehensive servicing package covering all major systems of the vehicle for peak performance.",
-    },
-
-    {
-      "title": "AC Service",
-      "price": "₹2499",
-      "time": "2 hrs",
-      "icon": Icons.ac_unit_rounded,
-
-      "features": [
-
-        "AC gas refill",
-        "Cooling efficiency check",
-        "Cabin filter cleaning",
-        "Vent sanitization",
-        "Leak inspection",
-      ],
-
-      "details":
-          "Deep AC inspection and cooling optimization to ensure maximum comfort and airflow.",
-    },
-
-    {
-      "title": "Engine Diagnostics",
-      "price": "₹1499",
-      "time": "45 mins",
-      "icon": Icons.settings,
-
-      "features": [
-
-        "OBD scan",
-        "Engine health report",
-        "Sensor diagnostics",
-        "Error code detection",
-        "Performance analysis",
-      ],
-
-      "details":
-          "Advanced computer diagnostics to identify hidden engine and electrical issues.",
-    },
+  // Card icons by position — purely visual, so they stay in the app.
+  static const _icons = <IconData>[
+    Icons.build_rounded,
+    Icons.car_repair,
+    Icons.ac_unit_rounded,
+    Icons.settings,
   ];
+
+  /// The packages, live from the Supabase `services` table (screen
+  /// 'book_service') — same objects until the catalog changes.
+  List<Map<String, dynamic>>? _servicesCache;
+  int _servicesRevision = -1;
+  List<Map<String, dynamic>> get services {
+    if (_servicesCache == null || _servicesRevision != CatalogService.revision.value) {
+      final items = CatalogService.forScreen('book_service').where((i) => !i.isAddon).toList();
+      _servicesCache = [
+        for (var i = 0; i < items.length; i++)
+          <String, dynamic>{
+            'key': items[i].key,
+            'title': items[i].name,
+            'price': items[i].priceText,
+            'time': items[i].duration,
+            'features': items[i].features,
+            'details': items[i].description,
+            'icon': _icons[i % _icons.length],
+          },
+      ];
+      _servicesRevision = CatalogService.revision.value;
+    }
+    return _servicesCache!;
+  }
 
   @override
   void initState() {
     super.initState();
-    _cardKeys.addAll(List.generate(services.length, (_) => GlobalKey()));
-    if (widget.highlightPackage != null) {
-      final target = widget.highlightPackage!.toLowerCase();
-      final match = services.indexWhere(
-          (s) => (s['title'] as String).toLowerCase() == target);
-      if (match != -1) selectedIndex = match;
-    }
-    _fetchServiceData();
+    // Packages come from the catalog, which may still be loading.
+    CatalogService.ensureLoaded().then((_) {
+      if (mounted) _applyHighlight();
+    }).catchError((_) {});
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
-    if (widget.highlightPackage != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx = _cardKeys[selectedIndex].currentContext;
-        if (ctx != null) {
-          Scrollable.ensureVisible(
-            ctx,
-            duration: const Duration(milliseconds: 450),
-            curve: Curves.easeInOut,
-            alignment: 0.1,
-          );
-        }
-      });
+  }
+
+  /// Scroll target for card [i] — grows with the catalog.
+  GlobalKey _cardKey(int i) {
+    while (_cardKeys.length <= i) {
+      _cardKeys.add(GlobalKey());
     }
+    return _cardKeys[i];
+  }
+
+  void _applyHighlight() {
+    if (widget.highlightPackage == null || services.isEmpty) return;
+    final target = widget.highlightPackage!.toLowerCase();
+    final match = services.indexWhere(
+        (s) => (s['title'] as String).toLowerCase() == target);
+    if (match == -1) return;
+    setState(() => selectedIndex = match);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _cardKey(selectedIndex).currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeInOut,
+          alignment: 0.1,
+        );
+      }
+    });
   }
 
   void _onThemeChanged() {
@@ -150,54 +114,21 @@ class _BookServiceScreenState
     super.dispose();
   }
 
-  Future<void> _fetchServiceData() async {
-    try {
-      final rows = await CatalogService.fetchByCategory('Book Service');
-      if (!mounted) return;
-
-      final byKey = {for (final row in rows) row['key'] as String: row};
-
-      const keyOrder = [
-        'book_quick_service',
-        'book_full_service',
-        'book_ac_service',
-        'book_engine_diagnostics',
-      ];
-
-      setState(() {
-        for (var i = 0; i < keyOrder.length && i < services.length; i++) {
-          final row = byKey[keyOrder[i]];
-          if (row != null) {
-            // Falls back to the existing hardcoded value on a NULL DB
-            // field instead of storing null into fields rendered with a
-            // non-nullable `as String` cast further down this screen.
-            services[i]['price'] = row['price'] ?? services[i]['price'];
-            services[i]['time'] = row['duration'] ?? services[i]['time'];
-            services[i]['details'] = row['details'] ?? services[i]['details'];
-            if (row['services'] != null) {
-              services[i]['features'] = List<String>.from(row['services']);
-            }
-          }
-        }
-      });
-    } catch (e) {
-      // Keep the hardcoded fallback values above if the fetch fails.
-    }
-  }
 
   // ── Proceed to payment — the doorstep pickup/drop add-on is now asked
   // on PaymentScreen itself, not here.
   void _proceedToPayment() {
-    final selectedService = services[selectedIndex];
+    if (services.isEmpty) return;
+    final selectedService = services[(selectedIndex < 0 ? 0 : (selectedIndex >= services.length ? services.length - 1 : selectedIndex))];
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: selectedService['title'] as String,
-          price: selectedService['price'] as String,
           duration: selectedService['time'] as String,
           vehicleId: widget.vehicle['id'].toString(),
+          serviceKeys: [selectedService['key'] as String],
         ),
       ),
     );
@@ -205,6 +136,9 @@ class _BookServiceScreenState
 
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+    if (services.isEmpty) return const CatalogEmpty();
+
 
     return Scaffold(
       backgroundColor: AppColors.ink,
@@ -356,7 +290,7 @@ class _BookServiceScreenState
                             final isSelected = index == selectedIndex;
 
                             return Padding(
-                              key: _cardKeys[index],
+                              key: _cardKey(index),
                               padding: EdgeInsets.only(
                                 bottom: index == services.length - 1 ? 0 : 16,
                               ),
@@ -613,5 +547,6 @@ class _BookServiceScreenState
         ),
       ),
     );
+    });
   }
 }

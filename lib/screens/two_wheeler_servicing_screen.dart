@@ -3,43 +3,58 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
+import '../models/catalog_item.dart';
 
-/// Static, hardcoded package data — deliberately NOT fetched from Supabase,
+/// Engine-capacity tiers, the shared checklist and the oil-change add-on all
+/// come from the Supabase `services` table (screen 'bike_servicing'),
 /// mirroring ServicingPackageScreen's own car equivalent. Unlike that
 /// screen's tiers (which each unlock different features), every engine
 /// capacity here gets the exact same checklist — only the price changes.
 class _EngineTier {
+  final String key;
   final String label;
   final int price;
 
-  const _EngineTier({required this.label, required this.price});
+  const _EngineTier({required this.key, required this.label, required this.price});
 }
 
-const _tiers = [
-  _EngineTier(label: 'Up to 125 CC', price: 799),
-  _EngineTier(label: '126–200 CC', price: 999),
-  _EngineTier(label: '201–350 CC', price: 1499),
-  _EngineTier(label: '351–500 CC', price: 2999),
-  _EngineTier(label: '501 CC & Above', price: 3999),
-];
+/// Engine-capacity tiers, live from the services table.
+List<_EngineTier>? _tiersCache;
+int _tiersRevision = -1;
+List<_EngineTier> get _tiers {
+  if (_tiersCache == null || _tiersRevision != CatalogService.revision.value) {
+    final items = CatalogService.forScreen('bike_servicing').where((i) => !i.isAddon).toList();
+    _tiersCache = [
+      for (var i = 0; i < items.length; i++)
+        _EngineTier(
+          key: items[i].key,
+          label: items[i].detail('engine_label', items[i].name),
+          price: items[i].price ?? 0,
+        ),
+    ];
+    _tiersRevision = CatalogService.revision.value;
+  }
+  return _tiersCache!;
+}
 
-const _checklist = [
-  'Complete vehicle general inspection',
-  'Air filter inspection',
-  'Brake inspection',
-  'Tyre pressure and condition check',
-  'Battery and electrical check',
-  'Chain cleaning, lubrication and adjustment (chain-drive bikes)',
-  'Clutch and throttle check',
-  'Suspension and steering inspection',
-  'Visible nuts, bolts and cable check',
-  'Check for visible leaks and unusual noises',
-  'Basic vehicle cleaning',
-  'Final inspection after servicing',
-];
+/// The shared checklist — every tier carries the same features list.
+List<String> get _checklist {
+  if (_tiers.isEmpty) return const [];
+  return CatalogService.byKey(_tiers.first.key)?.features ?? const [];
+}
 
-const int _addOnPrice = 400;
-const _addOnItems = ['Engine oil change', 'Air filter change', 'Oil filter change'];
+/// The optional oil-change add-on (is_addon row on this screen), if active.
+CatalogItem? get _addOn {
+  for (final item in CatalogService.forScreen('bike_servicing')) {
+    if (item.isAddon) return item;
+  }
+  return null;
+}
+
+int get _addOnPrice => _addOn?.price ?? 0;
+List<String> get _addOnItems => _addOn?.features ?? const [];
 
 /// Formatting helper — every price in this screen is well under a lakh, so
 /// a single thousands-comma is all Indian grouping actually needs here.
@@ -64,6 +79,9 @@ class TwoWheelerServicingScreen extends StatefulWidget {
 class _TwoWheelerServicingScreenState
     extends State<TwoWheelerServicingScreen> {
   int _selectedTier = 0;
+
+  /// [_selectedTier], kept in range if tiers are switched off remotely.
+  int get _sel => _tiers.isEmpty ? 0 : (_selectedTier < 0 ? 0 : (_selectedTier >= _tiers.length ? _tiers.length - 1 : _selectedTier));
   // Open by default on the pre-selected tier — the checklist is the whole
   // point of this screen, so nobody should have to discover the tap first.
   bool _expanded = true;
@@ -123,25 +141,29 @@ class _TwoWheelerServicingScreenState
   /// total the user picked there. Backing out of the sheet (drag-to-dismiss)
   /// cancels the booking entirely rather than assuming either answer.
   Future<void> _bookNow() async {
-    final tier = _tiers[_selectedTier];
-    final addOn = await showModalBottomSheet<bool>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => _AddOnSheet(tierPrice: tier.price),
-    );
+    final tier = _tiers[_sel];
+    final addOnItem = _addOn;
+    // No active add-on in the catalog → book the tier straight away.
+    final addOn = addOnItem == null
+        ? false
+        : await showModalBottomSheet<bool>(
+            context: context,
+            backgroundColor: Colors.transparent,
+            isScrollControlled: true,
+            builder: (_) => _AddOnSheet(tierPrice: tier.price),
+          );
     if (addOn == null || !mounted) return;
 
-    final total = tier.price + (addOn ? _addOnPrice : 0);
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title:
-              'General Bike Service (${tier.label})${addOn ? ' + Oil Change Add-on' : ''}',
-          price: _rupees(total),
-          duration: '1-2 hrs',
+              '${CatalogService.byKey(tier.key)?.bookingName ?? 'General Bike Service (${tier.label})'}${addOn ? (addOnItem?.detail('booking_suffix') ?? '') : ''}',
+          duration: CatalogService.byKey(tier.key)?.duration ?? '1-2 hrs',
           vehicleId: widget.vehicleId,
+          // The server prices the tier (+ add-on) itself.
+          serviceKeys: [tier.key, if (addOn && addOnItem != null) addOnItem.key],
         ),
       ),
     );
@@ -149,6 +171,9 @@ class _TwoWheelerServicingScreenState
 
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+    if (_tiers.isEmpty) return const CatalogEmpty();
+
     return Scaffold(
       backgroundColor: AppColors.ink,
       body: SafeArea(
@@ -176,7 +201,7 @@ class _TwoWheelerServicingScreenState
               const SizedBox(height: 16),
               ..._tiers.asMap().entries.map((e) => _buildTierCard(e.key, e.value)),
               const SizedBox(height: 8),
-              _buildAddOnBanner(),
+              if (_addOn != null) _buildAddOnBanner(),
               const SizedBox(height: 28),
               _buildCompareSection(),
               const SizedBox(height: 28),
@@ -193,6 +218,7 @@ class _TwoWheelerServicingScreenState
         ),
       ),
     );
+    });
   }
 
   // ── HEADER ──
@@ -566,6 +592,7 @@ class _TwoWheelerServicingScreenState
                         ),
                     ],
                   ),
+                if (_addOn != null)
                 TableRow(
                   children: [
                     Padding(
@@ -649,7 +676,7 @@ class _TwoWheelerServicingScreenState
 
   // ── STICKY BOOK NOW BAR ──
   Widget _buildStickyBar() {
-    final tier = _tiers[_selectedTier];
+    final tier = _tiers[_sel];
     return GestureDetector(
       onTap: _bookNow,
       child: Container(
@@ -797,9 +824,9 @@ class _AddOnSheet extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Text(
+                  Text(
                     '+₹$_addOnPrice',
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Color(0xFFD4A017),
                       fontSize: 17,
                       fontWeight: FontWeight.w900,

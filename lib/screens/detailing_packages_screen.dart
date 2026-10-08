@@ -4,6 +4,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/error_display.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
 
 class DetailingPackagesScreen extends StatefulWidget {
   /// When set, opens the matching category tab (PPF / Ceramic / Graphene /
@@ -79,6 +81,8 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
 
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+
     return Scaffold(
       backgroundColor: AppColors.ink,
       body: Stack(
@@ -135,6 +139,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
         ],
       ),
     );
+    });
   }
 
   // ── STICKY BOTTOM BAR ──
@@ -590,26 +595,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
 
   // ── PPF CONTENT ──
   Widget _buildPPFContent() {
-    final packages = [
-      {
-        'brand': 'PPF Premium',
-        'price': '₹55,000',
-        'coverage': '400 sq ft base',
-        'warranty': '3-5 Years',
-        'turnaround': '3 Days (New)',
-        'pricePerSqFt': '₹400/sq ft',
-        'isPremium': false,
-      },
-      {
-        'brand': 'PPF - Full Coverage',
-        'price': '₹75,000 - ₹1,00,000',
-        'coverage': 'Full Coverage',
-        'warranty': '8 Years',
-        'turnaround': '5 Days (Used)',
-        'pricePerSqFt': 'Premium Pricing',
-        'isPremium': true,
-      },
-    ];
+    final packages = _detailPackages('ppf');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -649,17 +635,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
 
   // ── CERAMIC CONTENT ──
   Widget _buildCeramicContent() {
-    final packages = [
-      {
-        'brand': 'Ceramic Coating',
-        'price': '₹16,000',
-        'coverage': 'Full Vehicle',
-        'warranty': '1 Year',
-        'turnaround': '2 Days',
-        'feature': 'Glossy Finish',
-        'isPremium': false,
-      },
-    ];
+    final packages = _detailPackages('ceramic');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -699,17 +675,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
 
   // ── GRAPHENE CONTENT ──
   Widget _buildGrapheneContent() {
-    final packages = [
-      {
-        'brand': 'Graphene Coating',
-        'price': '₹22,000',
-        'coverage': 'Full Vehicle',
-        'warranty': '3 Years',
-        'turnaround': '2 Days',
-        'feature': 'Advanced Protection',
-        'isPremium': true,
-      },
-    ];
+    final packages = _detailPackages('graphene');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -749,26 +715,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
 
   // ── SUN FILM CONTENT ──
   Widget _buildSunFilmContent() {
-    final packages = [
-      {
-        'brand': 'Sun Film - Standard',
-        'price': '₹20,000 - ₹45,000',
-        'coverage': 'Variable',
-        'warranty': '5 Years',
-        'turnaround': '2 Days',
-        'feature': 'Heat Rejection',
-        'isPremium': false,
-      },
-      {
-        'brand': 'Sun Film - Premium',
-        'price': '₹25,000',
-        'coverage': 'Full Body',
-        'warranty': '5-10 Years',
-        'turnaround': '2 Days',
-        'feature': 'Maximum Protection',
-        'isPremium': true,
-      },
-    ];
+    final packages = _detailPackages('sun_film');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1015,13 +962,33 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     );
   }
 
+  /// Detailing studio packages for one tab ([group] = details.group in the
+  /// Supabase `services` table, screen 'detailing'). These are enquiry-only
+  /// (bookable = false): prices are shown here, the studio quotes the rest.
+  List<Map<String, dynamic>> _detailPackages(String group) => [
+        for (final item in CatalogService.forScreen('detailing'))
+          if (item.detail('group') == group)
+            <String, dynamic>{
+              'key': item.key,
+              'brand': item.detail('brand', item.name),
+              'price': item.priceText,
+              'coverage': item.detail('coverage'),
+              'warranty': item.detail('warranty'),
+              'turnaround': item.detail('turnaround'),
+              if (item.details['price_per_sq_ft'] != null) 'pricePerSqFt': item.detail('price_per_sq_ft'),
+              if (item.details['feature'] != null) 'feature': item.detail('feature'),
+              'isPremium': item.detailBool('premium'),
+            },
+      ];
+
   // ── COVERAGE OPTIONS (Sun Film) ──
   Widget _buildCoverageOptions() {
+    // Sun film coverage prices — details.coverage_options on the sun film
+    // service in the services table.
     final coverageOptions = [
-      {'area': 'Front', 'price': '₹8,000'},
-      {'area': 'Sides', 'price': '₹8,000'},
-      {'area': 'Front + Sides', 'price': '₹15,000'},
-      {'area': 'Full Coverage', 'price': '₹20,000+'},
+      for (final item in CatalogService.forScreen('detailing'))
+        for (final o in item.detailMaps('coverage_options'))
+          {'area': '${o['area'] ?? ''}', 'price': '${o['price'] ?? ''}'},
     ];
 
     return Container(

@@ -7,9 +7,9 @@ import 'vehicle_bookings_screen.dart';
 import 'package:reperi_garage/services/address_service.dart';
 import 'package:reperi_garage/screens/address_management_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '/services/admin_assignment_service.dart';
-import '/services/delivery_partner_assignment_service.dart';
-import '/services/washer_assignment_service.dart';
+import '../services/booking_api.dart';
+import '../services/payment_service.dart';
+import '../models/catalog_item.dart' show formatRupees;
 import '/services/service_area.dart';
 import '../widgets/error_display.dart';
 
@@ -32,131 +32,53 @@ class _PayColors {
 }
 
 class PaymentScreen extends StatefulWidget {
+  /// Shown at the top of checkout ("SELECTED PACKAGE") and on success.
   final String title;
-  final String price;
   final String duration;
   final String vehicleId;
 
-  /// Optional — when provided, shows an itemized bill breakdown instead of
-  /// a single price row. Used by the fleet "Pay Now" flow.
-  final List<Map<String, dynamic>>? billItems;
+  /// What's being booked: service keys from the Supabase `services` table —
+  /// one package plus any add-ons. The price and who the booking goes to
+  /// are decided by the server (booking-api), never by the app.
+  final List<String> serviceKeys;
 
-  /// Optional — when provided, called instead of inserting into `bookings`
-  /// after a verified payment. Used by the fleet flow to update
-  /// `fleet_pickup_requests` instead. Receives (orderId, paymentId).
-  final Future<void> Function(String orderId, String paymentId)? onSuccess;
+  /// Extra details some bookings need, passed straight to the server:
+  /// `label` (Roadside issue), `inspection` (condition + slot) or `claim`
+  /// (uploaded document paths + description).
+  final Map<String, dynamic> bookingOptions;
 
-  /// When true, hides the "Cash on Pickup" option — used for fleet payments,
-  /// which are always online-only.
-  final bool onlineOnly;
-
-  /// Whether to offer the "Doorstep Pickup & Drop (+₹100)" add-on. Left on
-  /// by default for the many package-booking screens that navigate here
-  /// directly; subscriptions, the pollution certificate, the vehicle
-  /// health check, and Claim Assistance turn it off explicitly since those
-  /// aren't an optional-pickup service. [billItems] only controls whether
-  /// the bill is shown as a single price or an itemized breakdown — it has
-  /// no bearing on pickup/drop, so a screen using an itemized bill (like
-  /// Paint Care's add-ons checkout) still needs to set this explicitly if
-  /// it wants pickup/drop hidden, the same as any other screen.
-  final bool showPickupDropOption;
-
-  /// When [showPickupDropOption] is off and this is true, the default
-  /// `bookings` insert still writes `pickupdrop: 'yes'` instead of
-  /// omitting the column — for services that are inherently a pickup with
-  /// no separate add-on fee at all (the card is never shown), e.g.
-  /// pollution/inspection. Contrast with [lockPickupDropOn] below, which
-  /// still shows the card and charges the ₹100 fee, just without a way to
-  /// turn it off.
-  final bool forcePickupDropYes;
-
-  /// Shows the same "Doorstep Pickup & Drop (+₹100)" card as the normal
-  /// optional flow, already switched on and billed, but with no Switch to
-  /// turn it off — for services where doorstep pickup/drop isn't optional
-  /// but is still billed as its own line, e.g. Roadside Assistance (you
-  /// can't ask someone stranded with a dead battery to drive the vehicle
-  /// in themselves). Leave [showPickupDropOption] at its default (true)
-  /// when using this — it still drives the fee/insert logic, this only
-  /// removes the ability to deselect it.
-  final bool lockPickupDropOn;
+  /// Fleet "Pay Now": pays an existing fleet_pickup_requests row, priced by
+  /// the garage on that request. When set, [serviceKeys] is ignored.
+  final String? fleetRequestId;
 
   /// Whether this booking needs a real vehicle behind it. True for every
-  /// ordinary service booking (the default); set to false for the couple
-  /// of flows that legitimately have no single vehicle to book against —
-  /// Roadside Assistance and the fleet "Pay Now" flow — which pass an
-  /// empty [vehicleId] on purpose. When true and [vehicleId] is empty,
-  /// this screen shows an "add a vehicle first" prompt instead of the
-  /// payment form, since every package-browsing screen upstream of this
-  /// one is allowed to be reached without a vehicle (so people can look
-  /// around before adding one) and this is the one place that actually
-  /// needs it.
+  /// ordinary service booking (the default); false for Roadside Assistance
+  /// and fleet payments, which pass an empty [vehicleId] on purpose. When
+  /// true and [vehicleId] is empty, this screen shows an "add a vehicle
+  /// first" prompt, since every package screen upstream can be browsed
+  /// without one.
   final bool vehicleRequired;
 
   /// Called when this screen fills in a vehicle it wasn't given — either
   /// the customer's existing active vehicle, or one they just added from
-  /// the "ADD A VEHICLE" prompt. Screens that save the booking themselves
-  /// (see [onSuccess]) use it to know which vehicle the booking is for.
+  /// the "ADD A VEHICLE" prompt.
   final ValueChanged<String>? onVehicleResolved;
 
-  /// When set, this booking always goes to this exact admin username
-  /// (e.g. 'emergency_service' for Roadside Assistance) instead of the
-  /// usual vehicle-type rotation — see AdminAssignmentService.getNextAdminId.
-  final String? forcedAdminUsername;
-
-  /// Whether a delivery partner should be assigned at all when this is a
-  /// pickup/drop booking. True for every ordinary service (the default) —
-  /// a real delivery partner drives to the customer, takes the vehicle to
-  /// the garage, and brings it back. Roadside Assistance sets this to
-  /// false: there's no vehicle being taken anywhere — the emergency_service
-  /// admin (a mobile technician) comes to the customer and fixes it on the
-  /// spot, so there's no separate "delivery guy" leg for anyone to handle,
-  /// even though the doorstep pickup/drop fee still applies (see
-  /// [lockPickupDropOn]).
-  final bool assignsDeliveryPartner;
-
-  /// Whether a garage admin should be assigned at all. True for every
-  /// ordinary service (the default) — there's a real garage doing the
-  /// work. The ₹299/₹599 one-time wash packages set this to false: a
-  /// doorstep wash is handled entirely by the washer (see [assignsWasher]),
-  /// with no garage/admin involved at all, in real use or during Apple
-  /// review — unlike [forcedAdminUsername], which still assigns *some*
-  /// admin, this assigns none.
-  final bool assignsAdmin;
-
   /// Which section of VehicleBookingsScreen this booking lands in, so the
-  /// success flow below can scroll straight to it — 'bookings' (the
-  /// default `bookings` table insert path, used by every ordinary package
-  /// screen), 'pollution', 'inspection', 'claim', or 'subscription'.
-  /// Screens with a custom [onSuccess] writing to a different table pass
-  /// the matching value explicitly.
+  /// success flow can scroll straight to it — 'bookings', 'pollution',
+  /// 'inspection', 'claim' or 'subscription'.
   final String bookingSection;
-
-  /// True only for the one-time wash packages (washing_package_screen.dart's
-  /// ₹299/₹599 tiers) — when set, the default `bookings` insert also
-  /// assigns a washer via WasherAssignmentService (alternating between
-  /// washer 1 and 2 for real customers, or the fixed Apple review washer
-  /// for the review account), alongside the usual admin/delivery-partner
-  /// assignment. Every other package leaves washer_id unset, same as today.
-  final bool assignsWasher;
 
   const PaymentScreen({
     super.key,
     required this.title,
-    required this.price,
     required this.duration,
     required this.vehicleId,
-    this.billItems,
-    this.onSuccess,
-    this.onlineOnly = false,
-    this.showPickupDropOption = true,
-    this.forcePickupDropYes = false,
-    this.lockPickupDropOn = false,
-    this.assignsDeliveryPartner = true,
-    this.assignsAdmin = true,
-    this.assignsWasher = false,
+    this.serviceKeys = const [],
+    this.bookingOptions = const {},
+    this.fleetRequestId,
     this.vehicleRequired = true,
     this.onVehicleResolved,
-    this.forcedAdminUsername,
     this.bookingSection = 'bookings',
   });
 
@@ -174,39 +96,60 @@ class _PaymentScreenState extends State<PaymentScreen>
   bool orderPlaced = false;
   bool isProcessing = false;
 
+  bool get _isFleet => widget.fleetRequestId != null;
+
+  // ── Server price ──
+  // Everything shown in the bill comes from booking-api's quote, which
+  // prices the cart from the `services` table — the same calculation the
+  // server charges, so what the customer sees is exactly what they pay.
+  BookingQuote? _quote;
+  bool _quoteLoading = true;
+  String? _quoteError;
+
   // ── Doorstep pickup & drop add-on ──
   bool _addPickupDrop = false;
-  static const int _pickupDropFee = 100;
 
-  bool get _showPickupDrop => widget.showPickupDropOption;
-
-  /// Whether this booking is actually being picked up/dropped off — used to
-  /// decide whether a delivery partner should be assigned at all. A "no"
-  /// (or no pickup/drop concept for this booking) means there's nothing for
-  /// a delivery partner to do.
-  bool get _pickupDropYes {
-    if (_showPickupDrop) return _addPickupDrop;
-    return widget.forcePickupDropYes;
-  }
-
-  /// Null when [PaymentScreen.price] isn't a plain "₹NNN" amount (e.g. a
-  /// "Get Quote"/"Custom Quote" placeholder) — the pickup/drop fee and the
-  /// computed total only make sense when there's a real number to add to.
-  int? get _baseAmountRupees {
-    final digits = widget.price.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.isEmpty) return null;
-    return int.tryParse(digits);
-  }
+  bool get _showPickupDrop => _quote?.showsPickupCard ?? false;
+  bool get _pickupLocked => _quote?.pickupLocked ?? false;
+  int get _pickupDropFee => _quote?.pickupFee ?? 0;
 
   int? get _totalAmountRupees {
-    final base = _baseAmountRupees;
-    if (base == null) return null;
-    return base + (_addPickupDrop ? _pickupDropFee : 0);
+    final q = _quote;
+    if (q == null) return null;
+    final fee = (q.pickupMode == 'locked' || (q.pickupMode == 'optional' && _addPickupDrop)) ? q.pickupFee : 0;
+    return q.subtotal + fee;
   }
 
   String get _totalPriceDisplay {
     final total = _totalAmountRupees;
-    return total != null ? '₹$total' : widget.price;
+    return total != null ? formatRupees(total) : '—';
+  }
+
+  Future<void> _loadQuote() async {
+    if (!_quoteLoading || _quoteError != null) {
+      setState(() {
+        _quoteLoading = true;
+        _quoteError = null;
+      });
+    }
+    try {
+      final q = await BookingApi.quote(
+        items: widget.serviceKeys,
+        fleetRequestId: widget.fleetRequestId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _quote = q;
+        _quoteLoading = false;
+        if (q.pickupLocked) _addPickupDrop = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _quoteLoading = false;
+        _quoteError = e is BookingApiException ? e.message : 'Couldn\'t load the price. Check your connection and try again.';
+      });
+    }
   }
 
   void _setPickupDrop(bool value) {
@@ -223,9 +166,9 @@ class _PaymentScreenState extends State<PaymentScreen>
           'Doorstep Pickup & Drop',
           style: TextStyle(color: _PayColors.navy, fontWeight: FontWeight.bold),
         ),
-        content: const Text(
-          '₹100 will be added to your bill for doorstep pickup and drop-off. Continue?',
-          style: TextStyle(color: _PayColors.muted),
+        content: Text(
+          '${formatRupees(_pickupDropFee)} will be added to your bill for doorstep pickup and drop-off. Continue?',
+          style: const TextStyle(color: _PayColors.muted),
         ),
         actions: [
           TextButton(
@@ -237,9 +180,9 @@ class _PaymentScreenState extends State<PaymentScreen>
               Navigator.pop(context);
               setState(() => _addPickupDrop = true);
             },
-            child: const Text(
-              'YES, ADD ₹100',
-              style: TextStyle(color: _PayColors.blue, fontWeight: FontWeight.bold),
+            child: Text(
+              'YES, ADD ${formatRupees(_pickupDropFee)}',
+              style: const TextStyle(color: _PayColors.blue, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -262,10 +205,7 @@ class _PaymentScreenState extends State<PaymentScreen>
   void initState() {
     super.initState();
 
-    // lockPickupDropOn services (Roadside Assistance) show the pickup/drop
-    // card already switched on, with no way to turn it back off — see
-    // _pickupDropCard's Switch below.
-    if (widget.lockPickupDropOn) _addPickupDrop = true;
+    _loadQuote();
 
     _controller = AnimationController(
       vsync: this,
@@ -406,7 +346,7 @@ class _PaymentScreenState extends State<PaymentScreen>
       // Fleet payments (billItems set) aren't gated by the consumer
       // doorstep-service area — only check for the regular booking flow,
       // and only once we actually have coordinates to check.
-      if (widget.billItems == null &&
+      if (!_isFleet &&
           selectedLatitude != null &&
           selectedLongitude != null &&
           !ServiceArea.isWithinServiceArea(selectedLatitude!, selectedLongitude!)) {
@@ -616,378 +556,230 @@ class _PaymentScreenState extends State<PaymentScreen>
     await _goToBookingDestination();
   }
 
-  /// PATH 1: Pay Online via Razorpay
+  /// Turns a booking-api error into the right next step for the customer.
+  void _handleCreateError(Object e) {
+    if (!mounted) return;
+    setState(() => isProcessing = false);
+    if (e is BookingApiException) {
+      switch (e.code) {
+        case 'address_required':
+          _showAddressErrorPopup();
+          return;
+        case 'out_of_service_area':
+          _showOutOfServiceAreaDialog();
+          return;
+        case 'vehicle_required':
+          _showVehicleRequiredDialog();
+          return;
+        case 'service_unavailable':
+        case 'not_payable':
+          // Prices/packages changed since this screen opened — refresh.
+          _loadQuote();
+          break;
+      }
+      ErrorDisplay.showPremiumError(context, error: e, customMessage: e.message);
+      return;
+    }
+    ErrorDisplay.showPremiumError(
+      context,
+      error: e,
+      customMessage: 'Could not place your booking. Please try again.',
+    );
+  }
+
+  /// PATH 1: Pay Online via Razorpay. The server creates the order for the
+  /// amount IT calculates, then books the service after verifying payment.
   Future<void> placeOnlineOrder() async {
-    // ── VALIDATION: Check if address is valid ──
-    if (!_isAddressValid()) {
+    if (!_isFleet && !_isAddressValid()) {
       _showAddressErrorPopup();
       return;
     }
+    if (_quote == null) {
+      await _loadQuote();
+      if (!mounted || _quote == null) return;
+    }
 
-    final supabase = Supabase.instance.client;
-    final user = supabase.auth.currentUser;
+    setState(() => isProcessing = true);
 
-    // Fleet payments don't use Supabase Auth (fleet operators log in via
-    // a separate table-based system), so only require a signed-in consumer
-    // user for the default (non-fleet) booking flow.
-    if (widget.onSuccess == null && user == null) return;
-
-    setState(() {
-      isProcessing = true;
-    });
-
+    final CreateResult created;
     try {
-      // Package amount plus the doorstep pickup/drop fee if the customer
-      // added it — falls back to the raw price string's digits when
-      // there's no add-on to fold in.
-      final amountInRupees = _totalAmountRupees ?? 0;
-      final amountInPaise = amountInRupees * 100;
-
-      if (amountInPaise <= 0) {
-        throw Exception('Invalid price: ${widget.price}');
-      }
-
-      // STEP 1: Create Razorpay order via Edge Function
-      final orderResponse = await supabase.functions.invoke(
-        'create-razorpay-order',
-        body: {
-          'amount': amountInPaise,
-          'currency': 'INR',
-          'receipt': 'booking_${DateTime.now().millisecondsSinceEpoch}',
-        },
+      created = await BookingApi.create(
+        items: widget.serviceKeys,
+        cash: false,
+        pickupDrop: _addPickupDrop,
+        vehicleId: _vehicleId,
+        options: widget.bookingOptions,
+        fleetRequestId: widget.fleetRequestId,
       );
+    } catch (e) {
+      _handleCreateError(e);
+      return;
+    }
 
-      if (orderResponse.status != 200) {
-        throw Exception('Failed to create order: ${orderResponse.data}');
-      }
+    final orderId = created.orderId;
+    final keyId = created.keyId;
+    final amountPaise = created.amountPaise;
+    if (orderId == null || keyId == null || amountPaise == null) {
+      _handleCreateError(const BookingApiException('unexpected', 'Couldn\'t start the payment. Please try again.'));
+      return;
+    }
 
-      final orderData = orderResponse.data as Map<String, dynamic>;
-      final orderId = orderData['orderId'] as String;
-      final keyId = orderData['keyId'] as String;
-
-      // STEP 2: Open Razorpay checkout
-      final paymentService = getPaymentService();
-      final result = await paymentService.openCheckout(
+    final user = Supabase.instance.client.auth.currentUser;
+    final PaymentResult result;
+    try {
+      result = await getPaymentService().openCheckout(
         orderId: orderId,
         keyId: keyId,
-        amountInPaise: amountInPaise,
+        amountInPaise: amountPaise,
         name: user?.userMetadata?['full_name'] ?? widget.title,
         email: user?.email ?? '',
         contact: user?.phone ?? '',
       );
+    } catch (e) {
+      _handleCreateError(e);
+      return;
+    }
 
-      if (!result.success) {
-        if (!mounted) return;
-        setState(() {
-          isProcessing = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result.errorMessage ?? 'Payment cancelled')),
-        );
-        return;
-      }
-
-      // STEP 3: Verify payment signature via Edge Function
-      final verifyResponse = await supabase.functions.invoke(
-        'verify-razorpay-payment',
-        body: {
-          'razorpay_order_id': result.orderId,
-          'razorpay_payment_id': result.paymentId,
-          'razorpay_signature': result.signature,
-        },
+    if (!result.success) {
+      if (!mounted) return;
+      setState(() => isProcessing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.errorMessage ?? 'Payment cancelled')),
       );
+      return;
+    }
 
-      final verifyData = verifyResponse.data as Map<String, dynamic>;
-      final isVerified = verifyData['verified'] == true;
+    // Razorpay's SDK has documented cases where the ids come back null on
+    // a successful charge. The server's webhook books it anyway, so wait
+    // for that instead of telling an already-charged customer it failed.
+    if (result.orderId == null || result.paymentId == null || result.signature == null) {
+      await _finishViaStatus(created.intentId, result.paymentId ?? orderId);
+      return;
+    }
 
-      if (!isVerified) {
-        throw Exception('Payment verification failed');
-      }
+    await _confirmPayment(
+      orderId: result.orderId!,
+      paymentId: result.paymentId!,
+      signature: result.signature!,
+      intentId: created.intentId,
+    );
+  }
 
-      // STEP 4: Only now record the payment, since it's confirmed real.
-      // Isolated in its own try/catch (rather than sharing the one above)
-      // because Razorpay has already charged the customer by this point —
-      // a failure saving the record (dropped connection, DB hiccup) is a
-      // different situation than a failed payment. It must never be
-      // treated the same way, since tapping "try again" on the generic
-      // failure message would run a brand-new Razorpay checkout and charge
-      // them a second time. Instead this says plainly that the charge went
-      // through, and its retry re-attempts only this save with the same
-      // orderId/paymentId — never a new charge.
-      // Razorpay's SDK has documented cases where orderId/paymentId come
-      // back null on the success callback even though the charge went
-      // through — force-unwrapping here used to throw straight into the
-      // generic "Could not place your booking" catch below, telling an
-      // already-charged customer their payment failed. Show the honest
-      // "we couldn't save it" message instead, with whatever reference we
-      // do have.
-      if (result.orderId == null || result.paymentId == null) {
-        if (!mounted) return;
-        setState(() {
-          isProcessing = false;
-        });
-        ErrorDisplay.showPremiumError(
-          context,
-          error: Exception('Missing payment reference after a verified payment'),
-          customMessage:
-              'Your payment went through, but we couldn\'t save your booking (ref: ${result.paymentId ?? result.orderId ?? "unavailable"}). Please contact support with that reference.',
-        );
+  /// Verifies the payment and creates the booking on the server. Retrying
+  /// this never charges the customer again.
+  Future<void> _confirmPayment({
+    required String orderId,
+    required String paymentId,
+    required String signature,
+    required String intentId,
+  }) async {
+    if (mounted) setState(() => isProcessing = true);
+    try {
+      final booking = await BookingApi.confirm(orderId: orderId, paymentId: paymentId, signature: signature);
+      if (booking.booked) {
+        await _showSuccessAndGoHome();
         return;
       }
-      final orderIdForRecord = result.orderId!;
-      final paymentIdForRecord = result.paymentId!;
-
-      Future<void> recordBooking() async {
-        try {
-          // Fleet payments use the custom callback; consumer bookings use
-          // the default insert into `bookings`.
-          if (widget.onSuccess != null) {
-            await widget.onSuccess!(orderIdForRecord, paymentIdForRecord);
-          } else {
-            // ── Get location and customer details ──
-            final addressService = AddressService();
-            final defaultAddr = await addressService.getDefaultAddress();
-
-            // Get customer details from profiles
-            Map<String, dynamic>? profileData;
-            try {
-              profileData = await supabase
-                  .from('profiles')
-                  .select('full_name, phone')
-                  .eq('id', user!.id)
-                  .single();
-            } catch (e) {
-              // Profile might not exist, continue with null values
-            }
-
-            // Get admin ID — forcedAdminUsername (e.g. Roadside
-            // Assistance -> 'emergency_service') always wins; otherwise scoped
-            // to this vehicle's type (two-wheeler bookings only rotate among
-            // two-wheeler admins, four-wheeler among four-wheeler admins).
-            // assignsAdmin: false (the wash packages) skips this entirely —
-            // no garage is involved, so no admin should ever be assigned,
-            // in real use or during Apple review.
-            final assignedAdminId = widget.assignsAdmin
-                ? await AdminAssignmentService.getNextAdminId(
-                    vehicleId: _vehicleId,
-                    forcedAdminUsername: widget.forcedAdminUsername,
-                  )
-                : null;
-            // Only assign a delivery partner when there's actually a
-            // pickup/drop for one to handle, and this service actually uses
-            // one (Roadside Assistance sets assignsDeliveryPartner: false —
-            // the forced emergency_service admin handles it on-site, no
-            // separate delivery leg for anyone else to drive).
-            final deliveryPartnerId = (_pickupDropYes && widget.assignsDeliveryPartner)
-                ? await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('bookings')
-                : null;
-            final washerId = widget.assignsWasher
-                ? await WasherAssignmentService.getNextWasherId(
-                    'bookings',
-                    customerEmail: user!.email,
-                  )
-                : null;
-
-            await supabase.from('bookings').insert({
-              'user_id': user!.id,
-              // Roadside Assistance passes an empty vehicleId on purpose
-              // (vehicleRequired: false — this booking isn't tied to a
-              // specific vehicle). Writing '' into a uuid column throws a
-              // Postgres "invalid input syntax for type uuid" error —
-              // exactly what was turning a successful payment into a
-              // "couldn't save your booking" failure. Omit the column
-              // entirely instead, leaving it NULL.
-              if (_vehicleId.isNotEmpty) 'vehicle_id': _vehicleId,
-              'package_name': widget.title,
-              'package_price': widget.price,
-              if (_showPickupDrop)
-                'pickupdrop': _addPickupDrop ? 'yes' : 'no'
-              else if (widget.forcePickupDropYes)
-                'pickupdrop': 'yes',
-              if (deliveryPartnerId != null) 'delivery_partner_id': deliveryPartnerId,
-              if (washerId != null) 'washer_id': washerId,
-              'razorpay_order_id': orderIdForRecord,
-              'razorpay_payment_id': paymentIdForRecord,
-              'payment_status': 'paid',
-
-              // ── Location Data ──
-              'pickup_address': defaultAddr?['address'] ?? 'Not specified',
-              'pickup_latitude': defaultAddr?['latitude'],
-              'pickup_longitude': defaultAddr?['longitude'],
-              'pickup_address_name': defaultAddr?['name'],
-              'dropoff_address': defaultAddr?['address'] ?? 'Not specified',
-              'dropoff_latitude': defaultAddr?['latitude'],
-              'dropoff_longitude': defaultAddr?['longitude'],
-              'dropoff_address_name': defaultAddr?['name'],
-
-              // ── Customer Details ──
-              'customer_name': profileData?['full_name'] ?? 'Unknown',
-              'customer_phone': profileData?['phone'] ??
-              // Emergency bookings must always carry a reachable number
-              // for the on-site technician — fall back to the login phone.
-              (widget.forcedAdminUsername != null
-                  ? (user?.phone?.isNotEmpty == true
-                      ? user!.phone
-                      : user?.userMetadata?['phone'] as String?)
-                  : null),
-
-              // Admin Assignment (Load-Balanced)
-              'assigned_to_admin_id': assignedAdminId,
-            });
-          }
-
-          await _showSuccessAndGoHome();
-        } catch (e) {
-          if (!mounted) return;
-          setState(() {
-            isProcessing = false;
-          });
-          ErrorDisplay.showPremiumError(
-            context,
-            error: e,
-            customMessage:
-                'Your payment went through, but we couldn\'t save your booking (ref: $paymentIdForRecord). Tap retry, or contact support with that reference if it keeps failing.',
-            onRetry: recordBooking,
-          );
-        }
-      }
-
-      await recordBooking();
+      await _finishViaStatus(intentId, paymentId);
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        isProcessing = false;
-      });
-      ErrorDisplay.showPremiumError(
-        context,
-        error: e,
-        customMessage: 'Could not place your booking. Please try again.',
-      );
+      setState(() => isProcessing = false);
+      final retry = await _showPaidButNotSavedDialog(paymentId);
+      if (retry) {
+        await _confirmPayment(orderId: orderId, paymentId: paymentId, signature: signature, intentId: intentId);
+      }
     }
   }
 
-  /// PATH 2: Cash on Pickup, no online payment
+  /// Polls the server for a booking that's being finished (e.g. by the
+  /// Razorpay webhook) — and asks the server to retry a failed save.
+  Future<void> _finishViaStatus(String intentId, String paymentRef) async {
+    if (mounted) setState(() => isProcessing = true);
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        final status = await BookingApi.status(intentId);
+        if (status.booked) {
+          await _showSuccessAndGoHome();
+          return;
+        }
+      } catch (_) {
+        // keep waiting — the webhook may still be on its way
+      }
+      await Future.delayed(const Duration(seconds: 2));
+    }
+    if (!mounted) return;
+    setState(() => isProcessing = false);
+    final retry = await _showPaidButNotSavedDialog(paymentRef);
+    if (retry) await _finishViaStatus(intentId, paymentRef);
+  }
+
+  /// Can't be dismissed by tapping outside — the customer has paid, so they
+  /// must choose to retry (never a new charge) or contact support.
+  Future<bool> _showPaidButNotSavedDialog(String paymentRef) async {
+    if (!mounted) return false;
+    final retry = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: _PayColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            'Payment received',
+            style: TextStyle(color: _PayColors.navy, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Your payment went through, but we couldn\'t finish saving your booking — usually a weak connection. '
+            'Tap RETRY to try again. You will not be charged again.\n\nPayment ref: $paymentRef',
+            style: const TextStyle(color: _PayColors.muted, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('CONTACT SUPPORT', style: TextStyle(color: _PayColors.muted)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('RETRY', style: TextStyle(color: _PayColors.blue, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (retry == true) return true;
+    try {
+      await launchUrl(Uri(scheme: 'tel', path: '9353094672'));
+    } catch (_) {}
+    return false;
+  }
+
+  /// PATH 2: Cash on Pickup — the server books it straight away.
   Future<void> placeCashOnPickupOrder() async {
-    // ── VALIDATION: Check if address is valid ──
     if (!_isAddressValid()) {
       _showAddressErrorPopup();
       return;
     }
+    if (_quote == null) {
+      await _loadQuote();
+      if (!mounted || _quote == null) return;
+    }
 
-    final supabase = Supabase.instance.client;
-    final user = supabase.auth.currentUser;
-
-    if (user == null) return;
-
-    setState(() {
-      isProcessing = true;
-    });
-
+    setState(() => isProcessing = true);
     try {
-      // Fleet payments / subscriptions & compliance bookings use the
-      // custom callback, same as the online-payment path — otherwise a
-      // Cash-on-Pickup subscription booking would land in `bookings`
-      // instead of its own table.
-      if (widget.onSuccess != null) {
-        await widget.onSuccess!('COD', 'COD');
-      } else {
-        // ── Get location and customer details ──
-        final addressService = AddressService();
-        final defaultAddr = await addressService.getDefaultAddress();
-
-        // Get customer details from profiles
-        Map<String, dynamic>? profileData;
-        try {
-          profileData = await supabase
-              .from('profiles')
-              .select('full_name, phone')
-              .eq('id', user.id)
-              .single();
-        } catch (e) {
-          // Profile might not exist, continue with null values
-        }
-
-        // Get admin ID — forcedAdminUsername (e.g. Roadside
-        // Assistance -> 'emergency_service') always wins; otherwise scoped
-        // to this vehicle's type (two-wheeler bookings only rotate among
-        // two-wheeler admins, four-wheeler among four-wheeler admins).
-        // assignsAdmin: false (the wash packages) skips this entirely — no
-        // garage is involved, so no admin should ever be assigned, in real
-        // use or during Apple review.
-        final assignedAdminId = widget.assignsAdmin
-            ? await AdminAssignmentService.getNextAdminId(
-                vehicleId: _vehicleId,
-                forcedAdminUsername: widget.forcedAdminUsername,
-              )
-            : null;
-        // Only assign a delivery partner when there's actually a
-        // pickup/drop for one to handle, and this service actually uses one
-        // (Roadside Assistance sets assignsDeliveryPartner: false — the
-        // forced emergency_service admin handles it on-site, no separate
-        // delivery leg for anyone else to drive).
-        final deliveryPartnerId = (_pickupDropYes && widget.assignsDeliveryPartner)
-            ? await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('bookings')
-            : null;
-        final washerId = widget.assignsWasher
-            ? await WasherAssignmentService.getNextWasherId(
-                'bookings',
-                customerEmail: user.email,
-              )
-            : null;
-
-        await supabase.from('bookings').insert({
-          'user_id': user.id,
-          // Same reasoning as the online-payment insert above — omit
-          // rather than write '' into a uuid column for the no-vehicle
-          // flows (Roadside Assistance).
-          if (_vehicleId.isNotEmpty) 'vehicle_id': _vehicleId,
-          'package_name': widget.title,
-          'package_price': widget.price,
-          if (_showPickupDrop)
-            'pickupdrop': _addPickupDrop ? 'yes' : 'no'
-          else if (widget.forcePickupDropYes)
-            'pickupdrop': 'yes',
-          if (deliveryPartnerId != null) 'delivery_partner_id': deliveryPartnerId,
-          if (washerId != null) 'washer_id': washerId,
-          'payment_status': 'cod', // cash on delivery/pickup
-
-          // ── Location Data ──
-          'pickup_address': defaultAddr?['address'] ?? 'Not specified',
-          'pickup_latitude': defaultAddr?['latitude'],
-          'pickup_longitude': defaultAddr?['longitude'],
-          'pickup_address_name': defaultAddr?['name'],
-          'dropoff_address': defaultAddr?['address'] ?? 'Not specified',
-          'dropoff_latitude': defaultAddr?['latitude'],
-          'dropoff_longitude': defaultAddr?['longitude'],
-          'dropoff_address_name': defaultAddr?['name'],
-
-          // ── Customer Details ──
-          'customer_name': profileData?['full_name'] ?? 'Unknown',
-          'customer_phone': profileData?['phone'] ??
-              // Emergency bookings must always carry a reachable number
-              // for the on-site technician — fall back to the login phone.
-              (widget.forcedAdminUsername != null
-                  ? (user?.phone?.isNotEmpty == true
-                      ? user!.phone
-                      : user?.userMetadata?['phone'] as String?)
-                  : null),
-
-          // Admin Assignment (Load-Balanced)
-          'assigned_to_admin_id': assignedAdminId,
-        });
+      final created = await BookingApi.create(
+        items: widget.serviceKeys,
+        cash: true,
+        pickupDrop: _addPickupDrop,
+        vehicleId: _vehicleId,
+        options: widget.bookingOptions,
+      );
+      if (!created.booked) {
+        throw const BookingApiException('unexpected', 'Could not place your booking. Please try again.');
       }
-
       await _showSuccessAndGoHome();
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        isProcessing = false;
-      });
-      ErrorDisplay.showPremiumError(
-        context,
-        error: e,
-        customMessage: 'Could not place your booking. Please try again.',
-      );
+      _handleCreateError(e);
     }
   }
 
@@ -1057,7 +849,7 @@ class _PaymentScreenState extends State<PaymentScreen>
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        widget.lockPickupDropOn ? 'REQUIRED' : 'RECOMMENDED',
+                        _pickupLocked ? 'REQUIRED' : 'RECOMMENDED',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 9,
@@ -1070,10 +862,10 @@ class _PaymentScreenState extends State<PaymentScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  widget.lockPickupDropOn
-                      ? 'Included — +₹$_pickupDropFee for pickup & drop'
+                  _pickupLocked
+                      ? 'Included — +${formatRupees(_pickupDropFee)} for pickup & drop'
                       : active
-                          ? 'Added — +₹$_pickupDropFee for pickup & drop'
+                          ? 'Added — +${formatRupees(_pickupDropFee)} for pickup & drop'
                           : 'We collect your vehicle and drop it back — no need to visit the garage',
                   style: TextStyle(
                     color: active ? _PayColors.blue : _PayColors.muted,
@@ -1090,7 +882,7 @@ class _PaymentScreenState extends State<PaymentScreen>
           // disabled Switch would just look broken (greyed out, seemingly
           // unresponsive), so it's replaced with a plain lock glyph
           // instead of a Switch entirely.
-          widget.lockPickupDropOn
+          _pickupLocked
               ? Icon(Icons.lock_rounded, color: _PayColors.blue, size: 22)
               : Switch(
                   value: _addPickupDrop,
@@ -1262,7 +1054,7 @@ class _PaymentScreenState extends State<PaymentScreen>
                               /// BILL BREAKDOWN — package amount, the (always
                               /// free, for now) platform fee, and the optional
                               /// doorstep pickup/drop add-on.
-                              _billRow('Package Amount', widget.price),
+                              _billRow('Package Amount', _quote == null ? '—' : formatRupees(_quote!.subtotal)),
                               const SizedBox(height: 10),
                               _billRow('Platform Fee', 'Free', valueColor: _PayColors.success),
                               if (_showPickupDrop) ...[
@@ -1303,7 +1095,39 @@ class _PaymentScreenState extends State<PaymentScreen>
                                   ],
                                 ),
                               ),
-                              if (widget.billItems != null) ...[
+                              if (_quoteLoading) ...[
+                                const SizedBox(height: 14),
+                                const Center(
+                                  child: SizedBox(
+                                    height: 18,
+                                    width: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: _PayColors.blue),
+                                  ),
+                                ),
+                              ],
+                              if (_quoteError != null) ...[
+                                const SizedBox(height: 14),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.error_outline_rounded, color: Color(0xFFE5484D), size: 18),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _quoteError!,
+                                        style: const TextStyle(color: _PayColors.navy, fontSize: 13),
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: _loadQuote,
+                                      child: const Text(
+                                        'RETRY',
+                                        style: TextStyle(color: _PayColors.blue, fontWeight: FontWeight.w800),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              if ((_quote?.lines.length ?? 0) > 1) ...[
                                 const SizedBox(height: 18),
                                 Container(
                                   padding: const EdgeInsets.all(16),
@@ -1313,7 +1137,7 @@ class _PaymentScreenState extends State<PaymentScreen>
                                     border: Border.all(color: _PayColors.border),
                                   ),
                                   child: Column(
-                                    children: widget.billItems!
+                                    children: _quote!.lines
                                         .map((item) => Padding(
                                               padding: const EdgeInsets.only(bottom: 8),
                                               child: Row(
@@ -1321,11 +1145,11 @@ class _PaymentScreenState extends State<PaymentScreen>
                                                 children: [
                                                   Expanded(
                                                     child: Text(
-                                                      item['name']?.toString() ?? '',
+                                                      item.name,
                                                       style: const TextStyle(color: _PayColors.muted),
                                                     ),
                                                   ),
-                                                  Text('₹${item['price']}',
+                                                  Text(item.display,
                                                       style: const TextStyle(
                                                           color: _PayColors.navy, fontWeight: FontWeight.w700)),
                                                 ],
@@ -1342,7 +1166,7 @@ class _PaymentScreenState extends State<PaymentScreen>
                         const SizedBox(height: 24),
 
                         /// ── ADDRESS DISPLAY SECTION ──
-                        Container(
+                        if (!_isFleet) Container(
                           padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
                             color: _PayColors.surface,
@@ -1425,7 +1249,7 @@ class _PaymentScreenState extends State<PaymentScreen>
 
                         /// PAY ONLINE BUTTON
                         GestureDetector(
-                          onTap: isProcessing ? null : placeOnlineOrder,
+                          onTap: (isProcessing || _quote == null) ? null : placeOnlineOrder,
                           child: Container(
                             height: 58,
                             decoration: BoxDecoration(
@@ -1469,12 +1293,12 @@ class _PaymentScreenState extends State<PaymentScreen>
                           ),
                         ),
 
-                        if (!widget.onlineOnly) ...[
+                        if (_quote?.allowCod == true && !_isFleet) ...[
                           const SizedBox(height: 14),
 
                           /// CASH ON PICKUP BUTTON
                           GestureDetector(
-                            onTap: isProcessing ? null : placeCashOnPickupOrder,
+                            onTap: (isProcessing || _quote == null) ? null : placeCashOnPickupOrder,
                             child: Container(
                               height: 58,
                               decoration: BoxDecoration(

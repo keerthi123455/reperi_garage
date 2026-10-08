@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../services/address_service.dart';
-import '../services/delivery_partner_assignment_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/placeholder_box.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
 
 /// One of the 10 inspection categories shown in "What we check".
 class _Category {
@@ -148,14 +147,19 @@ class InspectionScreen extends StatefulWidget {
 }
 
 /// Vehicle-type tiers offered in the PLAN INSPECTION flow, each with its
-/// own fixed price — shown as selectable cards in step 2 of
+/// own price from the Supabase `services` table (screen 'inspection',
+/// details.vehicle_type_label) — shown as selectable cards in step 2 of
 /// [_PlanInspectionSheet].
-const Map<String, int> kInspectionVehicleTypePrices = {
-  'SUV': 1599,
-  'Hatchback': 1299,
-  'EV': 1999,
-  'Luxury': 3999,
-};
+Map<String, int> get kInspectionVehicleTypePrices => {
+      for (final item in CatalogService.forScreen('inspection'))
+        if (item.price != null) item.detail('vehicle_type_label', item.name): item.price!,
+    };
+
+/// Vehicle type label → its service key in the `services` table.
+Map<String, String> get kInspectionVehicleTypeKeys => {
+      for (final item in CatalogService.forScreen('inspection'))
+        item.detail('vehicle_type_label', item.name): item.key,
+    };
 
 class _InspectionScreenState extends State<InspectionScreen> {
   /// Filled in by PaymentScreen when this screen was opened before the
@@ -166,13 +170,10 @@ class _InspectionScreenState extends State<InspectionScreen> {
 
   final Set<int> _expanded = {};
 
-  // Captured from the PLAN INSPECTION popup flow just before handing off
-  // to PaymentScreen — read back by _saveInspectionBooking once payment
-  // succeeds, rather than threading them through PaymentScreen's fixed
-  // (orderId, paymentId) onSuccess signature.
+  // Captured from the PLAN INSPECTION popup flow and sent to the server
+  // with the booking (PaymentScreen.bookingOptions).
   String? _selectedCondition;
   String? _selectedVehicleType;
-  int? _selectedPrice;
   DateTime? _selectedSlotDate;
   String? _selectedSlotTime;
 
@@ -259,59 +260,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
     );
   }
 
-  /// Records the completed booking in its own table rather than the
-  /// generic `bookings` one — a vehicle health check isn't a pickup/drop
-  /// package booking, so it gets its own home.
-  Future<void> _saveInspectionBooking(String orderId, String paymentId) async {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
-
-    try {
-      final defaultAddr = await AddressService().getDefaultAddress();
-      // Delivery partner 3 handles every inspection/pollution booking —
-      // see DeliveryPartnerAssignmentService's dedicated-partner branch.
-      final deliveryPartnerId =
-          await DeliveryPartnerAssignmentService.getNextDeliveryPartnerId('inspection_booking');
-
-      await Supabase.instance.client.from('inspection_booking').insert({
-        'user_id': user.id,
-        'vehicle_id': _vehicleId,
-        'razorpay_order_id': orderId,
-        'razorpay_payment_id': paymentId,
-        'pickup_address': defaultAddr?['address'],
-        'pickup_latitude': defaultAddr?['latitude'],
-        'pickup_longitude': defaultAddr?['longitude'],
-        'pickup_address_name': defaultAddr?['name'],
-        'dropoff_address': defaultAddr?['address'],
-        'dropoff_latitude': defaultAddr?['latitude'],
-        'dropoff_longitude': defaultAddr?['longitude'],
-        'dropoff_address_name': defaultAddr?['name'],
-        'delivery_partner_id': deliveryPartnerId,
-        // Always yes — a vehicle health check is doorstep pickup/drop by
-        // nature, no opt-out toggle for this service.
-        'pickupdrop': 'yes',
-        'status': 'booked',
-        // From the PLAN INSPECTION popup — see _PlanInspectionSheet.
-        'vehicle_condition': _selectedCondition,
-        'vehicle_type': _selectedVehicleType,
-        'package_price': _selectedPrice != null ? '₹$_selectedPrice' : null,
-        'slot_date': _selectedSlotDate?.toIso8601String().split('T').first,
-        'slot_time': _selectedSlotTime,
-        // Snapshotted here rather than joined later — the delivery
-        // dashboard runs on the anon key and has no route to auth.users,
-        // so this is what lets it show/call the customer directly (see
-        // web/deliverydashboard.html).
-        'customer_name': user.userMetadata?['full_name'],
-        'customer_phone': user.phone,
-      });
-    } catch (e) {
-      // The payment already succeeded by this point — swallowing this
-      // instead of crashing avoids leaving the customer on a broken
-      // screen after money has already moved. Worst case support has to
-      // manually reconcile this booking from the Razorpay order id.
-      debugPrint('Error saving inspection booking: $e');
-    }
-  }
 
   /// Walks the customer through the condition -> vehicle type -> slot
   /// popup before ever touching PaymentScreen — that's what turns the
@@ -329,23 +277,30 @@ class _InspectionScreenState extends State<InspectionScreen> {
     setState(() {
       _selectedCondition = result['condition'] as String;
       _selectedVehicleType = result['vehicleType'] as String;
-      _selectedPrice = result['price'] as int;
       _selectedSlotDate = result['slotDate'] as DateTime;
       _selectedSlotTime = result['slotTime'] as String;
     });
 
-    if (!mounted) return;
+    final serviceKey = kInspectionVehicleTypeKeys[_selectedVehicleType];
+    if (!mounted || serviceKey == null) return;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: 'Vehicle Health Check',
-          price: '₹$_selectedPrice',
-          duration: 'Quick turnaround',
+          duration: CatalogService.byKey(serviceKey)?.duration ?? 'Quick turnaround',
           vehicleId: _vehicleId,
           onVehicleResolved: (id) => _resolvedVehicleId = id,
-          showPickupDropOption: false,
-          onSuccess: _saveInspectionBooking,
+          // Priced by the server from the vehicle type's service and saved
+          // to `inspection_booking` with the chosen condition and slot.
+          serviceKeys: [serviceKey],
+          bookingOptions: {
+            'inspection': {
+              'condition': _selectedCondition,
+              'slot_date': _selectedSlotDate?.toIso8601String().split('T').first,
+              'slot_time': _selectedSlotTime,
+            },
+          },
           bookingSection: 'inspection',
         ),
       ),
@@ -354,6 +309,11 @@ class _InspectionScreenState extends State<InspectionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+    if (kInspectionVehicleTypePrices.isEmpty) {
+      return const CatalogEmpty(message: 'Vehicle health checks aren\'t available right now. Please check back soon.');
+    }
+
     return Scaffold(
       backgroundColor: AppColors.ink,
       body: Stack(
@@ -516,6 +476,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
         ],
       ),
     );
+    });
   }
 
   Widget _sectionTitle(String text) {
@@ -1338,9 +1299,9 @@ class _PlanInspectionSheetState extends State<_PlanInspectionSheet> {
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: _ChoiceCard(
-              icon: icons[type]!,
+              icon: icons[type] ?? Symbols.directions_car,
               title: type,
-              subtitle: subtitles[type]!,
+              subtitle: subtitles[type] ?? '',
               trailing: '₹${kInspectionVehicleTypePrices[type]}',
               selected: _vehicleType == type,
               onTap: () => _selectVehicleType(type),

@@ -3,12 +3,15 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
 
-/// Static, hardcoded package data for the "Wheel Management" (WheelzCare)
-/// category — same structural pattern as Servicing/Washing: typographic
+/// "Wheel Management" (WheelzCare) packages, live from the Supabase `services`
+/// table (screen 'wheel') — same structural pattern as Servicing/Washing: typographic
 /// header (no hero photo), selectable tier cards, one shared expandable
 /// checklist, a comparison table, and a sticky bottom "BOOK NOW" bar.
 class _Tier {
+  final String key;
   final String name;
   final String price;
   final String duration;
@@ -19,6 +22,7 @@ class _Tier {
   final List<String> highlights;
 
   const _Tier({
+    required this.key,
     required this.name,
     required this.price,
     required this.duration,
@@ -28,60 +32,46 @@ class _Tier {
     required this.highlights,
     this.recommended = false,
   });
+
+  // Same package (by service key) even after the catalog refreshes.
+  @override
+  bool operator ==(Object other) => other is _Tier && other.key == key;
+
+  @override
+  int get hashCode => key.hashCode;
 }
 
 // Matches the real Wheel Alignment (₹499), Wheel Balancing (₹299), and
 // Wheel Alignment and Balancing (₹799) packages — the same three the Tyre
 // Care screen and the Services catalog offer, just presented in this
 // screen's tier-card UI.
-const _tiers = [
-  _Tier(
-    name: 'WHEEL ALIGNMENT',
-    price: '₹499',
-    duration: '45 mins',
-    tagline: 'Better handling, smoother driving, and longer tyre life',
-    bestFor:
-        'Every 8,000–10,000 km, after hitting potholes, or when the car pulls to one side.',
-    accent: Color(0xFF4FA3E3),
-    highlights: [
-      'Computerized alignment',
-      'Steering correction',
-      'Camber adjustment',
-      'Wheel angle optimization',
-      'Road stability testing',
-    ],
-  ),
-  _Tier(
-    name: 'WHEEL BALANCING',
-    price: '₹299',
-    duration: '30 mins',
-    tagline: 'Improves ride quality and tyre longevity',
-    bestFor: 'Every 10,000 km, or if you feel vibration at highway speed.',
-    accent: Color(0xFF4CAF7A),
-    highlights: [
-      'Dynamic balancing',
-      'Wheel weight calibration',
-      'Vibration reduction',
-      'High-speed balancing',
-      'Extra charges up to ₹200 may apply (tyre-dependent)',
-    ],
-  ),
-  _Tier(
-    name: 'WHEEL ALIGNMENT AND BALANCING',
-    price: '₹799',
-    duration: '60 mins',
-    tagline: 'Our most complete wheel care combo, in one visit',
-    bestFor: 'New tyres, high-speed vibration issues, or every 10,000 km.',
-    accent: Color(0xFFD4A017),
-    recommended: true,
-    highlights: [
-      'Everything in Wheel Alignment',
-      'Dynamic balancing',
-      'Wheel weight calibration',
-      'Extra charges up to ₹200 may apply (tyre-dependent)',
-    ],
-  ),
-];
+// Card accents by position — purely visual, so they stay in the app.
+const _tierAccents = [Color(0xFF4FA3E3), Color(0xFF4CAF7A), Color(0xFFD4A017)];
+
+/// The wheel tiers, live from the services table (same objects until it changes).
+List<_Tier>? _tiersCache;
+int _tiersRevision = -1;
+List<_Tier> get _tiers {
+  if (_tiersCache == null || _tiersRevision != CatalogService.revision.value) {
+    final items = CatalogService.forScreen('wheel').where((i) => !i.isAddon).toList();
+    _tiersCache = [
+      for (var i = 0; i < items.length; i++)
+        _Tier(
+          key: items[i].key,
+          name: items[i].name.toUpperCase(),
+          price: items[i].priceText,
+          duration: items[i].duration,
+          tagline: items[i].description,
+          bestFor: items[i].detail('best_for'),
+          accent: _tierAccents[i % _tierAccents.length],
+          recommended: items[i].popular,
+          highlights: items[i].features,
+        ),
+    ];
+    _tiersRevision = CatalogService.revision.value;
+  }
+  return _tiersCache!;
+}
 
 // (feature, ₹499, ₹299, ₹799)
 const _comparisonRows = [
@@ -119,6 +109,9 @@ class _WheelManagementPackageScreenState
     extends State<WheelManagementPackageScreen> {
   int _selectedTier = 2; // default to Wheel Alignment and Balancing (recommended)
 
+  /// [_selectedTier], kept in range if packages are switched off remotely.
+  int get _sel => _tiers.isEmpty ? 0 : (_selectedTier < 0 ? 0 : (_selectedTier >= _tiers.length ? _tiers.length - 1 : _selectedTier));
+
   // When true, the sticky nav bar's "COMPARE" tab is active and the
   // comparison table shows in place of the selected tier's card. The
   // sticky bottom BOOK bar still tracks _selectedTier regardless, so
@@ -128,17 +121,26 @@ class _WheelManagementPackageScreenState
   @override
   void initState() {
     super.initState();
-    if (widget.highlightPackage != null) {
-      final target = widget.highlightPackage!.toLowerCase();
-      final match = _tiers.indexWhere((t) => t.name.toLowerCase() == target);
-      if (match != -1) {
-        _selectedTier = match;
-      }
-    }
+    // Packages come from the catalog, which may still be loading.
+    CatalogService.ensureLoaded().then((_) {
+      if (mounted) _applyCatalogSelection();
+    }).catchError((_) {});
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
+  }
+
+  void _applyCatalogSelection() {
+    final tiers = _tiers;
+    if (tiers.isEmpty) return;
+    var index = tiers.indexWhere((t) => t.recommended);
+    if (widget.highlightPackage != null) {
+      final target = widget.highlightPackage!.toLowerCase();
+      final match = tiers.indexWhere((t) => t.name.toLowerCase() == target);
+      if (match != -1) index = match;
+    }
+    setState(() => _selectedTier = index == -1 ? 0 : index);
   }
 
   void _onThemeChanged() {
@@ -178,9 +180,9 @@ class _WheelManagementPackageScreenState
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: tier.name,
-          price: tier.price,
           duration: tier.duration,
           vehicleId: widget.vehicleId,
+          serviceKeys: [tier.key],
         ),
       ),
     );
@@ -440,7 +442,10 @@ class _WheelManagementPackageScreenState
 
   @override
   Widget build(BuildContext context) {
-    final selected = _tiers[_selectedTier];
+    return CatalogGate(builder: (context) {
+    if (_tiers.isEmpty) return const CatalogEmpty();
+
+    final selected = _tiers[_sel];
     // A warm, gold-tinted card for the "recommended" tier — blended over
     // the current mode's surface so it stays subtle in both themes instead
     // of a fixed near-black tint that would look wrong in light mode.
@@ -584,7 +589,7 @@ class _WheelManagementPackageScreenState
                   child: _showComparison
                       ? _buildComparisonTable()
                       : _buildTierCard(
-                          _tiers[_selectedTier], recommendedCardColor),
+                          _tiers[_sel], recommendedCardColor),
                 ),
               ),
 
@@ -746,6 +751,7 @@ class _WheelManagementPackageScreenState
         ],
       ),
     );
+    });
   }
 }
 

@@ -3,6 +3,7 @@ import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/catalog_gate.dart';
 
 class DentingTinkeringScreen extends StatefulWidget {
   final Map<String, dynamic> vehicle;
@@ -32,142 +33,80 @@ class _DentingTinkeringScreenState extends State<DentingTinkeringScreen> {
 
   int selectedPackage = -1;
 
-  List<Map<String, dynamic>> packages = [
-    {
-      'title': 'BASIC INSPECTION',
-      'subtitle': 'Damage Assessment & Estimate',
-      'price': '₹99',
-      'duration': '20 mins',
-      'icon': Icons.search,
-      'features': [
-        'Dent inspection',
-        'Paint damage check',
-        'Panel alignment check',
-        'Repair estimate',
-        'Insurance guidance',
-      ],
-      'details':
-          'Professional inspection and repair consultation for dents, scratches, and accident damage.',
-    },
-    {
-      'title': 'QUICK DENT FIX',
-      'subtitle': 'Minor Dent & Scratch Repair',
-      'price': '₹1499',
-      'duration': '2 hrs',
-      'icon': Icons.build_circle_outlined,
-      'features': [
-        'Minor dent removal',
-        'Scratch correction',
-        'Panel finishing',
-        'Basic touch-up',
-        'FREE inspection',
-        'FREE polish',
-      ],
-      'details':
-          'Perfect for small dents and scratches caused by daily driving and parking incidents.',
-    },
-    {
-      'title': 'PANEL RESTORE',
-      'subtitle': 'Single Panel Restoration',
-      'price': '₹3999',
-      'duration': '5 hrs',
-      'icon': Icons.car_repair_outlined,
-      'features': [
-        'Deep dent repair',
-        'Paint blending',
-        'Panel reshaping',
-        'Machine polishing',
-        'FREE inspection',
-        'FREE polish',
-      ],
-      'details':
-          'Advanced restoration package focused on restoring damaged doors, bumpers, and side panels.',
-    },
-    {
-      'title': 'BODY LINE CORRECTION',
-      'subtitle': 'Multi-Panel Alignment',
-      'price': '₹4999',
-      'duration': '6 hrs',
-      'icon': Icons.auto_fix_high_outlined,
-      'features': [
-        'Multi-panel correction',
-        'Bumper alignment',
-        'Precision reshaping',
-        'Machine finishing',
-        'Paint refinement',
-        'FREE inspection',
-        'FREE polish',
-      ],
-      'details':
-          'Premium body correction service for restoring factory body lines and alignment.',
-    },
-    {
-      'title': 'ACCIDENT RESTORATION',
-      'subtitle': 'Major Damage Recovery',
-      'price': '₹7999',
-      'duration': '1 day',
-      'icon': Icons.car_crash_outlined,
-      'features': [
-        'Structural correction',
-        'Deep restoration',
-        'Paint correction',
-        'Body alignment',
-        'Insurance assistance',
-        'FREE inspection',
-        'FREE polish',
-      ],
-      'details':
-          'Comprehensive accident repair package for heavily damaged vehicles requiring structural correction.',
-    },
-    {
-      'title': 'SIGNATURE RESTORATION+',
-      'subtitle': 'Luxury Finish Restoration',
-      'price': '₹10999',
-      'duration': '2 days',
-      'icon': Icons.diamond_outlined,
-      'features': [
-        'Complete body rejuvenation',
-        'Luxury paint finishing',
-        'Advanced paint refinement',
-        'Ceramic finishing',
-        'Premium detailing',
-        'Insurance support',
-        'FREE inspection',
-        'FREE polish',
-      ],
-      'details':
-          'Ultimate showroom-level restoration package with luxury finishing and advanced detailing.',
-    },
+  // Card icons by position — purely visual, so they stay in the app.
+  static const _icons = <IconData>[
+    Icons.search,
+    Icons.build_circle_outlined,
+    Icons.car_repair_outlined,
+    Icons.auto_fix_high_outlined,
+    Icons.car_crash_outlined,
+    Icons.diamond_outlined,
   ];
+
+  /// The packages, live from the Supabase `services` table (screen
+  /// 'denting') — same objects until the catalog changes.
+  List<Map<String, dynamic>>? _packagesCache;
+  int _packagesRevision = -1;
+  List<Map<String, dynamic>> get packages {
+    if (_packagesCache == null || _packagesRevision != CatalogService.revision.value) {
+      final items = CatalogService.forScreen('denting').where((i) => !i.isAddon).toList();
+      _packagesCache = [
+        for (var i = 0; i < items.length; i++)
+          <String, dynamic>{
+            'key': items[i].key,
+            'title': items[i].name.toUpperCase(),
+            'subtitle': items[i].detail('subtitle'),
+            'price': items[i].priceText,
+            'duration': items[i].duration,
+            'details': items[i].description,
+            'features': items[i].features,
+            'icon': _icons[i % _icons.length],
+          },
+      ];
+      _packagesRevision = CatalogService.revision.value;
+    }
+    return _packagesCache!;
+  }
 
   @override
   void initState() {
     super.initState();
-    _cardKeys.addAll(List.generate(packages.length, (_) => GlobalKey()));
-    if (widget.highlightPackage != null) {
-      final target = widget.highlightPackage!.toLowerCase();
-      final match = packages.indexWhere(
-          (p) => (p['title'] as String).toLowerCase() == target);
-      if (match != -1) selectedPackage = match;
-    }
-    _fetchPackageData();
+    // Packages come from the catalog, which may still be loading.
+    CatalogService.ensureLoaded().then((_) {
+      if (mounted) _applyHighlight();
+    }).catchError((_) {});
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this screen dirty on its
     // own when the toggle flips, so it must listen and rebuild itself.
     themeController.addListener(_onThemeChanged);
-    if (widget.highlightPackage != null && selectedPackage != -1) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx = _cardKeys[selectedPackage].currentContext;
-        if (ctx != null) {
-          Scrollable.ensureVisible(
-            ctx,
-            duration: const Duration(milliseconds: 450),
-            curve: Curves.easeInOut,
-            alignment: 0.1,
-          );
-        }
-      });
+  }
+
+  /// Scroll target for card [i] — grows with the catalog.
+  GlobalKey _cardKey(int i) {
+    while (_cardKeys.length <= i) {
+      _cardKeys.add(GlobalKey());
     }
+    return _cardKeys[i];
+  }
+
+  void _applyHighlight() {
+    if (widget.highlightPackage == null || packages.isEmpty) return;
+    final target = widget.highlightPackage!.toLowerCase();
+    final match = packages.indexWhere(
+        (p) => (p['title'] as String).toLowerCase() == target);
+    if (match == -1) return;
+    setState(() => selectedPackage = match);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _cardKey(selectedPackage).currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeInOut,
+          alignment: 0.1,
+        );
+      }
+    });
   }
 
   void _onThemeChanged() {
@@ -180,42 +119,6 @@ class _DentingTinkeringScreenState extends State<DentingTinkeringScreen> {
     super.dispose();
   }
 
-  Future<void> _fetchPackageData() async {
-    try {
-      final rows = await CatalogService.fetchByCategory('Denting & Tinkering');
-      if (!mounted) return;
-
-      final byKey = {for (final row in rows) row['key'] as String: row};
-
-      const keyOrder = [
-        'dent_basic_inspection',
-        'dent_quick_fix',
-        'dent_panel_restore',
-        'dent_body_line_correction',
-        'dent_accident_restoration',
-        'dent_signature_restoration_plus',
-      ];
-
-      setState(() {
-        for (var i = 0; i < keyOrder.length && i < packages.length; i++) {
-          final row = byKey[keyOrder[i]];
-          if (row != null) {
-            // Falls back to the existing hardcoded value on a NULL DB
-            // field instead of storing null into fields rendered with a
-            // non-nullable `as String` cast further down this screen.
-            packages[i]['price'] = row['price'] ?? packages[i]['price'];
-            packages[i]['duration'] = row['duration'] ?? packages[i]['duration'];
-            packages[i]['details'] = row['details'] ?? packages[i]['details'];
-            if (row['services'] != null) {
-              packages[i]['features'] = List<String>.from(row['services']);
-            }
-          }
-        }
-      });
-    } catch (e) {
-      // Keep the hardcoded fallback values above if the fetch fails.
-    }
-  }
 
   void _bookSelected() {
     if (selectedPackage == -1) {
@@ -232,16 +135,16 @@ class _DentingTinkeringScreenState extends State<DentingTinkeringScreen> {
       return;
     }
 
-    final selected = packages[selectedPackage];
+    final selected = packages[(selectedPackage < 0 ? 0 : (selectedPackage >= packages.length ? packages.length - 1 : selectedPackage))];
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: selected['title'],
-          price: selected['price'],
           duration: selected['duration'],
           vehicleId: widget.vehicle['id'].toString(),
+          serviceKeys: [selected['key'] as String],
         ),
       ),
     );
@@ -250,6 +153,9 @@ class _DentingTinkeringScreenState extends State<DentingTinkeringScreen> {
   // ── Build ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+    if (packages.isEmpty) return const CatalogEmpty();
+
     return Scaffold(
       backgroundColor: _bg,
       body: Stack(
@@ -280,6 +186,7 @@ class _DentingTinkeringScreenState extends State<DentingTinkeringScreen> {
         ],
       ),
     );
+    });
   }
 
   // ── HERO ─────────────────────────────────────────────────────────
@@ -435,7 +342,7 @@ class _DentingTinkeringScreenState extends State<DentingTinkeringScreen> {
             final selected = selectedPackage == index;
 
             return GestureDetector(
-              key: _cardKeys[index],
+              key: _cardKey(index),
               onTap: () {
                 setState(() {
                   selectedPackage = index;

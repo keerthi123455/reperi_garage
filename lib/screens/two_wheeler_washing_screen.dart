@@ -3,12 +3,15 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
 
-/// Static, hardcoded package data — same idea as TwoWheelerServicingScreen,
-/// deliberately NOT fetched from Supabase. Unlike that screen's tiers
+/// Wash plans, live from the Supabase `services` table (screen
+/// 'bike_washing') — same idea as TwoWheelerServicingScreen. Unlike that screen's tiers
 /// (identical checklist, price-only difference), these two wash plans each
 /// have their own feature list.
 class _WashTier {
+  final String key;
   final String label;
   final String tagline;
   final int price;
@@ -16,6 +19,7 @@ class _WashTier {
   final List<String> features;
 
   const _WashTier({
+    required this.key,
     required this.label,
     required this.tagline,
     required this.price,
@@ -24,34 +28,27 @@ class _WashTier {
   });
 }
 
-const _tiers = [
-  _WashTier(
-    label: 'QUICK WASH',
-    tagline: 'Everyday clean',
-    price: 149,
-    features: [
-      'Foam Wash',
-      'Pressure Rinse',
-      'Hand Wash',
-      'Tyre & Rim Clean',
-      'Microfiber Dry',
-    ],
-  ),
-  _WashTier(
-    label: 'PREMIUM WASH',
-    tagline: 'Deep clean & shine',
-    price: 299,
-    popular: true,
-    features: [
-      'Premium Foam',
-      'Deep Rim Clean',
-      'Chain Clean & Lube',
-      'Tyre Dressing',
-      'Plastic Polish',
-      'Microfiber Finish',
-    ],
-  ),
-];
+/// Wash plans, live from the services table.
+List<_WashTier>? _tiersCache;
+int _tiersRevision = -1;
+List<_WashTier> get _tiers {
+  if (_tiersCache == null || _tiersRevision != CatalogService.revision.value) {
+    final items = CatalogService.forScreen('bike_washing').where((i) => !i.isAddon).toList();
+    _tiersCache = [
+      for (var i = 0; i < items.length; i++)
+        _WashTier(
+          key: items[i].key,
+          label: items[i].name.toUpperCase(),
+          tagline: items[i].tagline,
+          price: items[i].price ?? 0,
+          popular: items[i].popular,
+          features: items[i].features,
+        ),
+    ];
+    _tiersRevision = CatalogService.revision.value;
+  }
+  return _tiersCache!;
+}
 
 /// Formatting helper — every price in this screen is well under a lakh, so
 /// a single thousands-comma is all Indian grouping actually needs here.
@@ -76,6 +73,9 @@ class TwoWheelerWashingScreen extends StatefulWidget {
 class _TwoWheelerWashingScreenState extends State<TwoWheelerWashingScreen> {
   // Default to Premium Wash, matching its "⭐" pick in the source content.
   int _selectedTier = 1;
+
+  /// [_selectedTier], kept in range if plans are switched off remotely.
+  int get _sel => _tiers.isEmpty ? 0 : (_selectedTier < 0 ? 0 : (_selectedTier >= _tiers.length ? _tiers.length - 1 : _selectedTier));
   // Open by default on the pre-selected tier — the checklist is the whole
   // point of this screen, so nobody should have to discover the tap first.
   bool _expanded = true;
@@ -118,15 +118,18 @@ class _TwoWheelerWashingScreenState extends State<TwoWheelerWashingScreen> {
   }
 
   void _bookNow() {
-    final tier = _tiers[_selectedTier];
+    final tier = _tiers[_sel];
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: tier.label,
-          price: _rupees(tier.price),
-          duration: '30-45 mins',
+          duration: CatalogService.byKey(tier.key)?.duration ?? '30-45 mins',
           vehicleId: widget.vehicleId,
+          // Doorstep bike wash: the server sends it to a washer (washer 1/2
+          // alternating, or the review washer for the App Store account),
+          // with no garage and no pickup & drop — see services.washer_pool.
+          serviceKeys: [tier.key],
         ),
       ),
     );
@@ -134,6 +137,9 @@ class _TwoWheelerWashingScreenState extends State<TwoWheelerWashingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+    if (_tiers.isEmpty) return const CatalogEmpty();
+
     return Scaffold(
       backgroundColor: AppColors.ink,
       body: SafeArea(
@@ -176,6 +182,7 @@ class _TwoWheelerWashingScreenState extends State<TwoWheelerWashingScreen> {
         ),
       ),
     );
+    });
   }
 
   // ── HEADER ──
@@ -540,7 +547,7 @@ class _TwoWheelerWashingScreenState extends State<TwoWheelerWashingScreen> {
 
   // ── STICKY BOOK NOW BAR ──
   Widget _buildStickyBar() {
-    final tier = _tiers[_selectedTier];
+    final tier = _tiers[_sel];
     return GestureDetector(
       onTap: _bookNow,
       child: Container(

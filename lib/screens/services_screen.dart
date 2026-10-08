@@ -22,6 +22,8 @@ import 'monthly_wash_screen.dart';
 import 'tyre_care_screen.dart';
 import 'washing_package_screen.dart';
 import 'wheel_management_package_screen.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
 
 const String _expertPhone = '9353094672';
 
@@ -38,6 +40,7 @@ typedef _ScreenBuilder = Widget Function(Map<String, dynamic>? vehicle, {String?
 /// Car Spa, Detailing, Claim Assistance, Monthly Wash, Roadside Assistance),
 /// flattened so it's all searchable and browsable from one screen.
 class _Package {
+  final String key;
   final String category;
   final String name;
   final String price;
@@ -55,6 +58,7 @@ class _Package {
   final _ScreenBuilder screenBuilder;
 
   const _Package({
+    required this.key,
     required this.category,
     required this.name,
     required this.price,
@@ -353,493 +357,62 @@ Widget _fleetMgmt(Map<String, dynamic>? v, {String? highlightPackage}) =>
     FleetManagementScreen(highlightPackage: highlightPackage);
 
 /// The full catalog — every tier from every package screen in the app.
-final List<_Package> _kCatalog = [
-  // ── Periodic Servicing ──────────────────────────────────────────────
-  const _Package(
-    category: 'Periodic Servicing',
-    name: 'Quick Service',
-    price: '₹1999',
-    duration: '90 mins',
-    tagline: 'A fast maintenance package for regular upkeep and smoother daily performance.',
-    features: ['Engine oil replacement', 'Oil filter cleaning', 'Brake inspection', 'Fluid top-up', 'Battery check'],
-    screenBuilder: _bookService,
-  ),
-  const _Package(
-    category: 'Periodic Servicing',
-    name: 'Full Service',
-    price: '₹4999',
-    duration: '4 hrs',
-    tagline: 'Comprehensive servicing covering all major systems for peak performance.',
-    features: ['Complete engine inspection', 'Full oil replacement', 'Air filter replacement', 'Wheel balancing', 'Suspension check', 'Brake servicing'],
-    screenBuilder: _bookService,
-  ),
-  const _Package(
-    category: 'Periodic Servicing',
-    name: 'AC Service',
-    price: '₹2499',
-    duration: '2 hrs',
-    tagline: 'Deep AC inspection and cooling optimization for maximum comfort.',
-    features: ['AC gas refill', 'Cooling efficiency check', 'Cabin filter cleaning', 'Vent sanitization', 'Leak inspection'],
-    screenBuilder: _bookService,
-  ),
-  const _Package(
-    category: 'Periodic Servicing',
-    name: 'Engine Diagnostics',
-    price: '₹1499',
-    duration: '45 mins',
-    tagline: 'Advanced computer diagnostics to find hidden engine and electrical issues.',
-    features: ['OBD scan', 'Engine health report', 'Sensor diagnostics', 'Error code detection', 'Performance analysis'],
-    screenBuilder: _bookService,
-  ),
-  const _Package(
-    category: 'Periodic Servicing',
-    name: 'Essential',
-    price: '₹999',
-    duration: '3-4 hrs',
-    tagline: 'Perfect for routine service.',
-    features: ['Engine Oil Change', 'Oil Filter Change', 'Brake Inspection', 'AC Cooling Check', 'Battery Health Test', 'Tyre Inspection', 'Fluid Level Check', '21-Point Diagnostics', 'Digital Health Report'],
-    screenBuilder: _servicingPkg,
-  ),
-  const _Package(
-    category: 'Periodic Servicing',
-    name: 'Premium Care',
-    price: '₹3,999',
-    duration: '3-4 hrs',
-    tagline: 'Most Popular — everyday maintenance done right.',
-    popular: true,
-    features: ['Everything in Essential', 'Premium Engine Oil', 'Oil Filter Replacement', 'Brake Fluid Top-up', 'AC Performance Service', 'Air Filter Cleaning', 'Cabin Filter Cleaning', 'Steering Check', 'Suspension Check', 'Car Wash', 'Interior Vacuum', '35-Point Diagnostics'],
-    screenBuilder: _servicingPkg,
-  ),
-  const _Package(
-    category: 'Periodic Servicing',
-    name: 'Signature Service',
-    price: '₹5,999',
-    duration: '3-4 hrs',
-    tagline: 'Ultimate Protection.',
-    features: ['Everything in Premium', 'Synthetic Engine Oil', 'Brake Fluid Replacement', 'Air Filter Replacement', 'Cabin Filter Replacement', 'Battery Load Test', 'Fuel System Check', 'Complete Brake Service', 'Wheel Alignment Check', 'Underbody Inspection', 'Deep Interior Cleaning', 'Foam Exterior Wash', '50+ Point Diagnostics', 'Photo Health Report', 'Priority Support'],
-    screenBuilder: _servicingPkg,
-  ),
+/// Which package screen each service opens, keyed by the first entry of
+/// its `screens` column in the services table.
+const Map<String, _ScreenBuilder> _kScreenBuilders = {
+  'book_service': _bookService,
+  'servicing': _servicingPkg,
+  'washing': _washingPkg,
+  'car_spa': _carSpa,
+  'wheel': _wheelPkg,
+  'tyre_care': _tyreCare,
+  'paint_package': _paintPkg,
+  'paint_care': _paintCare,
+  'denting': _denting,
+  'detailing': _detailing,
+  'claim': _claim,
+  'monthly_wash': _subscriptions,
+  'roadside': _roadside,
+  'fleet_management': _fleetMgmt,
+};
 
-  // ── Car Wash & Cleaning ──────────────────────────────────────────────
-  const _Package(
-    category: 'Car Wash & Cleaning',
-    name: 'Express Wash',
-    price: '₹299',
-    duration: '1-2 hrs',
-    tagline: 'A quick refresh for your car.',
-    features: ['High-Pressure Exterior Wash', 'Premium Foam Wash', 'Microfiber Hand Drying', 'Tyre Cleaning', 'Alloy Wheel Cleaning', 'Exterior Glass Cleaning', 'Tyre Shine Dressing', 'Final Quality Inspection'],
-    screenBuilder: _washingPkg,
-  ),
-  const _Package(
-    category: 'Car Wash & Cleaning',
-    name: 'Premium Wash',
-    price: '₹599',
-    duration: '1-2 hrs',
-    tagline: 'Inside & out, clean and refreshed.',
-    popular: true,
-    features: ['Everything in Express Wash', 'Interior Vacuum Cleaning', 'Dashboard & Console Cleaning', 'Door Panel Wipe Down', 'Interior Glass Cleaning', 'Floor Mat Cleaning', 'Boot (Trunk) Vacuum', 'Air Freshener Application', 'Plastic Trim Dressing', 'Final Quality Inspection'],
-    screenBuilder: _washingPkg,
-  ),
-  const _Package(
-    category: 'Car Wash & Cleaning',
-    name: 'Signature Detailing',
-    price: '₹2,999',
-    duration: '1-2 hrs',
-    tagline: "Restore your car's showroom shine.",
-    features: ['Everything in Premium Wash', 'Snow Foam Pre-Wash', 'Two-Bucket Safe Hand Wash', 'Bug & Tar Removal', 'Clay Bar Surface Decontamination', 'Machine Wax / Paint Sealant Application', 'Exterior Plastic Trim Restoration', 'Tyre & Alloy Deep Cleaning', 'Engine Bay Surface Cleaning', 'Interior Deep Vacuum', 'Leather/Fabric Seat Cleaning', 'Dashboard UV Protection', 'Door Jamb Cleaning', 'Interior Steam Sanitization (where applicable)', 'Premium Glass Treatment', 'Long-Lasting Air Freshener', 'Final Multi-Point Quality Inspection'],
-    screenBuilder: _washingPkg,
-  ),
-  const _Package(
-    category: 'Car Wash & Cleaning',
-    name: 'Quick Refresh',
-    price: '₹399',
-    duration: '30 mins',
-    tagline: 'Fast maintenance with essential exterior and basic interior cleaning.',
-    features: ['Pressure Water Wash', 'pH Neutral Foam Wash', 'Exterior Hand Wash', 'Microfiber Drying', 'Tyre Cleaning', 'Tyre Polish', 'Wheel Rim Cleaning', 'Exterior Glass Cleaning', 'Dashboard Dusting', 'Interior Vacuum Cleaning', 'Door Jamb Cleaning', 'Final Quality Inspection'],
-    screenBuilder: _carSpa,
-  ),
-  const _Package(
-    category: 'Car Wash & Cleaning',
-    name: 'Premium Spa',
-    price: '₹999',
-    duration: '90 mins',
-    tagline: 'Everything in Quick Refresh, plus deep interior cleaning and protective treatments.',
-    features: ['Pressure Water Wash', 'Premium Foam Wash', 'Exterior Hand Drying', 'Complete Interior Vacuum', 'Dashboard Detailing', 'Door Panel Cleaning', 'Seat Deep Cleaning', 'Floor Mat Cleaning', 'Interior Plastic Dressing', 'Interior Steam Cleaning', 'AC Vent Cleaning', 'Odour Removal Treatment', 'Interior UV Protection', 'Tyre Polish', 'Exterior Glass Cleaning', 'Final Quality Inspection'],
-    screenBuilder: _carSpa,
-  ),
-  const _Package(
-    category: 'Car Wash & Cleaning',
-    name: 'Signature Spa+',
-    price: '₹2499',
-    duration: '150 mins',
-    tagline: 'Complete restoration with paint treatment, engine bay detailing, and premium finishing.',
-    features: ['Premium Foam Wash', 'Paint Decontamination', 'Clay Bar Treatment', 'Machine Wax Polish', 'Paint Gloss Enhancement', 'Exterior Plastic Restoration', 'Wheel Arch Cleaning', 'Alloy Wheel Detailing', 'Tyre Dressing', 'Complete Interior Vacuum', 'Dashboard Restoration', 'Leather / Fabric Seat Cleaning', 'Carpet Shampooing', 'Roof Lining Cleaning', 'Door Panel Restoration', 'Interior Steam Sanitization', 'AC Vent Sanitization', 'Engine Bay Cleaning', 'Exterior Glass Treatment', 'Premium Perfume Finish', 'Final Quality Inspection'],
-    screenBuilder: _carSpa,
-  ),
+/// Screens whose packages need a choice made on their own screen first
+/// (documents, a plan, a slot) — never booked straight from this catalog.
+const Set<String> _kOpenScreenFirst = {'claim', 'monthly_wash', 'inspection'};
 
-  // ── Wheels & Tyres ───────────────────────────────────────────────────
-  const _Package(
-    category: 'Wheels & Tyres',
-    name: 'Precision Alignment',
-    price: '₹499',
-    duration: '45 mins',
-    tagline: 'Better handling, smoother driving, and longer tyre life.',
-    features: ['Computerized Wheel Alignment', 'Steering Alignment Check', 'Suspension Geometry Inspection', 'Tyre Pressure Adjustment', 'Front & Rear Tyre Wear Inspection', 'Steering Wheel Centering', 'Road Test After Alignment', 'Digital Alignment Report'],
-    screenBuilder: _wheelPkg,
-  ),
-  const _Package(
-    category: 'Wheels & Tyres',
-    name: 'Complete Wheel Care',
-    price: '₹799',
-    duration: '60 mins',
-    tagline: 'Maximize tyre life and improve driving comfort.',
-    popular: true,
-    features: ['Everything in Precision Alignment', 'Computerized Wheel Balancing (All 4 Wheels)', 'Alloy Wheel Inspection', 'Tyre Rotation (if applicable)', 'Valve & Air Leak Check', 'Wheel Nut Torque Check', 'Suspension & Steering Linkage Inspection', 'Brake Disc Visual Inspection', 'Tyre Tread Depth Measurement', 'Tyre Health Report with Replacement Advice', 'Complimentary Tyre Shine'],
-    screenBuilder: _wheelPkg,
-  ),
-  const _Package(
-    category: 'Wheels & Tyres',
-    name: 'Wheel Alignment and Balancing',
-    price: '₹799',
-    duration: '60 mins',
-    tagline: 'Our most complete wheel care combo — alignment and balancing together.',
-    popular: true,
-    features: ['Computerized alignment', 'Dynamic balancing', 'Steering correction', 'Wheel weight calibration', 'Road stability testing'],
-    screenBuilder: _tyreCare,
-  ),
-  const _Package(
-    category: 'Wheels & Tyres',
-    name: 'Quick Air & Check',
-    price: '₹299',
-    duration: '20 mins',
-    tagline: 'Perfect for routine tyre maintenance.',
-    features: ['Tyre pressure check', 'Nitrogen refill', 'Air leakage inspection', 'Valve inspection', 'Tread inspection'],
-    screenBuilder: _tyreCare,
-  ),
-  const _Package(
-    category: 'Wheels & Tyres',
-    name: 'Wheel Alignment',
-    price: '₹499',
-    duration: '45 mins',
-    tagline: 'Recommended if your vehicle pulls to one side.',
-    features: ['Computerized alignment', 'Steering correction', 'Camber adjustment', 'Wheel angle optimization', 'Road stability testing'],
-    screenBuilder: _tyreCare,
-  ),
-  const _Package(
-    category: 'Wheels & Tyres',
-    name: 'Wheel Balancing',
-    price: '₹299',
-    duration: '30 mins',
-    tagline: 'Improves ride quality and tyre longevity.',
-    features: ['Dynamic balancing', 'Wheel weight calibration', 'Vibration reduction', 'High-speed balancing'],
-    screenBuilder: _tyreCare,
-  ),
-
-  // ── Paint & Body ─────────────────────────────────────────────────────
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Paint Shine Package',
-    price: '₹1,999',
-    duration: '2-3 hrs',
-    tagline: 'Restore gloss and protect your paint.',
-    features: ['Premium Snow Foam Wash', 'Surface Decontamination Wash', 'Bug & Tar Removal', 'Paint Gloss Enhancement Polish', 'Machine Wax Application', 'Exterior Plastic Trim Dressing', 'Tyre Shine', 'Exterior Glass Cleaning', 'Paint Condition Inspection'],
-    screenBuilder: _paintPkg,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Paint Protection Package',
-    price: '₹2,999',
-    duration: '2-3 hrs',
-    tagline: 'Long-lasting shine with enhanced paint protection.',
-    popular: true,
-    features: ['Everything in Paint Shine Package', 'One-Step Machine Paint Correction', 'Ceramic Spray Coating', 'Hydrophobic Water-Repellent Protection', 'UV Protection for Paint', 'Minor Scratch & Swirl Reduction', 'Alloy Wheel Protection', 'Exterior Plastic Restoration', 'Rain-Repellent Glass Treatment', 'Final Paint Gloss Inspection'],
-    screenBuilder: _paintPkg,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Ceramic Coating',
-    price: '₹12,999',
-    duration: 'Quoted on inspection',
-    tagline: 'Premium add-on upgrade.',
-    features: ['1-3 Year Paint Protection', 'Deep Gloss Finish', 'Hydrophobic Water Beading', 'UV Protection', 'Easier Cleaning', 'Chemical Resistance'],
-    screenBuilder: _paintPkg,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Graphene Coating',
-    price: '₹16,999',
-    duration: 'Quoted on inspection',
-    tagline: 'Premium add-on upgrade.',
-    features: ['Enhanced Ceramic Protection', 'Better Heat Resistance', 'Superior Gloss', 'Water & Dirt Repellency', 'Increased Durability'],
-    screenBuilder: _paintPkg,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Paint Protection Film (PPF)',
-    price: '₹49,999',
-    duration: 'Quoted on inspection',
-    tagline: 'Premium add-on upgrade.',
-    features: ['Self-Healing Film', 'Stone Chip Protection', 'Scratch Resistance', 'UV Protection', 'High Gloss or Matte Finish', 'Long-Term Paint Preservation'],
-    screenBuilder: _paintPkg,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Paint Correction',
-    price: '₹7,999',
-    duration: 'Quoted on inspection',
-    tagline: 'Premium add-on upgrade.',
-    features: ['Multi-Stage Machine Polishing', 'Removes Swirl Marks', 'Removes Oxidation', 'Restores Paint Clarity', 'High Gloss Finish'],
-    screenBuilder: _paintPkg,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Quick Polish',
-    price: '₹599',
-    duration: '45 mins',
-    tagline: 'Perfect for restoring daily shine quickly.',
-    features: ['Exterior wash', 'Quick buffing', 'Tyre shine', 'Water spot removal', 'Gloss enhancement'],
-    screenBuilder: _paintCare,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Scratch Control',
-    price: '₹1499',
-    duration: '2 hrs',
-    tagline: 'Removes minor scratches and swirl marks.',
-    features: ['Scratch removal', 'Swirl correction', 'Paint enhancement', 'Machine buffing', 'Gloss restoration'],
-    screenBuilder: _paintCare,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Rust Control',
-    price: '₹2999',
-    duration: '3 hrs',
-    tagline: 'Advanced anti-rust treatment protecting your vehicle body.',
-    features: ['Underbody coating', 'Rust treatment', 'Corrosion prevention', 'Protective sealant', 'Metal protection layer'],
-    screenBuilder: _paintCare,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Premium Paint Restore',
-    price: '₹4999',
-    duration: '5 hrs',
-    tagline: 'Restores dull, oxidized, faded paint to a premium glossy finish.',
-    features: ['Paint correction', 'Multi-stage polishing', 'Deep gloss enhancement', 'Oxidation removal', 'Premium machine finish'],
-    screenBuilder: _paintCare,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Vinyl & Wrap Studio',
-    price: '₹7999',
-    duration: '1 day',
-    tagline: 'Premium wrapping for luxury styling and customization.',
-    features: ['Vinyl wrap installation', 'Gloss/matte finish', 'Roof wrap', 'Mirror accents', 'Color customization', 'Paint-safe removal'],
-    screenBuilder: _paintCare,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Showroom Shine+',
-    price: '₹10999',
-    duration: '2 days',
-    tagline: 'Showroom-level shine, protection and exterior perfection.',
-    features: ['Ceramic coating', 'Deep detailing', 'Paint refinement', 'Hydrophobic protection', 'Luxury polishing', 'Exterior rejuvenation', 'PPF enhancement'],
-    screenBuilder: _paintCare,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Basic Inspection',
-    price: '₹99',
-    duration: '20 mins',
-    tagline: 'Professional inspection and repair consultation for dents & damage.',
-    features: ['Dent inspection', 'Paint damage check', 'Panel alignment check', 'Repair estimate', 'Insurance guidance'],
-    screenBuilder: _denting,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Quick Dent Fix',
-    price: '₹1499',
-    duration: '2 hrs',
-    tagline: 'Perfect for small dents and scratches from daily driving.',
-    features: ['Minor dent removal', 'Scratch correction', 'Panel finishing', 'Basic touch-up', 'FREE inspection', 'FREE polish'],
-    screenBuilder: _denting,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Panel Restore',
-    price: '₹3999',
-    duration: '5 hrs',
-    tagline: 'Restores damaged doors, bumpers, and side panels.',
-    features: ['Deep dent repair', 'Paint blending', 'Panel reshaping', 'Machine polishing', 'FREE inspection', 'FREE polish'],
-    screenBuilder: _denting,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Body Line Correction',
-    price: '₹4999',
-    duration: '6 hrs',
-    tagline: 'Restores factory body lines and alignment.',
-    features: ['Multi-panel correction', 'Bumper alignment', 'Precision reshaping', 'Machine finishing', 'Paint refinement', 'FREE inspection', 'FREE polish'],
-    screenBuilder: _denting,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Accident Restoration',
-    price: '₹7999',
-    duration: '1 day',
-    tagline: 'Comprehensive accident repair for heavily damaged vehicles.',
-    features: ['Structural correction', 'Deep restoration', 'Paint correction', 'Body alignment', 'Insurance assistance', 'FREE inspection', 'FREE polish'],
-    screenBuilder: _denting,
-  ),
-  const _Package(
-    category: 'Paint & Body',
-    name: 'Signature Restoration+',
-    price: '₹10999',
-    duration: '2 days',
-    tagline: 'Showroom-level restoration with luxury finishing.',
-    features: ['Complete body rejuvenation', 'Luxury paint finishing', 'Advanced paint refinement', 'Ceramic finishing', 'Premium detailing', 'Insurance support', 'FREE inspection', 'FREE polish'],
-    screenBuilder: _denting,
-  ),
-
-  // ── Premium Detailing (quote-based — no direct payment) ─────────────
-  const _Package(
-    category: 'Premium Detailing',
-    name: 'PPF Premium',
-    price: '₹55,000',
-    duration: 'New car — 3 days',
-    tagline: 'Ultimate protection against scratches, chips & UV.',
-    features: ['400 sq ft base coverage', '₹400/sq ft', 'Warranty: 3 to 5 Years', '3-Day turnaround for new cars'],
-    screenBuilder: _detailing,
-    vehicleRequired: false,
-    directBook: false,
-  ),
-  const _Package(
-    category: 'Premium Detailing',
-    name: 'PPF - Full Coverage',
-    price: '₹75,000 - ₹1,00,000',
-    duration: 'Used car — 5 days',
-    tagline: 'Premium-grade film for maximum protection — choose your preferred brand.',
-    popular: true,
-    features: ['Full Coverage', 'Warranty: 8 Years', '5-Day turnaround (includes polish for used cars)'],
-    screenBuilder: _detailing,
-    vehicleRequired: false,
-    directBook: false,
-  ),
-  const _Package(
-    category: 'Premium Detailing',
-    name: 'Ceramic Coating (Detailing Studio)',
-    price: '₹16,000',
-    duration: '2 days',
-    tagline: 'Hydrophobic protection with stunning gloss.',
-    features: ['Full Vehicle Coverage', '1-Year Warranty', 'Water beading effect', 'Enhanced glossiness', 'Easy maintenance'],
-    screenBuilder: _detailing,
-    vehicleRequired: false,
-    directBook: false,
-  ),
-  const _Package(
-    category: 'Premium Detailing',
-    name: 'Graphene Coating (Detailing Studio)',
-    price: '₹22,000',
-    duration: '2 days',
-    tagline: 'Next-gen protection with nano-technology.',
-    features: ['Full Vehicle Coverage', '3-Year Warranty', 'Graphene nano-particles', 'Superior durability', 'Self-cleaning properties', 'UV protection included'],
-    screenBuilder: _detailing,
-    vehicleRequired: false,
-    directBook: false,
-  ),
-  const _Package(
-    category: 'Premium Detailing',
-    name: 'Sun Film - Standard',
-    price: '₹20,000 - ₹45,000',
-    duration: '2 days',
-    tagline: 'Beat the heat with premium UV blocking.',
-    features: ['5-Year Warranty', 'Front only — ₹8,000', 'Sides only — ₹8,000', 'Front + Sides — ₹15,000', 'Full Coverage — ₹20,000+'],
-    screenBuilder: _detailing,
-    vehicleRequired: false,
-    directBook: false,
-  ),
-  const _Package(
-    category: 'Premium Detailing',
-    name: 'Sun Film - Premium',
-    price: '₹25,000',
-    duration: '2 days',
-    tagline: 'Top-tier heat rejection film, full body — choose your preferred brand.',
-    features: ['Full Body Coverage', 'Warranty: 5 to 10 Years', 'Maximum heat & UV protection'],
-    screenBuilder: _detailing,
-    vehicleRequired: false,
-    directBook: false,
-  ),
-
-  // ── Claim Assistance ─────────────────────────────────────────────────────
-  const _Package(
-    category: 'Claim Assistance',
-    name: 'Claim Assistance',
-    price: 'Free Consultation',
-    duration: 'As per claim',
-    tagline: 'Cashless accident assistance — we handle the paperwork with your insurer.',
-    features: ['Cashless claim assistance', 'Document pickup & digital submission', 'Approved garage network', 'End-to-end claim status tracking'],
-    screenBuilder: _claim,
-    directBook: false,
-  ),
-
-  // ── Monthly Wash ───────────────────────────────────────────────────────
-  const _Package(
-    category: 'Monthly Wash',
-    name: 'Monthly Wash Plan',
-    price: 'From ₹499/month',
-    duration: '30-day plan',
-    tagline: 'Daily doorstep car wash for 30 days — price depends on your vehicle type.',
-    features: ['Bike — ₹499/month', 'Hatchback / Small Cars — ₹699/month', 'SUV / XUV / Sedan — ₹1099/month', 'Luxury Cars — ₹1999/month', '6 Water Washes / Week', '2 Interior Washes / Week', 'Daily App Updates', 'Free Shampoo Wash on missed days', 'Flexible Timings (4 AM-9 AM, except Wednesdays)', 'No Contact Required'],
-    screenBuilder: _subscriptions,
-    directBook: false,
-  ),
-
-  // ── Roadside Assistance ────────────────────────────────────────────────
-  const _Package(
-    category: 'Roadside Assistance',
-    name: 'Roadside Assistance',
-    price: '₹399',
-    duration: 'On-demand',
-    tagline: 'Emergency roadside help, wherever you are — extra charges may apply based on distance.',
-    features: ['Flat Tyre change', 'Dead Battery jumpstart', 'Out-of-Fuel delivery', 'Towing assistance', 'Breakdown support', 'Accident support'],
-    screenBuilder: _roadside,
-    vehicleRequired: false,
-  ),
-
-  // ── Business Solutions ─────────────────────────────────────────────────
-  const _Package(
-    category: 'Business Solutions',
-    name: 'Fleet Management',
-    price: 'Custom Quote',
-    duration: '',
-    tagline: 'End-to-end fleet servicing for businesses with multiple vehicles.',
-    features: ['Dedicated account manager', 'Priority scheduling', 'Consolidated billing', 'Multi-vehicle tracking'],
-    screenBuilder: _fleetMgmt,
-    vehicleRequired: false,
-    directBook: false,
-  ),
-  const _Package(
-    category: 'Business Solutions',
-    name: 'Battery Management',
-    price: '',
-    duration: '',
-    tagline: 'EV & conventional battery care.',
-    features: [],
-    screenBuilder: _fleetMgmt,
-    vehicleRequired: false,
-    directBook: false,
-  ),
-  const _Package(
-    category: 'Business Solutions',
-    name: 'Partner Garage Program',
-    price: '',
-    duration: '',
-    tagline: 'Join our garage network.',
-    features: [],
-    screenBuilder: _fleetMgmt,
-    vehicleRequired: false,
-    directBook: false,
-  ),
-];
+/// The full catalog — every package with show_in_catalog = true in the
+/// Supabase `services` table, so names, prices and features here always
+/// match the package screens (one row, one price). Same objects until the
+/// catalog changes.
+List<_Package>? _kCatalogCache;
+int _kCatalogRevision = -1;
+List<_Package> get _kCatalog {
+  if (_kCatalogCache == null || _kCatalogRevision != CatalogService.revision.value) {
+    _kCatalogCache = [
+      for (final item in CatalogService.catalog())
+        if (item.category != null &&
+            item.screens.isNotEmpty &&
+            _kScreenBuilders.containsKey(item.screens.first))
+          _Package(
+            key: item.key,
+            category: item.category!,
+            name: item.name,
+            price: item.priceText,
+            duration: item.duration,
+            tagline: item.tagline,
+            features: item.features,
+            screenBuilder: _kScreenBuilders[item.screens.first]!,
+            popular: item.popular,
+            comingSoon: item.detailBool('coming_soon'),
+            vehicleRequired: item.vehicleRequired,
+            directBook: item.isDirectlyPayable && !_kOpenScreenFirst.contains(item.screens.first),
+          ),
+    ];
+    _kCatalogRevision = CatalogService.revision.value;
+    _kCatalogVocabularyCache = null;
+  }
+  return _kCatalogCache!;
+}
 
 // ── Public catalog access for other screens ─────────────────────────────────
 // `_kCatalog`/`_Package` are file-private, so these two top-level functions
@@ -895,10 +468,14 @@ IconData categoryIconFor(String category) =>
 // built once, lazily, the first time search is used. This is the
 // dictionary fuzzy matching checks a typed word against, so a typo like
 // "olie" or "brek" still lands on "oil" / "brake" instead of nothing.
-final Set<String> _kCatalogVocabulary = () {
+Set<String>? _kCatalogVocabularyCache;
+Set<String> get _kCatalogVocabulary {
+  final catalog = _kCatalog; // rebuilds (and clears the cache) on catalog changes
+  final cached = _kCatalogVocabularyCache;
+  if (cached != null) return cached;
   final words = <String>{};
   final wordPattern = RegExp(r'[a-z]+');
-  for (final pkg in _kCatalog) {
+  for (final pkg in catalog) {
     for (final text in [pkg.name, pkg.category, pkg.tagline, ...pkg.features]) {
       for (final match in wordPattern.allMatches(text.toLowerCase())) {
         final w = match.group(0)!;
@@ -906,8 +483,8 @@ final Set<String> _kCatalogVocabulary = () {
       }
     }
   }
-  return words;
-}();
+  return _kCatalogVocabularyCache = words;
+}
 
 // Words so generic they appear in nearly every package ("check",
 // "inspection", "cleaning", "change"...). Two problems come from that:
@@ -1181,10 +758,11 @@ class _ServicesScreenState extends State<ServicesScreen> {
       MaterialPageRoute(
         builder: (_) => PaymentScreen(
           title: pkg.name,
-          price: pkg.price,
           duration: pkg.duration,
           vehicleId: widget.activeVehicle?['id']?.toString() ?? '',
           vehicleRequired: pkg.vehicleRequired,
+          // Priced and routed by the server from this service's row.
+          serviceKeys: [pkg.key],
         ),
       ),
     );
@@ -1371,6 +949,8 @@ class _ServicesScreenState extends State<ServicesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+
     final isSearching = _searchQuery.isNotEmpty;
     final searchHits = isSearching ? _searchHits : const <_SearchHit>[];
     final filtered = _filtered;
@@ -1468,6 +1048,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
         onTap: () => openAiAdvisor(context, widget.activeVehicle),
       ),
     );
+    });
   }
 
   // ── Hero ─────────────────────────────────────────────────

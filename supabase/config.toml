@@ -30,3 +30,15 @@ entrypoint = "./functions/notify-on-db-change/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/ask-ai-chat/index.ts"
+# Server-side pricing, booking & assignment (see supabase/functions/_shared/booking.ts).
+# verify_jwt is off because the function checks the user itself (fleet
+# payments have no Supabase user) and Razorpay's webhook carries no JWT.
+[functions.booking-api]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/booking-api/index.ts"
+
+[functions.razorpay-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/razorpay-webhook/index.ts"

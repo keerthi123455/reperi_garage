@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'payment_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../services/catalog_service.dart';
 
 class RoadsideAssistanceScreen extends StatefulWidget {
   /// This screen represents a single service with no sub-packages to
@@ -116,6 +117,10 @@ class _RoadsideAssistanceScreenState
   // - If it's still not detected after that retry, shows a "can't detect
   //   your location" message instead of proceeding.
   Future<void> _handleBookNow(String issueTitle) async {
+    // The base fare shown below comes from the services table.
+    try {
+      await CatalogService.ensureLoaded();
+    } catch (_) {}
     if (!_isLocationDetected) {
       await _getLocation();
     }
@@ -160,7 +165,7 @@ class _RoadsideAssistanceScreenState
           style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w900),
         ),
         content: Text(
-          'Base pay is ₹399. Additional charges will apply based on distance and service required.',
+          'Base pay is ${CatalogService.byKey('roadside_assistance')?.priceText ?? ''}. Additional charges will apply based on distance and service required.',
           style: TextStyle(color: AppColors.txt.withOpacity(0.7), height: 1.5),
         ),
         actions: [
@@ -179,21 +184,16 @@ class _RoadsideAssistanceScreenState
                 MaterialPageRoute(
                   builder: (_) => PaymentScreen(
                     title: 'Roadside Assistance - $issueTitle',
-                    price: '₹399',
-                    duration: 'On-demand',
+                    duration: CatalogService.byKey('roadside_assistance')?.duration ?? 'On-demand',
                     vehicleId: '',
                     vehicleRequired: false,
-                    forcedAdminUsername: 'emergency_service',
-                    // A stranded customer can't be expected to drive the
-                    // vehicle in themselves — doorstep pickup & drop is
-                    // mandatory here, not an opt-in upsell like it is for a
-                    // regular service booking.
-                    lockPickupDropOn: true,
-                    // No separate delivery leg here — the emergency_service
-                    // admin IS the technician who comes to the customer and
-                    // fixes it on the spot. There's no vehicle being taken
-                    // to a garage and back for a delivery partner to drive.
-                    assignsDeliveryPartner: false,
+                    // The server routes this to the emergency technician
+                    // (services.admin_pool = garage_emergency), always adds
+                    // the doorstep fee (pickup_mode = locked) and assigns no
+                    // separate delivery partner — the technician fixes it
+                    // on the spot.
+                    serviceKeys: const ['roadside_assistance'],
+                    bookingOptions: {'label': issueTitle},
                   ),
                 ),
               );

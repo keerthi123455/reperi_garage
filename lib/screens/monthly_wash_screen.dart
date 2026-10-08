@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'payment_screen.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
-import '../services/address_service.dart';
-import '../services/apple_review_assignment_override.dart';
-import '../widgets/error_display.dart';
+import '../services/catalog_service.dart';
+import '../widgets/catalog_gate.dart';
+import '../models/catalog_item.dart';
 
 class MonthlyWashScreen extends StatefulWidget {
   final String vehicleId;
@@ -55,6 +54,11 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return CatalogGate(builder: (context) {
+    if (_plans.isEmpty) {
+      return const CatalogEmpty(message: 'Monthly wash plans aren\'t available right now. Please check back soon.');
+    }
+
     return Scaffold(
       backgroundColor: AppColors.ink,
       appBar: AppBar(
@@ -174,72 +178,9 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
               ),
             ),
     ));
+    });
   }
 
-  /// Save the enrolled wash plan to the database after successful payment.
-  ///
-  /// This runs as PaymentScreen's onSuccess callback — Razorpay has
-  /// already charged the customer by the time this is called, so a
-  /// failure here used to mean they were charged with no plan record
-  /// ever created and no indication anything went wrong (this caught its
-  /// own error and only printed it). It now surfaces an honest message —
-  /// payment succeeded, saving the record didn't — with a retry that
-  /// re-attempts just this insert using the same orderId/paymentId,
-  /// rather than charging them again.
-  Future<void> _savePlanToDatabase(
-    String orderId,
-    String paymentId,
-  ) async {
-    try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) {
-        debugPrint('Error: User not authenticated');
-        return;
-      }
-
-      final planDetails = _getPlanDetails();
-      final endDate = DateTime.now().add(const Duration(days: 30));
-      final defaultAddr = await AddressService().getDefaultAddress();
-      // No production code assigns a washer to a new subscription at all
-      // today (washer_id is only ever set by hand in Supabase) — this
-      // only fills it in during Apple review, so the demo subscription
-      // shows up on the review washer's dashboard automatically instead
-      // of needing a manual database edit for every test run.
-      final reviewWasherId = await AppleReviewAssignmentOverride.resolveWasherId(
-        customerEmail: user.email,
-      );
-
-      await Supabase.instance.client.from('monthlywash_table').insert({
-        'user_id': user.id,
-        'vehicle_id': _vehicleId,
-        'plan_type': selectedPlan,
-        'plan_title': planDetails['title'],
-        'price': double.parse(planDetails['price']!),
-        'status': 'active',
-        'start_date': DateTime.now().toIso8601String(),
-        'end_date': endDate.toIso8601String(),
-        'payment_id': paymentId,
-        'order_id': orderId,
-        'pickup_address': defaultAddr?['address'],
-        'pickup_latitude': defaultAddr?['latitude'],
-        'pickup_longitude': defaultAddr?['longitude'],
-        'pickup_address_name': defaultAddr?['name'],
-        if (reviewWasherId != null) 'washer_id': reviewWasherId,
-      });
-
-      debugPrint('✅ Wash plan saved to database');
-    } catch (e) {
-      debugPrint('❌ Error saving wash plan: $e');
-      if (!mounted) return;
-      ErrorDisplay.showPremiumError(
-        context,
-        error: e,
-        customMessage:
-            'Your payment went through, but we couldn\'t save your wash plan (ref: $paymentId). Tap retry, or contact support with that reference if it keeps failing.',
-        onRetry: () => _savePlanToDatabase(orderId, paymentId),
-      );
-    }
-  }
 
   void _showPlanSelectionDialog() {
     showDialog(
@@ -314,43 +255,19 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Column(
                           children: [
-                            _buildPlanCard(
-                              title: 'Hatchback / Small Cars',
-                              price: '₹699',
-                              vehicles:
-                                  'Maruti Alto K10, Hyundai i20, Tata Punch, etc',
-                              isSelected: selectedPlan == 'hatchback',
-                              onTap: () =>
-                                  setDialogState(() => selectedPlan = 'hatchback'),
-                            ),
-                            const SizedBox(height: 16),
-                            _buildPlanCard(
-                              title: 'SUV / XUV / SEDAN',
-                              price: '₹1099',
-                              vehicles:
-                                  'Mahindra XUV500, Hyundai Creta, Tata Nexon, etc',
-                              isSelected: selectedPlan == 'suv',
-                              onTap: () =>
-                                  setDialogState(() => selectedPlan = 'suv'),
-                            ),
-                            const SizedBox(height: 16),
-                            _buildPlanCard(
-                              title: 'Luxury Cars',
-                              price: '₹1999',
-                              vehicles: 'Audi, BMW, Mercedes-Benz, etc',
-                              isSelected: selectedPlan == 'luxury',
-                              onTap: () =>
-                                  setDialogState(() => selectedPlan = 'luxury'),
-                            ),
-                            const SizedBox(height: 16),
-                            _buildPlanCard(
-                              title: 'Bike',
-                              price: '₹499',
-                              vehicles: 'All bikes & scooters',
-                              isSelected: selectedPlan == 'bike',
-                              onTap: () =>
-                                  setDialogState(() => selectedPlan = 'bike'),
-                            ),
+                            // One card per active plan in the services
+                            // table (screen 'monthly_wash').
+                            for (final plan in _plans) ...[
+                              _buildPlanCard(
+                                title: plan.detail('plan_label', plan.name),
+                                price: plan.priceText,
+                                vehicles: plan.detail('vehicles'),
+                                isSelected: selectedPlan == plan.detail('plan_type'),
+                                onTap: () => setDialogState(
+                                    () => selectedPlan = plan.detail('plan_type')),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
                             const SizedBox(height: 20),
                           ],
                         ),
@@ -363,7 +280,8 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
                       child: GestureDetector(
                         onTap: selectedPlan != null
                             ? () {
-                                final planDetails = _getPlanDetails();
+                                final plan = _selectedPlanItem;
+                                if (plan == null) return;
                                 // Grab the navigator BEFORE popping — `context`
                                 // here is this dialog's own, which is on its way
                                 // out once pop runs, so pushing from it after is
@@ -373,13 +291,13 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
                                 navigator.push(
                                   MaterialPageRoute(
                                     builder: (_) => PaymentScreen(
-                                      title: planDetails['title']!,
-                                      price: planDetails['price']!,
-                                      duration: '1 Month',
+                                      title: plan.bookingName,
+                                      duration: plan.duration,
                                       vehicleId: _vehicleId,
                                       onVehicleResolved: (id) => _resolvedVehicleId = id,
-                                      onSuccess: _savePlanToDatabase,
-                                      showPickupDropOption: false,
+                                      // Saved to monthlywash_table by the server
+                                      // (30-day plan, no pickup & drop).
+                                      serviceKeys: [plan.key],
                                       bookingSection: 'subscription',
                                     ),
                                   ),
@@ -447,36 +365,17 @@ class _MonthlyWashScreenState extends State<MonthlyWashScreen> {
     );
   }
 
-  /// Get plan details (title and price) based on selectedPlan
-  Map<String, String> _getPlanDetails() {
-    switch (selectedPlan) {
-      case 'hatchback':
-        return {
-          'title': 'Monthly Wash Plan - Hatchback / Small Cars',
-          'price': '699',
-        };
-      case 'suv':
-        return {
-          'title': 'Monthly Wash Plan - SUV / XUV / SEDAN',
-          'price': '1099',
-        };
-      case 'luxury':
-        return {
-          'title': 'Monthly Wash Plan - Luxury Cars',
-          'price': '1999',
-        };
-      case 'bike':
-        return {
-          'title': 'Monthly Wash Plan - Bike',
-          'price': '499',
-        };
-      default:
-        return {
-          'title': 'Monthly Wash Plan',
-          'price': '0',
-        };
+  /// Every active monthly plan, live from the services table.
+  List<CatalogItem> get _plans => CatalogService.forScreen('monthly_wash');
+
+  /// The plan picked in the dialog (by details.plan_type), if still active.
+  CatalogItem? get _selectedPlanItem {
+    for (final plan in _plans) {
+      if (plan.detail('plan_type') == selectedPlan) return plan;
     }
+    return null;
   }
+
 
   Widget _buildPlanCard({
     required String title,

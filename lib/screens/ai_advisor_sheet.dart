@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'profile_screen.dart';
 import '../services/ai_chat_session.dart';
+import '../services/catalog_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/error_display.dart';
@@ -138,6 +139,10 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
       _scrollToBottom(delayMs: 200);
     }
     _loadPackageCatalogForAi();
+    // The catalog comes from the services table — refresh once it's loaded.
+    CatalogService.ensureLoaded().then((_) {
+      if (mounted) setState(_loadPackageCatalogForAi);
+    }).catchError((_) {});
     // AppColors' fields are mutated in place by themeController, not routed
     // through an InheritedWidget — nothing marks this sheet dirty on its own
     // when the toggle flips, so it must listen and rebuild itself.
