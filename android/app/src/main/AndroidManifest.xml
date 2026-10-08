@@ -1,23 +1,34 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.reperi.autocare.app">
 
     <!-- ======================================
-         FILE PICKER PERMISSIONS
-         Required for insurance claim document uploads
+         PHOTO / FILE PICKING - NO MEDIA PERMISSIONS NEEDED
+         Google Play's Photo and Video Permissions policy: apps that only
+         pick a photo/file now and then must use the system picker instead
+         of READ_MEDIA_IMAGES / READ_MEDIA_VIDEO.
+         - image_picker already opens the Android Photo Picker.
+         - file_selector (claim PDFs) uses the system file picker.
+         Neither needs a storage/media permission, so none is requested.
          ====================================== -->
-    
-    <!-- READ_EXTERNAL_STORAGE: Allows app to read files from device storage -->
-    <!-- Required for: Picking PDF files (RC, License, Aadhaar, PAN, Insurance) -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    
-    <!-- ======================================
-         ANDROID 13+ SPECIFIC PERMISSIONS
-         These replace READ/WRITE_EXTERNAL_STORAGE on newer Android versions
-         ====================================== -->
-    
-    <!-- READ_MEDIA_IMAGES: Allows app to read image files (damage photos) -->
-    <!-- Android API 33+: Required instead of READ_EXTERNAL_STORAGE for images -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <!-- Only for Android 12 and older, where some devices' pickers still
+         want it. Android 13+ never sees this permission. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- Make sure no plugin adds the broad media permissions back in
+         through manifest merging. -->
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_VIDEO"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+        tools:node="remove" />
 
     <!-- ======================================
          LOCATION PERMISSIONS

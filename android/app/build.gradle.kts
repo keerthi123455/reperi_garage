@@ -36,10 +36,10 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = 36
-        // Bumped from 1 — Play Console rejected a re-upload with the same
-        // versionCode, so it was already consumed by an earlier attempt.
-        versionCode = 2
-        versionName = "1.0.1"
+        // Read from pubspec.yaml's `version: x.y.z+N` (N = versionCode), so
+        // bumping the version only ever means editing pubspec.yaml.
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     signingConfigs {
