@@ -42,3 +42,10 @@ entrypoint = "./functions/booking-api/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/razorpay-webhook/index.ts"
+
+# Internal CRM dashboard (web/crm.html). Checks the caller itself: Supabase
+# Auth session with a confirmed @trustkon.com email.
+[functions.crm-api]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/crm-api/index.ts"

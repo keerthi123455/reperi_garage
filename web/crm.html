@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/png" href="assets/assets/images/app_icon.png">
+<link rel="apple-touch-icon" href="assets/assets/images/app_icon.png">
+<title>REPERI Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<style>
+:root {
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --line: #e3e8ef;
+  --text: #0f1b2d;
+  --muted: #64748b;
+  --faint: #94a3b8;
+  --brand: #d4a017;
+  --brand-ink: #7a5a00;
+  --brand-soft: #fdf6e3;
+  --blue: #2563eb;
+  --blue-soft: #eaf1fe;
+  --green: #15803d;
+  --green-soft: #e8f6ee;
+  --amber: #b45309;
+  --amber-soft: #fef4e6;
+  --red: #c62828;
+  --red-soft: #fdecec;
+  --violet: #6d28d9;
+  --violet-soft: #f1ebfd;
+  --shadow: 0 1px 2px rgba(15,27,45,.04), 0 4px 16px rgba(15,27,45,.05);
+  --radius: 14px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b0f16; --surface: #121823; --surface-2: #0f141d; --line: #232c3a;
+    --text: #e6ebf2; --muted: #93a1b5; --faint: #66748a;
+    --brand: #e0b03a; --brand-ink: #f3d27a; --brand-soft: #2a2310;
+    --blue: #6aa0ff; --blue-soft: #15223a; --green: #4ade80; --green-soft: #10261a;
+    --amber: #f5b15a; --amber-soft: #2b2010; --red: #ff6b6b; --red-soft: #2d1416;
+    --violet: #b794ff; --violet-soft: #221a35;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b0f16; --surface: #121823; --surface-2: #0f141d; --line: #232c3a;
+  --text: #e6ebf2; --muted: #93a1b5; --faint: #66748a;
+  --brand: #e0b03a; --brand-ink: #f3d27a; --brand-soft: #2a2310;
+  --blue: #6aa0ff; --blue-soft: #15223a; --green: #4ade80; --green-soft: #10261a;
+  --amber: #f5b15a; --amber-soft: #2b2010; --red: #ff6b6b; --red-soft: #2d1416;
+  --violet: #b794ff; --violet-soft: #221a35;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.45 Manrope, system-ui, -apple-system, Segoe UI, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--blue); }
+.mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; }
+.hidden { display: none !important; }
+
+/* ── Login ── */
+#login {
+  min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+  background:
+    radial-gradient(800px 400px at 15% 0%, rgba(212,160,23,.14), transparent 60%),
+    radial-gradient(700px 400px at 100% 100%, rgba(37,99,235,.10), transparent 60%),
+    var(--bg);
+}
+.login-card {
+  width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 20px; padding: 32px 28px; box-shadow: var(--shadow);
+}
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: .4px; }
+.logo-mark { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; display: block; flex: none; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+.login-card .logo-mark { width: 44px; height: 44px; border-radius: 12px; }
+.login-card h1 { font-size: 22px; margin: 22px 0 6px; letter-spacing: -.3px; }
+.login-card p { color: var(--muted); margin: 0 0 22px; }
+label.field { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; letter-spacing: .3px; }
+.input {
+  width: 100%; height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--surface-2); outline: none; transition: border-color .15s, box-shadow .15s;
+}
+.input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(212,160,23,.18); }
+.btn {
+  height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface); cursor: pointer; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;
+  transition: background .15s, border-color .15s, transform .05s;
+}
+.btn:hover { background: var(--surface-2); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn-primary { background: var(--text); color: var(--surface); border-color: var(--text); }
+.btn-primary:hover { background: var(--text); opacity: .92; }
+.btn-block { width: 100%; height: 46px; justify-content: center; margin-top: 14px; }
+.btn-link { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0; font-weight: 600; }
+.msg { margin-top: 14px; font-size: 13px; min-height: 18px; }
+.msg.err { color: var(--red); }
+.msg.ok { color: var(--green); }
+
+/* ── Shell ── */
+#app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; background: linear-gradient(to right, var(--surface) 232px, transparent 232px); }
+.side {
+  background: var(--surface); border-right: 1px solid var(--line); padding: 18px 12px;
+  position: sticky; top: 0; height: 100vh; overflow: auto; display: flex; flex-direction: column;
+}
+.side .logo { padding: 4px 10px 18px; }
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav button {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  padding: 9px 12px; border-radius: 10px; border: none; background: none; cursor: pointer;
+  color: var(--muted); font-weight: 600; text-align: left;
+}
+.nav button:hover { background: var(--surface-2); color: var(--text); }
+.nav button.active { background: var(--brand-soft); color: var(--brand-ink); }
+.nav .count { font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 99px; background: var(--surface-2); color: var(--muted); }
+.nav button.active .count { background: rgba(212,160,23,.2); color: var(--brand-ink); }
+.nav .count.alert { background: var(--red-soft); color: var(--red); }
+.side-foot { margin-top: auto; padding: 12px 10px 0; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.side-foot .who { font-weight: 700; color: var(--text); word-break: break-all; }
+
+main { min-width: 0; }
+.topbar {
+  position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 24px;
+}
+.topbar h2 { margin: 0; font-size: 20px; letter-spacing: -.3px; margin-right: auto; }
+.seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+.seg button { border: none; background: none; padding: 6px 10px; border-radius: 7px; cursor: pointer; font-weight: 700; color: var(--muted); font-size: 13px; }
+.seg button.on { background: var(--text); color: var(--surface); }
+.toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; user-select: none; }
+.toggle input { accent-color: var(--brand); width: 16px; height: 16px; }
+.stamp { font-size: 12px; color: var(--faint); }
+.content { padding: 20px 24px 60px; }
+.custom-range { display: inline-flex; gap: 6px; align-items: center; }
+.custom-range input { height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); padding: 0 8px; }
+
+/* ── Cards & grids ── */
+.grid { display: grid; gap: 14px; }
+.kpis { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.kpi { padding: 16px 16px 14px; position: relative; overflow: hidden; }
+.kpi .label { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .2px; }
+.kpi .value { font-size: 28px; font-weight: 800; letter-spacing: -.8px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.kpi .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.kpi .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--line); }
+.kpi.k-gold .bar { background: var(--brand); }
+.kpi.k-blue .bar { background: var(--blue); }
+.kpi.k-green .bar { background: var(--green); }
+.kpi.k-amber .bar { background: var(--amber); }
+.kpi.k-red .bar { background: var(--red); }
+.kpi.k-violet .bar { background: var(--violet); }
+.kpi.clickable { cursor: pointer; }
+.kpi.clickable:hover { border-color: var(--faint); }
+.section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 26px 0 12px; }
+.section-title h3 { margin: 0; font-size: 15px; letter-spacing: -.1px; }
+.section-title .hint { font-size: 12px; color: var(--muted); }
+.two { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pad { padding: 16px; }
+.chart-wrap { position: relative; height: 260px; }
+
+/* ── Alerts ── */
+.alerts { display: grid; gap: 8px; }
+.alert {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid; font-weight: 600; cursor: pointer;
+}
+.alert .n { font-size: 18px; font-weight: 800; min-width: 28px; text-align: center; }
+.alert.red { background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 30%, transparent); color: var(--red); }
+.alert.amber { background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 30%, transparent); color: var(--amber); }
+.alert.blue { background: var(--blue-soft); border-color: color-mix(in srgb, var(--blue) 30%, transparent); color: var(--blue); }
+.alert .go { margin-left: auto; font-size: 12px; opacity: .8; }
+.allgood { padding: 14px; border-radius: 12px; background: var(--green-soft); color: var(--green); font-weight: 700; }
+
+/* ── Tables ── */
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.toolbar .input { height: 38px; max-width: 280px; }
+.select { height: 38px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); padding: 0 10px; font-weight: 600; }
+.table-wrap { overflow: auto; border-radius: var(--radius); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); font-weight: 800; background: var(--surface-2); position: sticky; top: 0; white-space: nowrap; }
+tbody tr { cursor: pointer; }
+tbody tr:hover td { background: var(--surface-2); }
+tbody tr:last-child td { border-bottom: none; }
+td .primary { font-weight: 700; }
+td .secondary { color: var(--muted); font-size: 12px; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+th.num { text-align: right; }
+.empty { padding: 32px; text-align: center; color: var(--muted); }
+.more { padding: 10px; text-align: center; font-size: 12px; color: var(--muted); }
+
+/* ── Pills ── */
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 99px; font-size: 11.5px; font-weight: 700; white-space: nowrap; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+.pill.blue { background: var(--blue-soft); color: var(--blue); border-color: transparent; }
+.pill.green { background: var(--green-soft); color: var(--green); border-color: transparent; }
+.pill.amber { background: var(--amber-soft); color: var(--amber); border-color: transparent; }
+.pill.red { background: var(--red-soft); color: var(--red); border-color: transparent; }
+.pill.violet { background: var(--violet-soft); color: var(--violet); border-color: transparent; }
+.pill.gold { background: var(--brand-soft); color: var(--brand-ink); border-color: transparent; }
+.pill.test { background: repeating-linear-gradient(45deg, var(--surface-2), var(--surface-2) 4px, var(--line) 4px, var(--line) 8px); color: var(--muted); }
+
+/* ── Live board ── */
+.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(250px, 1fr); gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+.lane { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; min-height: 160px; }
+.lane h4 { margin: 2px 4px 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); display: flex; justify-content: space-between; }
+.job { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; box-shadow: var(--shadow); }
+.job:hover { border-color: var(--faint); }
+.job .t { font-weight: 700; font-size: 13px; }
+.job .m { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.job .row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 6px; flex-wrap: wrap; }
+.job.late { border-left: 3px solid var(--red); }
+.job.warn { border-left: 3px solid var(--amber); }
+
+/* ── Drawer ── */
+.scrim { position: fixed; inset: 0; background: rgba(8,12,20,.42); z-index: 20; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.scrim.on { opacity: 1; pointer-events: auto; }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--surface); z-index: 21;
+  transform: translateX(100%); transition: transform .25s cubic-bezier(.2,.8,.2,1); display: flex; flex-direction: column;
+  border-left: 1px solid var(--line);
+}
+.drawer.on { transform: none; }
+.drawer header { padding: 18px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: flex-start; }
+.drawer header h3 { margin: 0; font-size: 18px; }
+.drawer header .x { margin-left: auto; }
+.drawer .body { padding: 18px 20px 40px; overflow: auto; }
+.kv { display: grid; grid-template-columns: 150px 1fr; gap: 6px 14px; font-size: 13px; }
+.kv dt { color: var(--muted); font-weight: 600; }
+.kv dd { margin: 0; word-break: break-word; }
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li { position: relative; padding: 0 0 14px 22px; }
+.timeline li::before { content: ""; position: absolute; left: 5px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--brand); }
+.timeline li::after { content: ""; position: absolute; left: 8.5px; top: 16px; bottom: 0; width: 1px; background: var(--line); }
+.timeline li:last-child::after { display: none; }
+.timeline .when { font-size: 12px; color: var(--muted); }
+.drawer h4 { margin: 22px 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+.chat { display: grid; gap: 6px; }
+.bubble { padding: 8px 10px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
+.bubble.me { background: var(--brand-soft); border-color: transparent; }
+.bubble .when { font-size: 11px; color: var(--muted); }
+
+.banner { padding: 10px 14px; border-radius: 10px; background: var(--amber-soft); color: var(--amber); font-size: 12.5px; margin-bottom: 14px; }
+.loading { position: fixed; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--brand), transparent); background-size: 50% 100%; animation: slide 1s linear infinite; z-index: 30; }
+@keyframes slide { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+.skel { height: 90px; border-radius: var(--radius); background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 50%, var(--surface) 100%); background-size: 200% 100%; animation: sk 1.2s infinite; border: 1px solid var(--line); }
+@keyframes sk { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+@media (max-width: 1100px) { .two, .three { grid-template-columns: 1fr; } }
+@media (max-width: 860px) {
+  #app { grid-template-columns: 1fr; background: none; }
+  .side { position: static; height: auto; flex-direction: row; align-items: center; padding: 10px 12px; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--line); }
+  .side .logo { padding: 0 10px 0 0; }
+  .side .logo span { display: none; }
+  .nav { flex-direction: row; }
+  .nav button { white-space: nowrap; width: auto; }
+  .side-foot { display: none; }
+  .topbar { padding: 10px 16px; }
+  .content { padding: 16px 16px 60px; }
+  .kv { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .kpi { padding: 12px 12px 10px; }
+  .kpi .value { font-size: 22px; }
+  .kv dt { margin-top: 6px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═════════ Sign in ═════════ -->
+<section id="login" class="hidden">
+  <div class="login-card">
+    <div class="logo"><img class="logo-mark" src="assets/assets/images/app_icon.png" onerror="this.onerror=null;this.src='icons/Icon-192.png'" alt="REPERI"><span>REPERI CONTROL ROOM</span></div>
+    <h1 id="loginTitle">Sign in</h1>
+    <p id="loginHint">Use your @trustkon.com email. We'll send you a one-time code.</p>
+    <form id="emailForm">
+      <label class="field" for="email">Work email</label>
+      <input class="input" id="email" type="email" autocomplete="email" placeholder="you@trustkon.com" required>
+      <button class="btn btn-primary btn-block" id="sendBtn" type="submit">Send code</button>
+    </form>
+    <form id="codeForm" class="hidden">
+      <label class="field" for="code">Code from your email</label>
+      <input class="input mono" id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="••••••" maxlength="10" required>
+      <button class="btn btn-primary btn-block" id="verifyBtn" type="submit">Sign in</button>
+      <div style="margin-top:12px;display:flex;justify-content:space-between">
+        <button class="btn-link" type="button" id="backBtn">← Different email</button>
+        <button class="btn-link" type="button" id="resendBtn">Resend code</button>
+      </div>
+    </form>
+    <div class="msg" id="loginMsg"></div>
+  </div>
+</section>
+
+<!-- ═════════ App ═════════ -->
+<div id="app" class="hidden">
+  <aside class="side">
+    <div class="logo"><img class="logo-mark" src="assets/assets/images/app_icon.png" onerror="this.onerror=null;this.src='icons/Icon-192.png'" alt="REPERI"><span>CONTROL ROOM</span></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">
+      <div>Signed in as</div>
+      <div class="who" id="who"></div>
+      <div style="margin-top:10px;display:flex;gap:12px">
+        <button class="btn-link" id="themeBtn">Theme</button>
+        <button class="btn-link" id="signOutBtn">Sign out</button>
+      </div>
+    </div>
+  </aside>
+  <main>
+    <div class="topbar">
+      <h2 id="pageTitle">Overview</h2>
+      <div class="seg" id="rangeSeg">
+        <button data-r="today">Today</button>
+        <button data-r="yesterday">Yesterday</button>
+        <button data-r="7d">7 days</button>
+        <button data-r="30d">30 days</button>
+        <button data-r="90d">90 days</button>
+        <button data-r="custom">Custom</button>
+      </div>
+      <span class="custom-range hidden" id="customRange">
+        <input type="date" id="fromDate"> – <input type="date" id="toDate">
+        <button class="btn" id="applyRange" style="height:34px">Apply</button>
+      </span>
+      <label class="toggle" title="Hide bookings made by the App Store / Play review accounts"><input type="checkbox" id="hideTest" checked> Hide test data</label>
+      <button class="btn" id="refreshBtn" title="Refresh">↻ Refresh</button>
+      <span class="stamp" id="stamp"></span>
+    </div>
+    <div class="content" id="content"></div>
+  </main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <header>
+    <div>
+      <div id="dType" class="pill"></div>
+      <h3 id="dTitle" style="margin-top:8px"></h3>
+      <div id="dSub" style="color:var(--muted);font-size:13px;margin-top:2px"></div>
+    </div>
+    <button class="btn x" id="dClose">Close</button>
+  </header>
+  <div class="body" id="dBody"></div>
+</aside>
+<div class="loading hidden" id="loading"></div>
+
+<script>
+(() => {
+'use strict';
+
+// ─────────────────────────────── Config ───────────────────────────────
+const SUPABASE_URL = 'https://rmvxqjyoqfinbrpubsvp.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E';
+const DOMAIN = 'trustkon.com';
+const API = SUPABASE_URL + '/functions/v1/crm-api';
+const TZ = 'Asia/Kolkata';
+const AUTO_REFRESH_MS = 60000;
+
+// Own storage key, so this never shares a session with the customer web app
+// on the same domain.
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { storageKey: 'reperi-crm-auth', persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+});
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('crm.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('crm.' + k, JSON.stringify(v)); } catch {} },
+};
+
+// ─────────────────────────────── Helpers ──────────────────────────────
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const inr = (n) => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
+const num = (n) => (Number(n) || 0).toLocaleString('en-IN');
+const money = (v) => {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return v;
+  const m = String(v).replace(/,/g, '').match(/\d+(\.\d+)?/);
+  return m ? Number(m[0]) : 0;
+};
+const fmtDT = (iso) => iso ? new Date(iso).toLocaleString('en-IN', { timeZone: TZ, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
+const fmtD = (iso) => iso ? new Date(iso).toLocaleDateString('en-IN', { timeZone: TZ, day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+const dayKey = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: TZ }); // YYYY-MM-DD in IST
+const ago = (iso) => {
+  if (!iso) return '';
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ' + (m % 60) + 'm ago';
+  const d = Math.floor(h / 24);
+  return d + 'd ago';
+};
+const hoursSince = (iso) => iso ? (Date.now() - new Date(iso).getTime()) / 3600000 : 0;
+const istMidnight = (dateStr) => new Date(dateStr + 'T00:00:00+05:30');
+const todayIST = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+const addDays = (dateStr, n) => { const d = istMidnight(dateStr); d.setUTCDate(d.getUTCDate() + n); return d.toLocaleDateString('en-CA', { timeZone: TZ }); };
+const pill = (text, tone = '') => `<span class="pill ${tone}">${esc(text)}</span>`;
+const titleCase = (s) => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+// ─────────────────────────────── State ────────────────────────────────
+const state = {
+  tab: store.get('tab', 'overview'),
+  range: store.get('range', 'today'),
+  custom: store.get('custom', { from: addDays(todayIST(), -7), to: todayIST() }),
+  hideTest: store.get('hideTest', true),
+  data: null,
+  model: null,
+  filters: { q: '', type: 'all', status: 'all', pay: 'all' },
+  timer: null,
+  loading: false,
+};
+
+function rangeBounds() {
+  const t = todayIST();
+  switch (state.range) {
+    case 'yesterday': return { from: istMidnight(addDays(t, -1)), to: istMidnight(t), label: 'yesterday' };
+    case '7d': return { from: istMidnight(addDays(t, -6)), to: istMidnight(addDays(t, 1)), label: 'last 7 days' };
+    case '30d': return { from: istMidnight(addDays(t, -29)), to: istMidnight(addDays(t, 1)), label: 'last 30 days' };
+    case '90d': return { from: istMidnight(addDays(t, -89)), to: istMidnight(addDays(t, 1)), label: 'last 90 days' };
+    case 'custom': {
+      const f = state.custom.from || t, to = state.custom.to || t;
+      return { from: istMidnight(f), to: istMidnight(addDays(to, 1)), label: `${f} → ${to}` };
+    }
+    default: return { from: istMidnight(t), to: istMidnight(addDays(t, 1)), label: 'today' };
+  }
+}
+
+// ─────────────────────────────── API ──────────────────────────────────
+async function api(action, payload = {}) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { showLogin(); throw new Error('signed_out'); }
+  const res = await fetch(API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + session.access_token },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 401) { await sb.auth.signOut(); showLogin('Your session expired. Please sign in again.'); throw new Error('signed_out'); }
+  if (res.status === 403) { await sb.auth.signOut(); showLogin(body.message || `Only @${DOMAIN} accounts can open the CRM.`, true); throw new Error('forbidden'); }
+  if (!res.ok) throw new Error(body.message || 'Request failed (' + res.status + ')');
+  return body;
+}
+
+// ─────────────────────────────── Sign in ──────────────────────────────
+let pendingEmail = '';
+function loginMsg(text, kind = 'err') { const m = $('loginMsg'); m.textContent = text || ''; m.className = 'msg ' + (text ? kind : ''); }
+function showLogin(message, isError = true) {
+  stopAutoRefresh();
+  $('app').classList.add('hidden');
+  $('login').classList.remove('hidden');
+  $('emailForm').classList.remove('hidden');
+  $('codeForm').classList.add('hidden');
+  $('loginTitle').textContent = 'Sign in';
+  $('loginHint').textContent = `Use your @${DOMAIN} email. We'll send you a one-time code.`;
+  loginMsg(message || '', isError ? 'err' : 'ok');
+}
+async function sendCode(email) {
+  $('sendBtn').disabled = true; $('resendBtn').disabled = true;
+  loginMsg('');
+  try {
+    const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+    if (error) throw error;
+    pendingEmail = email;
+    $('emailForm').classList.add('hidden');
+    $('codeForm').classList.remove('hidden');
+    $('loginTitle').textContent = 'Check your email';
+    $('loginHint').textContent = `We sent a code to ${email}.`;
+    $('code').value = ''; $('code').focus();
+  } catch (e) {
+    loginMsg(e.message || 'Could not send the code. Try again in a minute.');
+  } finally {
+    $('sendBtn').disabled = false; $('resendBtn').disabled = false;
+  }
+}
+$('emailForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const email = $('email').value.trim().toLowerCase();
+  if (!email.endsWith('@' + DOMAIN)) { loginMsg(`Use your @${DOMAIN} email address.`); return; }
+  sendCode(email);
+});
+$('resendBtn').addEventListener('click', () => pendingEmail && sendCode(pendingEmail));
+$('backBtn').addEventListener('click', () => showLogin());
+$('codeForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const token = $('code').value.replace(/\s/g, '');
+  if (!/^\d{6,10}$/.test(token)) { loginMsg('Enter the code from the email.'); return; }
+  $('verifyBtn').disabled = true; loginMsg('');
+  try {
+    const { error } = await sb.auth.verifyOtp({ email: pendingEmail, token, type: 'email' });
+    if (error) throw error;
+    await enterApp();
+  } catch (e) {
+    if (e.message !== 'forbidden' && e.message !== 'signed_out') loginMsg(e.message || 'That code is invalid or has expired.');
+  } finally {
+    $('verifyBtn').disabled = false;
+  }
+});
+$('signOutBtn').addEventListener('click', async () => { await sb.auth.signOut(); showLogin('Signed out.', false); });
+$('themeBtn').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const dark = cur ? cur === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  const next = dark ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next); store.set('theme', next);
+  if (state.model) render();
+});
+{ const t = store.get('theme', null); if (t) document.documentElement.setAttribute('data-theme', t); }
+
+async function enterApp() {
+  const me = await api('me');
+  $('who').textContent = me.email;
+  $('login').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  buildChrome();
+  await load();
+  startAutoRefresh();
+}
+
+// ─────────────────────────────── Model ────────────────────────────────
+const STAGE_LABEL = {
+  pickup_started: 'Pickup started', picked_up: 'Picked up', to_garage: 'At garage',
+  out_for_delivery: 'Out for delivery', delivered: 'Delivered',
+};
+const ON_ROAD = new Set(['pickup_started', 'picked_up', 'out_for_delivery']);
+const DONE_STATUS = /^(delivered|completed|rejected|cancell?ed)$/i;
+const GARAGE_WORK = /picked up|inspection|service in progress|billing/i;
+const TYPE_TONE = { Service: 'blue', Wash: 'violet', Roadside: 'red', PUC: 'amber', Inspection: 'amber', Claim: 'gold', 'Monthly wash': 'violet', Fleet: 'green', Detailing: '' };
+const TYPE_COLOR = { Service: '#2563eb', Wash: '#7c3aed', Roadside: '#dc2626', PUC: '#d97706', Inspection: '#ca8a04', Claim: '#b8860b', 'Monthly wash': '#a855f7', Fleet: '#16a34a', Detailing: '#64748b' };
+
+function buildModel(d) {
+  const testUsers = new Set(d.test?.user_ids || []);
+  const testEmails = new Set((d.test?.emails || []).map((e) => e.toLowerCase()));
+  const admins = new Map((d.partners?.admins || []).map((a) => [String(a.id), a]));
+  const delivery = new Map((d.partners?.delivery || []).map((p) => [String(p.id), p]));
+  const washers = new Map((d.partners?.washers || []).map((w) => [String(w.id), w]));
+  const customers = new Map((d.customers || []).map((c) => [String(c.id), c]));
+  const vehicles = new Map((d.vehicles || []).map((v) => [String(v.id), v]));
+  const from = new Date(d.range.from).getTime(), to = new Date(d.range.to).getTime();
+  const inRange = (iso) => { const t = new Date(iso).getTime(); return t >= from && t < to; };
+  const reviewAdminIds = new Set(d.test?.partners?.admin || []);
+
+  const jobs = [];
+  const push = (j) => {
+    const cust = customers.get(String(j.userId || ''));
+    const veh = vehicles.get(String(j.vehicleId || ''));
+    j.customer = j.customer || cust?.name || '—';
+    j.phone = j.phone || cust?.phone || '';
+    j.email = cust?.email || j.email || '';
+    j.vehicle = veh ? [veh.car_brand, veh.car_model].filter(Boolean).join(' ') + (veh.car_number ? ' · ' + veh.car_number : '') : (j.vehicle || '');
+    j.vehicleType = veh?.vehicle_type || '';
+    j.garage = j.garageId ? (admins.get(String(j.garageId))?.username || 'Garage') : '';
+    j.deliveryName = j.deliveryId ? (delivery.get(String(j.deliveryId))?.email || 'Partner #' + j.deliveryId) : '';
+    j.washerName = j.washerId ? (washers.get(String(j.washerId))?.email || 'Washer #' + j.washerId) : '';
+    j.test = testUsers.has(String(j.userId)) || (j.email && testEmails.has(j.email.toLowerCase())) || !!j.testFlag;
+    j.inRange = inRange(j.created);
+    jobs.push(j);
+  };
+
+  for (const r of d.bookings || []) {
+    const name = r.package_name || 'Service';
+    const garageName = admins.get(String(r.assigned_to_admin_id || ''))?.username || '';
+    let type = 'Service';
+    if (r.washer_id || /wash/i.test(name)) type = 'Wash';
+    if (/roadside|emergency/i.test(name) || /emergency/i.test(garageName)) type = 'Roadside';
+    const done = DONE_STATUS.test(r.booking_status || '') || r.delivery_stage === 'delivered' || !!r.return_otp_verified_at;
+    push({
+      table: 'bookings', id: r.id, raw: r, type, title: name, amount: money(r.package_price),
+      pay: (r.payment_status || '').toLowerCase() === 'cod' ? 'cod' : (r.payment_status ? 'paid' : 'unknown'),
+      status: r.booking_status || 'Pending', stage: r.delivery_stage || null, pickup: r.pickupdrop === 'yes',
+      garageId: r.assigned_to_admin_id, deliveryId: r.delivery_partner_id, washerId: r.washer_id,
+      userId: r.user_id, vehicleId: r.vehicle_id, customer: r.customer_name, phone: r.customer_phone,
+      address: r.pickup_address, created: r.created_at, done, doneAt: r.stage_delivered_at || r.return_otp_verified_at || r.marked_done_at,
+    });
+  }
+  for (const r of d.pollution || []) {
+    const cod = r.razorpay_payment_id === 'COD' || (r.payment_status || '').toLowerCase() === 'cod';
+    push({
+      table: 'pollution_booking', id: r.id, raw: r, type: 'PUC', title: 'Pollution check (PUC)', amount: money(r.price),
+      pay: cod ? 'cod' : 'paid', status: r.delivery_stage ? STAGE_LABEL[r.delivery_stage] || r.delivery_stage : 'Booked',
+      stage: r.delivery_stage || null, pickup: true, deliveryId: r.delivery_partner_id, userId: r.user_id, vehicleId: r.vehicle_id,
+      customer: r.customer_name, phone: r.customer_phone, address: r.pickup_address, created: r.created_at,
+      done: r.delivery_stage === 'delivered', doneAt: r.stage_delivered_at,
+    });
+  }
+  for (const r of d.inspection || []) {
+    const cod = r.razorpay_payment_id === 'COD' || (r.payment_status || '').toLowerCase() === 'cod';
+    push({
+      table: 'inspection_booking', id: r.id, raw: r, type: 'Inspection', title: 'Inspection' + (r.vehicle_type ? ' · ' + r.vehicle_type : ''),
+      amount: money(r.package_price), pay: cod ? 'cod' : 'paid',
+      status: r.delivery_stage ? STAGE_LABEL[r.delivery_stage] || r.delivery_stage : 'Booked', stage: r.delivery_stage || null, pickup: true,
+      deliveryId: r.delivery_partner_id, userId: r.user_id, vehicleId: r.vehicle_id, customer: r.customer_name, phone: r.customer_phone,
+      address: r.pickup_address, created: r.created_at, done: r.delivery_stage === 'delivered', doneAt: r.stage_delivered_at,
+      slot: [r.slot_date, r.slot_time].filter(Boolean).join(' '),
+    });
+  }
+  for (const r of d.claims || []) {
+    const done = DONE_STATUS.test(r.claim_status || '') || r.delivery_stage === 'delivered';
+    push({
+      table: 'claim_table', id: r.id, raw: r, type: 'Claim', title: 'Insurance claim', amount: money(r.package_price),
+      pay: (r.payment_status || '').toLowerCase() === 'cod' ? 'cod' : 'paid', status: r.claim_status || 'Submitted',
+      stage: r.delivery_stage || null, pickup: r.pickupdrop === 'yes', garageId: r.assigned_to_admin_id, deliveryId: r.delivery_partner_id,
+      userId: r.user_id, vehicleId: r.vehicle_id, customer: r.customer_name, phone: r.customer_phone, address: r.pickup_address,
+      created: r.created_at, done, doneAt: r.stage_delivered_at || r.marked_done_at,
+    });
+  }
+  for (const r of d.fleet || []) {
+    push({
+      table: 'fleet_pickup_requests', id: r.id, raw: r, type: 'Fleet', title: [r.vehicle_model, r.car_number].filter(Boolean).join(' · ') || 'Fleet pickup',
+      amount: money(r.total_amount), pay: (r.payment_status || 'unpaid').toLowerCase(), status: r.status || 'Pending',
+      stage: null, pickup: true, customer: r.company_name || r.username || 'Fleet', phone: '', email: r.username || '',
+      created: r.created_at, done: /completed/i.test(r.status || ''), testFlag: testEmails.has(String(r.username || '').toLowerCase()),
+      garageId: null,
+    });
+  }
+  for (const r of d.monthly || []) {
+    const end = r.end_date ? new Date(r.end_date).getTime() : null;
+    const active = (r.status || '') === 'active' && (!end || end >= Date.now() - 86400000);
+    push({
+      table: 'monthlywash_table', id: r.id, raw: r, type: 'Monthly wash', title: r.plan_title || r.plan_type || 'Monthly wash plan',
+      amount: money(r.price), pay: r.order_id === 'COD' || r.payment_id === 'COD' ? 'cod' : 'paid', status: active ? 'Active' : (r.status || 'Ended'),
+      stage: null, pickup: false, washerId: r.washer_id, userId: r.user_id, vehicleId: r.vehicle_id, address: r.pickup_address,
+      created: r.created_at, done: !active, washes: r.total_services_completed || 0, start: r.start_date, end: r.end_date,
+      vehicle: [r.car_brand, r.car_model].filter(Boolean).join(' '),
+    });
+  }
+  for (const r of d.detailing || []) {
+    push({
+      table: 'detailing_bookings', id: r.id, raw: r, type: 'Detailing', title: [r.service_category, r.service_name].filter(Boolean).join(' · ') || 'Detailing enquiry',
+      amount: 0, priceText: r.service_price, pay: 'enquiry', status: 'Enquiry', stage: null, pickup: false, userId: r.user_id,
+      customer: r.user_name, phone: r.user_phone, email: r.user_email, created: r.created_at, done: false, enquiry: true,
+    });
+  }
+
+  for (const j of jobs) j.bucket = boardBucket(j);
+
+  const washLog = (d.wash_log || []).map((w) => {
+    const sub = jobs.find((j) => j.table === 'monthlywash_table' && String(j.id) === String(w.subscription_id));
+    return { ...w, sub, test: sub?.test || false };
+  });
+  const intents = (d.payment_intents || []).map((p) => ({
+    ...p, test: testUsers.has(String(p.user_id)) || testEmails.has(String(p.customer_email || '').toLowerCase()), inRange: inRange(p.created_at),
+  }));
+  const cancellations = (d.cancellations || []).map((c) => ({ ...c, test: testUsers.has(String(c.user_id)) }));
+
+  return { jobs, washLog, intents, cancellations, admins, delivery, washers, customers, vehicles, reviewAdminIds, raw: d };
+}
+
+function boardBucket(j) {
+  if (j.done || j.enquiry || j.table === 'monthlywash_table') return null;
+  // One-time doorstep washes have no "completed" step in the washer app yet,
+  // so treat them as open only on the day they're booked.
+  if (j.type === 'Wash' && !j.stage && hoursSince(j.created) > 24) return null;
+  if (j.table === 'fleet_pickup_requests') {
+    if (/picked up/i.test(j.status)) return 'picked';
+    if (/in garage/i.test(j.status)) return 'garage';
+    return 'new';
+  }
+  if (j.stage === 'out_for_delivery') return 'out';
+  if (j.stage === 'pickup_started') return 'pickup';
+  if (j.stage === 'picked_up') return 'picked';
+  if (/ready for pickup/i.test(j.status)) return 'ready';
+  if (j.stage === 'to_garage' || GARAGE_WORK.test(j.status)) return 'garage';
+  return 'new';
+}
+
+// Rows visible under the current "hide test data" setting.
+const vis = (list) => state.hideTest ? list.filter((x) => !x.test) : list;
+
+// ─────────────────────────────── Loading ──────────────────────────────
+async function load(silent = false) {
+  if (state.loading) return;
+  state.loading = true;
+  $('loading').classList.remove('hidden');
+  if (!silent && !state.model) $('content').innerHTML = '<div class="grid kpis">' + '<div class="skel"></div>'.repeat(8) + '</div>';
+  try {
+    const { from, to } = rangeBounds();
+    const data = await api('snapshot', { from: from.toISOString(), to: to.toISOString() });
+    state.data = data;
+    state.model = buildModel(data);
+    $('stamp').textContent = 'Updated ' + new Date().toLocaleTimeString('en-IN', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+    render();
+  } catch (e) {
+    if (e.message !== 'signed_out' && e.message !== 'forbidden') {
+      $('content').insertAdjacentHTML('afterbegin', `<div class="banner">Couldn't refresh: ${esc(e.message)}</div>`);
+    }
+  } finally {
+    state.loading = false;
+    $('loading').classList.add('hidden');
+  }
+}
+function startAutoRefresh() {
+  stopAutoRefresh();
+  state.timer = setInterval(() => { if (!document.hidden && !$('drawer').classList.contains('on')) load(true); }, AUTO_REFRESH_MS);
+}
+function stopAutoRefresh() { if (state.timer) clearInterval(state.timer); state.timer = null; }
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.model) load(true); });
+
+// ─────────────────────────────── Chrome ───────────────────────────────
+const TABS = [
+  ['overview', 'Overview'], ['live', 'Live ops'], ['bookings', 'All bookings'], ['deliveries', 'Deliveries'],
+  ['washes', 'Washes'], ['claims', 'Claims'], ['fleet', 'Fleet'], ['customers', 'Customers'],
+  ['partners', 'Partners'], ['payments', 'Payments'], ['cancellations', 'Cancellations'],
+];
+function buildChrome() {
+  document.querySelectorAll('#rangeSeg button').forEach((b) => {
+    b.classList.toggle('on', b.dataset.r === state.range);
+    b.onclick = () => {
+      state.range = b.dataset.r; store.set('range', state.range);
+      document.querySelectorAll('#rangeSeg button').forEach((x) => x.classList.toggle('on', x === b));
+      $('customRange').classList.toggle('hidden', state.range !== 'custom');
+      if (state.range !== 'custom') load();
+    };
+  });
+  $('customRange').classList.toggle('hidden', state.range !== 'custom');
+  $('fromDate').value = state.custom.from; $('toDate').value = state.custom.to;
+  $('applyRange').onclick = () => {
+    if (!$('fromDate').value || !$('toDate').value || $('fromDate').value > $('toDate').value) return;
+    state.custom = { from: $('fromDate').value, to: $('toDate').value }; store.set('custom', state.custom); load();
+  };
+  $('hideTest').checked = state.hideTest;
+  $('hideTest').onchange = () => { state.hideTest = $('hideTest').checked; store.set('hideTest', state.hideTest); render(); };
+  $('refreshBtn').onclick = () => load();
+}
+function renderNav() {
+  const m = state.model;
+  const open = vis(m.jobs).filter((j) => j.bucket);
+  const att = attention(m).reduce((s, a) => s + (a.tone === 'red' ? a.n : 0), 0);
+  const counts = {
+    live: open.length,
+    deliveries: open.filter((j) => ON_ROAD.has(j.stage)).length,
+    overview: att,
+  };
+  $('nav').innerHTML = TABS.map(([k, label]) => {
+    const c = counts[k];
+    const badge = c ? `<span class="count ${k === 'overview' ? 'alert' : ''}">${c}</span>` : '';
+    return `<button data-tab="${k}" class="${state.tab === k ? 'active' : ''}"><span>${label}</span>${badge}</button>`;
+  }).join('');
+  $('nav').querySelectorAll('button').forEach((b) => b.onclick = () => go(b.dataset.tab));
+}
+function go(tab, filters) {
+  state.tab = tab; store.set('tab', tab);
+  if (filters) Object.assign(state.filters, filters);
+  render(); window.scrollTo({ top: 0 });
+}
+
+// ─────────────────────────────── Render ───────────────────────────────
+const charts = [];
+function render() {
+  if (!state.model) return;
+  charts.splice(0).forEach((c) => c.destroy());
+  renderNav();
+  const label = TABS.find((t) => t[0] === state.tab)?.[1] || 'Overview';
+  $('pageTitle').textContent = label;
+  const errs = Object.keys(state.data.errors || {});
+  const banner = errs.length ? `<div class="banner">Some data couldn't be loaded (${esc(errs.join(', '))}). Everything else is accurate.</div>` : '';
+  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations }[state.tab] || overview;
+  $('content').innerHTML = banner + view();
+  bindRows();
+  afterRender.splice(0).forEach((fn) => fn());
+}
+const afterRender = [];
+
+function kpi(label, value, sub = '', tone = '', go = '') {
+  return `<div class="card kpi k-${tone} ${go ? 'clickable' : ''}" ${go ? `data-go="${go}"` : ''}><div class="bar"></div><div class="label">${esc(label)}</div><div class="value">${value}</div><div class="sub">${sub}</div></div>`;
+}
+
+function attention(m) {
+  const jobs = vis(m.jobs);
+  const out = [];
+  const stuckPay = vis(m.intents).filter((p) => p.status === 'failed' || (p.status === 'processing' && hoursSince(p.processing_started_at || p.updated_at || p.created_at) > 0.2));
+  if (stuckPay.length) out.push({ n: stuckPay.length, tone: 'red', text: 'Paid online but booking not saved — retry or refund', go: 'payments' });
+  const noGarage = jobs.filter((j) => j.bucket && j.table === 'bookings' && j.type !== 'Wash' && !j.garageId);
+  if (noGarage.length) out.push({ n: noGarage.length, tone: 'red', text: 'Open bookings with no garage assigned', go: 'bookings', f: { status: 'open', type: 'Service' } });
+  const noPartner = jobs.filter((j) => j.bucket && j.pickup && !j.deliveryId && j.table !== 'fleet_pickup_requests');
+  if (noPartner.length) out.push({ n: noPartner.length, tone: 'amber', text: 'Pickup bookings with no delivery partner', go: 'deliveries' });
+  const late = jobs.filter((j) => j.bucket === 'new' && j.pickup && hoursSince(j.created) > 2);
+  if (late.length) out.push({ n: late.length, tone: 'amber', text: 'Waiting more than 2 hours for pickup to start', go: 'live' });
+  const unread = (m.raw.unread_chats || []).length;
+  if (unread) out.push({ n: unread, tone: 'blue', text: 'Unread customer chat messages', go: 'bookings' });
+  const reports = (m.raw.chat_reports || []).length;
+  if (reports) out.push({ n: reports, tone: 'amber', text: 'Chat abuse reports in this period', go: 'customers' });
+  return out;
+}
+
+// ── Overview ──
+function overview() {
+  const m = state.model;
+  const all = vis(m.jobs);
+  const range = all.filter((j) => j.inRange && !j.enquiry);
+  const open = all.filter((j) => j.bucket);
+  const onRoad = open.filter((j) => ON_ROAD.has(j.stage) || (j.table === 'fleet_pickup_requests' && /picked up/i.test(j.status)));
+  const value = range.reduce((s, j) => s + j.amount, 0);
+  const online = range.filter((j) => j.pay === 'paid').reduce((s, j) => s + j.amount, 0);
+  const cash = range.filter((j) => j.pay === 'cod').reduce((s, j) => s + j.amount, 0);
+  const washLog = vis(m.washLog);
+  const washBookings = range.filter((j) => j.type === 'Wash');
+  const doneInRange = all.filter((j) => j.done && j.doneAt && new Date(j.doneAt) >= new Date(m.raw.range.from) && new Date(j.doneAt) < new Date(m.raw.range.to));
+  const activeSubs = all.filter((j) => j.table === 'monthlywash_table' && !j.done);
+  const cancels = vis(m.cancellations);
+  const enquiries = all.filter((j) => j.enquiry && j.inRange);
+  const { label } = rangeBounds();
+  const customersInRange = new Set(range.map((j) => j.userId || j.customer)).size;
+
+  const att = attention(m);
+  const attHtml = att.length
+    ? `<div class="alerts">${att.map((a, i) => `<div class="alert ${a.tone}" data-att="${i}"><span class="n">${a.n}</span><span>${esc(a.text)}</span><span class="go">Open →</span></div>`).join('')}</div>`
+    : `<div class="allgood">✓ Nothing needs attention right now.</div>`;
+  afterRender.push(() => document.querySelectorAll('[data-att]').forEach((el) => el.onclick = () => { const a = att[+el.dataset.att]; go(a.go, a.f); }));
+
+  const byType = {};
+  for (const j of range) byType[j.type] = (byType[j.type] || 0) + 1;
+  const typeChips = Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([t, n]) => pill(`${t} ${n}`, TYPE_TONE[t])).join(' ');
+
+  const top = {};
+  for (const j of range) { const k = j.title; top[k] = top[k] || { n: 0, v: 0, type: j.type }; top[k].n++; top[k].v += j.amount; }
+  const topRows = Object.entries(top).sort((a, b) => b[1].n - a[1].n).slice(0, 8);
+
+  afterRender.push(() => drawDaily(range));
+
+  return `
+    <div class="grid kpis">
+      ${kpi('Bookings', num(range.length), label, 'gold', 'bookings')}
+      ${kpi('Booked value', inr(value), `${inr(online)} online · ${inr(cash)} cash`, 'green', 'payments')}
+      ${kpi('In progress now', num(open.length), 'all open jobs, any date', 'blue', 'live')}
+      ${kpi('Vehicles on the road', num(onRoad.length), 'pickups & drops happening now', 'violet', 'deliveries')}
+      ${kpi('Completed', num(doneInRange.length), 'delivered / closed ' + label, 'green', 'bookings')}
+      ${kpi('Plan washes done', num(washLog.length), `+ ${num(washBookings.length)} one-time wash bookings`, 'violet', 'washes')}
+      ${kpi('Active wash plans', num(activeSubs.length), 'monthly subscriptions', '', 'washes')}
+      ${kpi('Customers', num(customersInRange), `booked ${label} · ${num(m.raw.totals?.profiles)} total`, '', 'customers')}
+      ${kpi('New vehicles', num(m.raw.totals?.new_vehicles), `${num(m.raw.totals?.vehicles)} registered in total`, '')}
+      ${kpi('Cancellations', num(cancels.length), label, cancels.length ? 'red' : '', 'cancellations')}
+      ${kpi('Detailing enquiries', num(enquiries.length), label, '', 'bookings')}
+      ${kpi('Avg. booking', inr(range.length ? value / range.length : 0), 'per booking', '')}
+    </div>
+
+    <div class="section-title"><h3>Needs attention</h3><span class="hint">Live, regardless of date range</span></div>
+    ${attHtml}
+
+    <div class="section-title"><h3>Bookings by day</h3><span class="hint">${typeChips || 'No bookings in this period'}</span></div>
+    <div class="grid two">
+      <div class="card pad"><div class="chart-wrap"><canvas id="chDaily"></canvas></div></div>
+      <div class="card pad"><div class="chart-wrap"><canvas id="chValue"></canvas></div></div>
+    </div>
+
+    <div class="section-title"><h3>Top services</h3><span class="hint">${label}</span></div>
+    <div class="card table-wrap">
+      ${topRows.length ? `<table><thead><tr><th>Service</th><th>Type</th><th class="num">Bookings</th><th class="num">Value</th></tr></thead><tbody>
+        ${topRows.map(([t, s]) => `<tr data-filter-q="${esc(t)}"><td class="primary">${esc(t)}</td><td>${pill(s.type, TYPE_TONE[s.type])}</td><td class="num">${s.n}</td><td class="num">${inr(s.v)}</td></tr>`).join('')}
+      </tbody></table>` : '<div class="empty">No bookings in this period.</div>'}
+    </div>
+
+    <div class="section-title"><h3>Latest bookings</h3><span class="hint"><a href="#" data-go="bookings">See all →</a></span></div>
+    ${jobTable(range.slice(0, 10), { compact: true })}
+  `;
+}
+
+function chartColors() {
+  const cs = getComputedStyle(document.documentElement);
+  return { text: cs.getPropertyValue('--muted').trim(), grid: cs.getPropertyValue('--line').trim() };
+}
+function drawDaily(range) {
+  if (!window.Chart) return;
+  const { from, to } = rangeBounds();
+  const days = [];
+  for (let d = from.toLocaleDateString('en-CA', { timeZone: TZ }); istMidnight(d) < to; d = addDays(d, 1)) days.push(d);
+  if (days.length > 120) days.splice(0, days.length - 120);
+  const types = [...new Set(range.map((j) => j.type))];
+  const count = (t, d) => range.filter((j) => j.type === t && dayKey(j.created) === d).length;
+  const c = chartColors();
+  const labels = days.map((d) => new Date(d + 'T12:00:00+05:30').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: TZ }));
+  const base = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: c.text, boxWidth: 10, boxHeight: 10, font: { family: 'Manrope', weight: 600 } } } },
+    scales: {
+      x: { stacked: true, ticks: { color: c.text, maxRotation: 0, autoSkip: true }, grid: { display: false } },
+      y: { stacked: true, beginAtZero: true, ticks: { color: c.text, precision: 0 }, grid: { color: c.grid } },
+    },
+  };
+  const el1 = $('chDaily'), el2 = $('chValue');
+  if (el1) charts.push(new Chart(el1, {
+    type: 'bar',
+    data: { labels, datasets: types.map((t) => ({ label: t, data: days.map((d) => count(t, d)), backgroundColor: TYPE_COLOR[t] || '#94a3b8', borderRadius: 4, maxBarThickness: 28 })) },
+    options: { ...base, plugins: { ...base.plugins, title: { display: true, text: 'Bookings', color: c.text, align: 'start', font: { family: 'Manrope', weight: 700 } } } },
+  }));
+  if (el2) charts.push(new Chart(el2, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Online', data: days.map((d) => range.filter((j) => j.pay === 'paid' && dayKey(j.created) === d).reduce((s, j) => s + j.amount, 0)), backgroundColor: '#15803d', borderRadius: 4, maxBarThickness: 28 },
+        { label: 'Cash', data: days.map((d) => range.filter((j) => j.pay === 'cod' && dayKey(j.created) === d).reduce((s, j) => s + j.amount, 0)), backgroundColor: '#d4a017', borderRadius: 4, maxBarThickness: 28 },
+      ],
+    },
+    options: { ...base, plugins: { ...base.plugins, title: { display: true, text: 'Booked value (₹)', color: c.text, align: 'start', font: { family: 'Manrope', weight: 700 } } } },
+  }));
+}
+
+// ── Live ops ──
+const LANES = [['new', 'New · waiting'], ['pickup', 'Pickup started'], ['picked', 'Picked up'], ['garage', 'At garage'], ['ready', 'Ready'], ['out', 'Out for delivery']];
+function live() {
+  const open = vis(state.model.jobs).filter((j) => j.bucket).sort((a, b) => new Date(a.created) - new Date(b.created));
+  if (!open.length) return '<div class="card empty">No open jobs right now. 🎉</div>';
+  return `<div class="section-title" style="margin-top:0"><h3>${open.length} open jobs</h3><span class="hint">Oldest first · red = waiting too long</span></div>
+  <div class="board">${LANES.map(([k, label]) => {
+    const list = open.filter((j) => j.bucket === k);
+    return `<div class="lane"><h4><span>${label}</span><span>${list.length}</span></h4>${list.map(jobCard).join('') || '<div class="more">—</div>'}</div>`;
+  }).join('')}</div>`;
+}
+function jobCard(j) {
+  const h = hoursSince(j.created);
+  const late = (j.bucket === 'new' && h > 2) || h > 48 ? 'late' : (j.bucket === 'new' && h > 1 ? 'warn' : '');
+  const who = [j.garage, j.deliveryName, j.washerName].filter(Boolean).map((x) => x.split('@')[0]).join(' · ');
+  return `<div class="job ${late}" data-job="${j.table}:${esc(j.id)}">
+    <div class="t">${esc(j.title)}</div>
+    <div class="m">${esc(j.customer)}${j.vehicle ? ' · ' + esc(j.vehicle) : ''}</div>
+    <div class="row">${pill(j.type, TYPE_TONE[j.type])}${j.test ? pill('TEST', 'test') : ''}<span class="m">${ago(j.created)}</span></div>
+    ${who ? `<div class="m" style="margin-top:6px">→ ${esc(who)}</div>` : '<div class="m" style="margin-top:6px;color:var(--red)">Unassigned</div>'}
+  </div>`;
+}
+
+// ── Job table (shared) ──
+function statusPill(j) {
+  if (j.enquiry) return pill('Enquiry');
+  if (j.done) return pill(j.status === 'Pending' ? 'Done' : titleCase(j.status), 'green');
+  if (j.stage) return pill(STAGE_LABEL[j.stage] || titleCase(j.stage), ON_ROAD.has(j.stage) ? 'violet' : 'blue');
+  if (/ready/i.test(j.status)) return pill(j.status, 'gold');
+  if (/pending|booked|submitted/i.test(j.status)) return pill(titleCase(j.status), 'amber');
+  return pill(titleCase(j.status), 'blue');
+}
+function payPill(j) {
+  if (j.pay === 'paid') return pill('Paid online', 'green');
+  if (j.pay === 'cod') return pill('Cash', 'gold');
+  if (j.pay === 'enquiry') return pill('—');
+  if (j.pay === 'awaiting_payment') return pill('Awaiting', 'amber');
+  if (j.pay === 'unpaid') return pill('Unpaid', 'amber');
+  return pill(titleCase(j.pay));
+}
+function jobTable(list, { compact = false, limit = 300 } = {}) {
+  if (!list.length) return '<div class="card empty">Nothing here for this period.</div>';
+  const rows = list.slice(0, limit).map((j) => `<tr data-job="${j.table}:${esc(j.id)}">
+    <td style="white-space:nowrap"><div class="primary">${fmtDT(j.created)}</div><div class="secondary">${ago(j.created)}</div></td>
+    <td><div class="primary">${esc(j.title)}</div><div class="secondary">${pill(j.type, TYPE_TONE[j.type])} ${j.test ? pill('TEST', 'test') : ''} <span class="mono">#${esc(j.id)}</span></div></td>
+    <td><div class="primary">${esc(j.customer)}</div><div class="secondary">${esc(j.phone || j.email || '')}</div></td>
+    ${compact ? '' : `<td><div>${esc(j.vehicle || '—')}</div></td>`}
+    ${compact ? '' : `<td><div class="secondary">${esc(j.garage || '—')}</div><div class="secondary">${esc([j.deliveryName, j.washerName].filter(Boolean).join(' · ') || '')}</div></td>`}
+    <td>${statusPill(j)}${j.pickup && !compact ? '<div class="secondary" style="margin-top:4px">Pickup & drop</div>' : ''}</td>
+    <td>${payPill(j)}</td>
+    <td class="num"><b>${j.enquiry ? esc(j.priceText || '—') : inr(j.amount)}</b></td>
+  </tr>`).join('');
+  return `<div class="card table-wrap"><table><thead><tr><th>When</th><th>Booking</th><th>Customer</th>${compact ? '' : '<th>Vehicle</th><th>Assigned to</th>'}<th>Status</th><th>Payment</th><th class="num">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+  ${list.length > limit ? `<div class="more">Showing ${limit} of ${list.length}. Narrow the date range or search to see the rest, or export CSV.</div>` : ''}</div>`;
+}
+
+// ── All bookings ──
+function filteredJobs() {
+  const f = state.filters;
+  const q = f.q.trim().toLowerCase();
+  return vis(state.model.jobs).filter((j) => {
+    if (f.status === 'open') { if (!j.bucket) return false; }
+    else if (f.status === 'done') { if (!j.done) return false; }
+    else if (!j.inRange) return false;
+    if (f.type !== 'all' && j.type !== f.type) return false;
+    if (f.pay !== 'all' && j.pay !== f.pay) return false;
+    if (q) {
+      const hay = [j.id, j.title, j.customer, j.phone, j.email, j.vehicle, j.garage, j.deliveryName, j.washerName, j.status, j.address].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }).sort((a, b) => new Date(b.created) - new Date(a.created));
+}
+function bookings() {
+  const f = state.filters;
+  const types = ['Service', 'Wash', 'Roadside', 'PUC', 'Inspection', 'Claim', 'Monthly wash', 'Fleet', 'Detailing'];
+  const list = filteredJobs();
+  const total = list.reduce((s, j) => s + j.amount, 0);
+  afterRender.push(() => {
+    const q = $('fq');
+    q.oninput = () => { f.q = q.value; clearTimeout(q._t); q._t = setTimeout(() => { const pos = q.selectionStart; render(); const n = $('fq'); n.focus(); n.setSelectionRange(pos, pos); }, 250); };
+    $('ft').onchange = (e) => { f.type = e.target.value; render(); };
+    $('fs').onchange = (e) => { f.status = e.target.value; render(); };
+    $('fp').onchange = (e) => { f.pay = e.target.value; render(); };
+    $('csv').onclick = () => exportCsv(list);
+  });
+  return `<div class="toolbar">
+      <input class="input" id="fq" placeholder="Search name, phone, car, #id…" value="${esc(f.q)}">
+      <select class="select" id="ft"><option value="all">All types</option>${types.map((t) => `<option ${f.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <select class="select" id="fs">
+        <option value="all" ${f.status === 'all' ? 'selected' : ''}>Booked in period</option>
+        <option value="open" ${f.status === 'open' ? 'selected' : ''}>Open now (any date)</option>
+        <option value="done" ${f.status === 'done' ? 'selected' : ''}>Completed</option>
+      </select>
+      <select class="select" id="fp">
+        <option value="all">Any payment</option>
+        <option value="paid" ${f.pay === 'paid' ? 'selected' : ''}>Paid online</option>
+        <option value="cod" ${f.pay === 'cod' ? 'selected' : ''}>Cash</option>
+        <option value="unpaid" ${f.pay === 'unpaid' ? 'selected' : ''}>Unpaid (fleet)</option>
+      </select>
+      <span class="stamp" style="margin-left:auto">${num(list.length)} results · ${inr(total)}</span>
+      <button class="btn" id="csv">Export CSV</button>
+    </div>
+    ${jobTable(list)}`;
+}
+function exportCsv(list) {
+  const cols = ['id', 'table', 'type', 'created', 'title', 'customer', 'phone', 'email', 'vehicle', 'garage', 'deliveryName', 'washerName', 'status', 'stage', 'pay', 'amount', 'address', 'test'];
+  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const csv = [cols.join(',')].concat(list.map((j) => cols.map((c) => q(c === 'created' ? fmtDT(j.created) : j[c])).join(','))).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }));
+  a.download = `reperi-bookings-${todayIST()}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ── Deliveries ──
+function deliveries() {
+  const m = state.model;
+  const all = vis(m.jobs);
+  const trips = all.filter((j) => j.pickup && j.table !== 'fleet_pickup_requests' && j.table !== 'monthlywash_table');
+  const open = trips.filter((j) => j.bucket);
+  const onRoad = open.filter((j) => ON_ROAD.has(j.stage));
+  const from = new Date(m.raw.range.from), to = new Date(m.raw.range.to);
+  const deliveredInRange = trips.filter((j) => j.raw.stage_delivered_at && new Date(j.raw.stage_delivered_at) >= from && new Date(j.raw.stage_delivered_at) < to);
+  const pickedInRange = trips.filter((j) => j.raw.stage_picked_up_at && new Date(j.raw.stage_picked_up_at) >= from && new Date(j.raw.stage_picked_up_at) < to);
+  const { label } = rangeBounds();
+  const partners = [...m.delivery.values()].map((p) => {
+    const mine = trips.filter((j) => String(j.deliveryId) === String(p.id));
+    return {
+      p, open: mine.filter((j) => j.bucket).length, road: mine.filter((j) => ON_ROAD.has(j.stage)).length,
+      done: mine.filter((j) => deliveredInRange.includes(j)).length, test: m.raw.test?.partners?.delivery?.includes(String(p.id)),
+    };
+  }).filter((x) => !(state.hideTest && x.test)).sort((a, b) => b.open - a.open);
+  return `<div class="grid kpis">
+      ${kpi('On the road now', num(onRoad.length), 'pickup started, picked up or out for delivery', 'violet')}
+      ${kpi('Open pickup jobs', num(open.length), 'not yet delivered back', 'blue')}
+      ${kpi('Picked up', num(pickedInRange.length), label, 'gold')}
+      ${kpi('Delivered back', num(deliveredInRange.length), label, 'green')}
+      ${kpi('Without a partner', num(open.filter((j) => !j.deliveryId).length), 'open pickups', open.some((j) => !j.deliveryId) ? 'red' : '')}
+    </div>
+    <div class="section-title"><h3>Delivery partners</h3></div>
+    <div class="card table-wrap"><table><thead><tr><th>Partner</th><th>Status</th><th class="num">On road</th><th class="num">Open jobs</th><th class="num">Delivered (${esc(label)})</th><th class="num">Lifetime</th><th class="num">Rating</th></tr></thead><tbody>
+      ${partners.map(({ p, open, road, done, test }) => `<tr data-filter-q="${esc(p.email)}"><td class="primary">${esc(p.email || 'Partner #' + p.id)} ${test ? pill('TEST', 'test') : ''}</td><td>${pill(titleCase(p.status || 'active'), /inactive|suspend/i.test(p.status || '') ? 'red' : 'green')}</td><td class="num">${road}</td><td class="num">${open}</td><td class="num">${done}</td><td class="num">${num(p.total_deliveries_completed)}</td><td class="num">${p.rating ?? '—'}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">No delivery partners.</td></tr>'}
+    </tbody></table></div>
+    <div class="section-title"><h3>Open pickup & drop jobs</h3><span class="hint">Oldest first</span></div>
+    ${jobTable(open.sort((a, b) => new Date(a.created) - new Date(b.created)))}`;
+}
+
+// ── Washes ──
+function washes() {
+  const m = state.model;
+  const all = vis(m.jobs);
+  const log = vis(m.washLog);
+  const subs = all.filter((j) => j.table === 'monthlywash_table');
+  const active = subs.filter((j) => !j.done);
+  const oneTime = all.filter((j) => j.type === 'Wash');
+  const oneTimeRange = oneTime.filter((j) => j.inRange);
+  const { label } = rangeBounds();
+  const today = todayIST();
+  const logToday = log.filter((w) => dayKey(w.created_at) === today).length;
+  const washers = [...m.washers.values()].map((w) => ({
+    w, subs: active.filter((j) => String(j.washerId) === String(w.id)).length,
+    oneTime: oneTimeRange.filter((j) => String(j.washerId) === String(w.id)).length,
+    test: m.raw.test?.partners?.washer?.includes(String(w.id)),
+  })).filter((x) => !(state.hideTest && x.test));
+  return `<div class="grid kpis">
+      ${kpi('Plan washes done', num(log.length), label + (state.range !== 'today' ? ` · ${logToday} today` : ''), 'violet')}
+      ${kpi('One-time wash bookings', num(oneTimeRange.length), label, 'blue')}
+      ${kpi('Active monthly plans', num(active.length), 'subscriptions', 'gold')}
+      ${kpi('New plans', num(subs.filter((j) => j.inRange).length), label, 'green')}
+    </div>
+    <div class="section-title"><h3>Washers</h3></div>
+    <div class="card table-wrap"><table><thead><tr><th>Washer</th><th class="num">Active plans</th><th class="num">One-time washes (${esc(label)})</th><th class="num">Lifetime washes</th></tr></thead><tbody>
+      ${washers.map(({ w, subs, oneTime, test }) => `<tr data-filter-q="${esc(w.email)}"><td class="primary">${esc(w.email || 'Washer #' + w.id)} ${test ? pill('TEST', 'test') : ''}</td><td class="num">${subs}</td><td class="num">${oneTime}</td><td class="num">${num(w.total_services_completed)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">No washers.</td></tr>'}
+    </tbody></table></div>
+    <div class="section-title"><h3>Washes completed</h3><span class="hint">${label} · from the washer app</span></div>
+    <div class="card table-wrap">${log.length ? `<table><thead><tr><th>When</th><th>Customer</th><th>Plan</th><th>Photos</th></tr></thead><tbody>
+      ${log.map((w) => `<tr ${w.sub ? `data-job="monthlywash_table:${esc(w.sub.id)}"` : ''}><td>${fmtDT(w.created_at)}</td><td class="primary">${esc(w.sub?.customer || '—')}<div class="secondary">${esc(w.sub?.vehicle || '')}</div></td><td>${esc(w.sub?.title || '#' + (w.subscription_id ?? ''))}</td><td>${photoLinks([w.before_photo_url, w.after_photo_url], 'subscription-services', ['Before', 'After'])}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">No washes logged in this period.</div>'}</div>
+    <div class="section-title"><h3>Active monthly plans</h3></div>
+    <div class="card table-wrap">${active.length ? `<table><thead><tr><th>Customer</th><th>Plan</th><th>Washer</th><th class="num">Washes done</th><th>Ends</th><th class="num">Price</th></tr></thead><tbody>
+      ${active.map((j) => `<tr data-job="${j.table}:${esc(j.id)}"><td class="primary">${esc(j.customer)}<div class="secondary">${esc(j.vehicle)}</div></td><td>${esc(j.title)}</td><td class="secondary">${esc(j.washerName || 'Unassigned')}</td><td class="num">${num(j.washes)}</td><td>${fmtD(j.end)}</td><td class="num">${inr(j.amount)}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">No active plans.</div>'}</div>
+    <div class="section-title"><h3>One-time wash bookings</h3><span class="hint">${label}</span></div>
+    ${jobTable(oneTimeRange)}`;
+}
+function photoLinks(paths, bucket, labels) {
+  return paths.map((p, i) => p ? `<button class="btn-link" data-doc="${esc(p)}" data-bucket="${bucket}" style="color:var(--blue);margin-right:10px">${labels[i]}</button>` : '').join('') || '—';
+}
+
+// ── Claims ──
+function claims() {
+  const list = vis(state.model.jobs).filter((j) => j.type === 'Claim' && (j.inRange || j.bucket)).sort((a, b) => new Date(b.created) - new Date(a.created));
+  const open = list.filter((j) => j.bucket);
+  return `<div class="grid kpis">
+      ${kpi('Claims in period', num(list.filter((j) => j.inRange).length), rangeBounds().label, 'gold')}
+      ${kpi('Open claims', num(open.length), 'any date', 'blue')}
+      ${kpi('Claim value', inr(list.filter((j) => j.inRange).reduce((s, j) => s + j.amount, 0)), 'booked', 'green')}
+    </div>
+    <div class="section-title"><h3>Claims</h3><span class="hint">Open the claim to view documents</span></div>
+    ${jobTable(list)}`;
+}
+
+// ── Fleet ──
+function fleet() {
+  const list = vis(state.model.jobs).filter((j) => j.type === 'Fleet' && (j.inRange || j.bucket)).sort((a, b) => new Date(b.created) - new Date(a.created));
+  const billed = list.reduce((s, j) => s + j.amount, 0);
+  const paid = list.filter((j) => j.pay === 'paid').reduce((s, j) => s + j.amount, 0);
+  const companies = new Set(list.map((j) => j.customer)).size;
+  return `<div class="grid kpis">
+      ${kpi('Requests', num(list.filter((j) => j.inRange).length), rangeBounds().label, 'green')}
+      ${kpi('Open requests', num(list.filter((j) => j.bucket).length), 'any date', 'blue')}
+      ${kpi('Billed', inr(billed), `${inr(paid)} paid`, 'gold')}
+      ${kpi('Companies', num(companies), 'with requests', '')}
+    </div>
+    <div class="section-title"><h3>Fleet requests</h3></div>
+    ${jobTable(list)}`;
+}
+
+// ── Customers ──
+function customers() {
+  const m = state.model;
+  const range = vis(m.jobs).filter((j) => j.inRange && j.table !== 'fleet_pickup_requests');
+  const map = new Map();
+  for (const j of range) {
+    const key = j.userId || j.phone || j.customer;
+    const c = map.get(key) || { name: j.customer, phone: j.phone, email: j.email, n: 0, v: 0, last: j.created, types: new Set(), vehicles: new Set(), test: j.test };
+    c.n++; c.v += j.amount; c.types.add(j.type); if (j.vehicle) c.vehicles.add(j.vehicle);
+    if (new Date(j.created) > new Date(c.last)) c.last = j.created;
+    map.set(key, c);
+  }
+  const list = [...map.values()].sort((a, b) => b.v - a.v);
+  const repeat = list.filter((c) => c.n > 1).length;
+  const reports = m.raw.chat_reports || [];
+  afterRender.push(() => document.querySelectorAll('[data-cust]').forEach((el) => el.onclick = () => go('bookings', { q: el.dataset.cust, status: 'all', type: 'all', pay: 'all' })));
+  return `<div class="grid kpis">
+      ${kpi('Customers who booked', num(list.length), rangeBounds().label, 'gold')}
+      ${kpi('Repeat customers', num(repeat), 'more than one booking', 'green')}
+      ${kpi('Registered users', num(m.raw.totals?.profiles), 'all time', 'blue')}
+      ${kpi('Registered vehicles', num(m.raw.totals?.vehicles), `${num(m.raw.totals?.new_vehicles)} new in period`, '')}
+    </div>
+    <div class="section-title"><h3>Customers</h3><span class="hint">Click a customer to see their bookings</span></div>
+    <div class="card table-wrap">${list.length ? `<table><thead><tr><th>Customer</th><th>Vehicles</th><th>Booked</th><th class="num">Bookings</th><th class="num">Value</th><th>Last booking</th></tr></thead><tbody>
+      ${list.map((c) => `<tr data-cust="${esc(c.phone || c.name)}"><td class="primary">${esc(c.name)} ${c.test ? pill('TEST', 'test') : ''}<div class="secondary">${esc([c.phone, c.email].filter(Boolean).join(' · '))}</div></td><td class="secondary">${esc([...c.vehicles].join(', ') || '—')}</td><td>${[...c.types].map((t) => pill(t, TYPE_TONE[t])).join(' ')}</td><td class="num">${c.n}</td><td class="num">${inr(c.v)}</td><td>${fmtDT(c.last)}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">No customers booked in this period.</div>'}</div>
+    ${reports.length ? `<div class="section-title"><h3>Chat reports</h3></div><div class="card table-wrap"><table><thead><tr><th>When</th><th>Type</th><th>Reason</th><th>Reported</th><th>Reference</th></tr></thead><tbody>
+      ${reports.map((r) => `<tr><td>${fmtDT(r.created_at)}</td><td>${esc(r.report_type || '')}</td><td>${esc(r.report_reason || '')}</td><td>${esc(r.reported_sender || '')}</td><td class="mono">${esc(r.booking_id || r.request_id || '')}</td></tr>`).join('')}
+    </tbody></table></div>` : ''}`;
+}
+
+// ── Partners ──
+function partners() {
+  const m = state.model;
+  const all = vis(m.jobs);
+  const from = new Date(m.raw.range.from), to = new Date(m.raw.range.to);
+  const { label } = rangeBounds();
+  const garages = [...m.admins.values()].map((a) => {
+    const mine = all.filter((j) => String(j.garageId) === String(a.id));
+    return {
+      a, open: mine.filter((j) => j.bucket).length, range: mine.filter((j) => j.inRange).length,
+      value: mine.filter((j) => j.inRange).reduce((s, j) => s + j.amount, 0),
+      done: mine.filter((j) => j.done && j.doneAt && new Date(j.doneAt) >= from && new Date(j.doneAt) < to).length,
+      test: m.reviewAdminIds.has(String(a.id)),
+    };
+  }).filter((x) => !(state.hideTest && x.test)).sort((a, b) => b.open - a.open || b.range - a.range);
+  return `<div class="section-title" style="margin-top:0"><h3>Garages</h3><span class="hint">${label}</span></div>
+    <div class="card table-wrap"><table><thead><tr><th>Garage</th><th>Handles</th><th class="num">Open now</th><th class="num">New (${esc(label)})</th><th class="num">Completed</th><th class="num">Value</th></tr></thead><tbody>
+      ${garages.map(({ a, open, range, done, value, test }) => `<tr data-filter-q="${esc(a.username)}"><td class="primary">${esc(a.username)} ${test ? pill('TEST', 'test') : ''}<div class="secondary">${esc(a.address || '')}</div></td><td>${a.vehicle ? pill(titleCase(a.vehicle)) : '—'}</td><td class="num">${open}</td><td class="num">${range}</td><td class="num">${done}</td><td class="num">${inr(value)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No garages.</td></tr>'}
+    </tbody></table></div>
+    <div class="section-title"><h3>Delivery partners & washers</h3></div>
+    <div class="grid two">
+      <div class="card table-wrap"><table><thead><tr><th>Delivery partner</th><th>Status</th><th class="num">Lifetime trips</th></tr></thead><tbody>
+        ${[...m.delivery.values()].filter((p) => !(state.hideTest && m.raw.test?.partners?.delivery?.includes(String(p.id)))).map((p) => `<tr data-filter-q="${esc(p.email)}"><td class="primary">${esc(p.email)}</td><td>${pill(titleCase(p.status || 'active'), /inactive|suspend/i.test(p.status || '') ? 'red' : 'green')}</td><td class="num">${num(p.total_deliveries_completed)}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="card table-wrap"><table><thead><tr><th>Washer</th><th class="num">Lifetime washes</th></tr></thead><tbody>
+        ${[...m.washers.values()].filter((w) => !(state.hideTest && m.raw.test?.partners?.washer?.includes(String(w.id)))).map((w) => `<tr data-filter-q="${esc(w.email)}"><td class="primary">${esc(w.email)}</td><td class="num">${num(w.total_services_completed)}</td></tr>`).join('')}
+      </tbody></table></div>
+    </div>`;
+}
+
+// ── Payments ──
+function payments() {
+  const m = state.model;
+  const intents = vis(m.intents);
+  const inRange = intents.filter((p) => p.inRange);
+  const booked = inRange.filter((p) => p.status === 'booked');
+  const onlineIn = booked.filter((p) => p.payment_method === 'online').reduce((s, p) => s + (p.amount || 0), 0);
+  const codIn = booked.filter((p) => p.payment_method === 'cod').reduce((s, p) => s + (p.amount || 0), 0);
+  const abandoned = inRange.filter((p) => p.status === 'created' && p.payment_method === 'online');
+  const stuck = intents.filter((p) => p.status === 'failed' || (p.status === 'processing' && hoursSince(p.processing_started_at || p.updated_at || p.created_at) > 0.2));
+  const conv = inRange.filter((p) => p.payment_method === 'online').length;
+  const tone = { booked: 'green', created: '', processing: 'amber', failed: 'red' };
+  const row = (p) => `<tr><td>${fmtDT(p.created_at)}</td><td class="primary">${esc((p.items || []).map((i) => i.name).join(' + ') || p.kind)}${p.test ? ' ' + pill('TEST', 'test') : ''}<div class="secondary">${esc(p.customer_email || '')}</div></td><td>${pill(p.payment_method === 'cod' ? 'Cash' : 'Online', p.payment_method === 'cod' ? 'gold' : 'blue')}</td><td>${pill(p.status === 'created' && p.payment_method === 'online' ? 'Not paid' : titleCase(p.status), tone[p.status] || '')}${p.error ? `<div class="secondary" style="max-width:280px">${esc(p.error)}</div>` : ''}</td><td class="mono">${esc(p.razorpay_payment_id || p.razorpay_order_id || '—')}</td><td class="num"><b>${inr(p.amount)}</b></td></tr>`;
+  const table = (list) => list.length ? `<div class="card table-wrap"><table><thead><tr><th>When</th><th>Items</th><th>Method</th><th>Status</th><th>Razorpay ref</th><th class="num">Amount</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table></div>` : '<div class="card empty">Nothing here.</div>';
+  return `<div class="grid kpis">
+      ${kpi('Received online', inr(onlineIn), `${booked.filter((p) => p.payment_method === 'online').length} payments`, 'green')}
+      ${kpi('Cash bookings', inr(codIn), `${booked.filter((p) => p.payment_method === 'cod').length} bookings · collected on service`, 'gold')}
+      ${kpi('Checkout conversion', conv ? Math.round(booked.filter((p) => p.payment_method === 'online').length / conv * 100) + '%' : '—', `${abandoned.length} online checkouts not paid`, 'blue')}
+      ${kpi('Needs action', num(stuck.length), 'paid but booking not saved', stuck.length ? 'red' : '')}
+    </div>
+    <div class="banner" style="background:var(--blue-soft);color:var(--blue)">Covers bookings made through the new checkout (app 2.1.0+). Older app versions and the website don't create checkout records.</div>
+    <div class="section-title"><h3>Needs action</h3><span class="hint">Customer was charged — the booking will retry automatically when they reopen the app; otherwise refund in Razorpay</span></div>
+    ${table(stuck)}
+    <div class="section-title"><h3>All checkouts</h3><span class="hint">${rangeBounds().label}</span></div>
+    ${table(inRange)}`;
+}
+
+// ── Cancellations ──
+function cancellations() {
+  const list = vis(state.model.cancellations);
+  const value = list.reduce((s, c) => s + money(c.price), 0);
+  const reasons = {};
+  for (const c of list) { const r = c.reason || 'No reason'; reasons[r] = (reasons[r] || 0) + 1; }
+  return `<div class="grid kpis">
+      ${kpi('Cancellations', num(list.length), rangeBounds().label, list.length ? 'red' : '')}
+      ${kpi('Cancelled value', inr(value), 'lost bookings', '')}
+      ${kpi('Paid online', num(list.filter((c) => /paid/i.test(c.payment_status || '')).length), 'may need a refund', 'amber')}
+    </div>
+    ${Object.keys(reasons).length ? `<div class="section-title"><h3>Reasons</h3></div><div class="card pad" style="display:flex;flex-wrap:wrap;gap:8px">${Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([r, n]) => pill(`${r} · ${n}`)).join('')}</div>` : ''}
+    <div class="section-title"><h3>Cancelled bookings</h3></div>
+    <div class="card table-wrap">${list.length ? `<table><thead><tr><th>When</th><th>Booking</th><th>Type</th><th>Reason</th><th>Payment</th><th class="num">Amount</th></tr></thead><tbody>
+      ${list.map((c) => `<tr><td>${fmtDT(c.created_at)}</td><td class="primary">${esc(c.title || '')}${c.test ? ' ' + pill('TEST', 'test') : ''}<div class="secondary mono">#${esc(c.booking_id)}</div></td><td>${esc(titleCase(c.booking_type || ''))}</td><td>${esc(c.reason || '—')}</td><td>${esc(c.payment_status || '')}</td><td class="num">${esc(c.price || '')}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">No cancellations in this period.</div>'}</div>`;
+}
+
+// ─────────────────────────────── Interactions ─────────────────────────
+function bindRows() {
+  document.querySelectorAll('[data-job]').forEach((el) => el.addEventListener('click', () => {
+    const [table, ...rest] = el.dataset.job.split(':');
+    openJob(table, rest.join(':'));
+  }));
+  document.querySelectorAll('[data-go]').forEach((el) => el.addEventListener('click', (e) => { e.preventDefault(); go(el.dataset.go); }));
+  document.querySelectorAll('[data-filter-q]').forEach((el) => el.addEventListener('click', () => go('bookings', { q: el.dataset.filterQ, status: 'all', type: 'all', pay: 'all' })));
+  document.querySelectorAll('[data-doc]').forEach((el) => el.addEventListener('click', (e) => { e.stopPropagation(); openDoc(el.dataset.doc, el.dataset.bucket); }));
+}
+async function openDoc(path, bucket) {
+  const win = window.open('', '_blank');
+  try {
+    const { url } = await api('doc', { path, bucket });
+    if (win) win.location = url; else window.location.href = url;
+  } catch (e) {
+    if (win) win.close();
+    alert(e.message || "Couldn't open the document.");
+  }
+}
+
+function closeDrawer() { $('drawer').classList.remove('on'); $('scrim').classList.remove('on'); $('drawer').setAttribute('aria-hidden', 'true'); }
+$('dClose').onclick = closeDrawer; $('scrim').onclick = closeDrawer;
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+
+const SKIP_FIELDS = new Set(['id', 'user_id', 'vehicle_id', 'assigned_to_admin_id', 'delivery_partner_id', 'washer_id']);
+const DOC_FIELDS = ['rc_copy_url', 'driving_license_url', 'owner_aadhaar_url', 'owner_pan_url', 'insurance_copy_url', 'damage_photo_url'];
+const STAGE_TIMES = [
+  ['created_at', 'Booked'], ['pickup_otp_generated_at', 'Pickup OTP sent'], ['stage_pickup_started_at', 'Pickup started'],
+  ['pickup_otp_verified_at', 'Pickup OTP verified'], ['stage_picked_up_at', 'Picked up'], ['stage_to_garage_at', 'Reached garage'],
+  ['marked_done_at', 'Garage marked done'], ['stage_out_for_delivery_at', 'Out for delivery'], ['return_otp_generated_at', 'Return OTP sent'],
+  ['return_otp_verified_at', 'Return OTP verified'], ['stage_delivered_at', 'Delivered'],
+];
+
+async function openJob(table, id) {
+  const j = state.model.jobs.find((x) => x.table === table && String(x.id) === String(id));
+  if (!j) return;
+  $('dType').className = 'pill ' + (TYPE_TONE[j.type] || ''); $('dType').textContent = j.type + (j.test ? ' · TEST' : '');
+  $('dTitle').textContent = j.title;
+  $('dSub').textContent = `#${j.id} · ${fmtDT(j.created)} · ${ago(j.created)}`;
+  $('dBody').innerHTML = summaryHtml(j) + '<div class="skel" style="margin-top:20px;height:120px"></div>';
+  $('drawer').classList.add('on'); $('scrim').classList.add('on'); $('drawer').setAttribute('aria-hidden', 'false');
+  try {
+    const d = await api('detail', { table, id });
+    $('dBody').innerHTML = summaryHtml(j) + detailHtml(j, d);
+    $('dBody').querySelectorAll('[data-doc]').forEach((el) => el.addEventListener('click', () => openDoc(el.dataset.doc, el.dataset.bucket)));
+  } catch (e) {
+    if (e.message !== 'signed_out') $('dBody').insertAdjacentHTML('beforeend', `<div class="banner">${esc(e.message)}</div>`);
+    $('dBody').querySelector('.skel')?.remove();
+  }
+}
+function summaryHtml(j) {
+  const rows = [
+    ['Status', statusPill(j)], ['Payment', payPill(j) + ` <b style="margin-left:6px">${j.enquiry ? esc(j.priceText || '') : inr(j.amount)}</b>`],
+    ['Customer', esc(j.customer)], ['Phone', j.phone ? `<a href="tel:${esc(j.phone)}">${esc(j.phone)}</a>` : '—'], ['Email', esc(j.email || '—')],
+    ['Vehicle', esc(j.vehicle || '—') + (j.vehicleType ? ' ' + pill(titleCase(j.vehicleType)) : '')],
+    ['Garage', esc(j.garage || '—')], ['Delivery partner', esc(j.deliveryName || '—')], ['Washer', esc(j.washerName || '—')],
+    ['Pickup & drop', j.pickup ? 'Yes' : 'No'], ['Address', esc(j.address || '—')],
+  ];
+  if (j.slot) rows.push(['Slot', esc(j.slot)]);
+  if (j.table === 'monthlywash_table') rows.push(['Plan period', `${fmtD(j.start)} → ${fmtD(j.end)}`], ['Washes done', num(j.washes)]);
+  return `<dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+}
+function detailHtml(j, d) {
+  const r = d.row || {};
+  let html = '';
+  const times = STAGE_TIMES.filter(([k]) => r[k]).map(([k, l]) => ({ k, l, t: r[k] })).sort((a, b) => new Date(a.t) - new Date(b.t));
+  if (times.length > 1) html += `<h4>Timeline</h4><ul class="timeline">${times.map((x) => `<li><div><b>${x.l}</b></div><div class="when">${fmtDT(x.t)}</div></li>`).join('')}</ul>`;
+  if (d.updates?.length) html += `<h4>Garage updates</h4><ul class="timeline">${d.updates.map((u) => `<li><div><b>${esc(u.stage || 'Update')}</b></div>${u.description ? `<div>${esc(u.description)}</div>` : ''}<div class="when">${fmtDT(u.created_at)}${u.image_url || u.photo_url ? ` · <button class="btn-link" style="color:var(--blue)" data-doc="${esc(u.image_url || u.photo_url)}" data-bucket="booking-images">Photo</button>` : ''}</div></li>`).join('')}</ul>`;
+  if (d.washes?.length) html += `<h4>Washes (${d.washes.length})</h4><ul class="timeline">${d.washes.map((w) => `<li><div><b>Wash completed</b></div><div class="when">${fmtDT(w.created_at)} · ${photoLinks([w.before_photo_url, w.after_photo_url], 'subscription-services', ['Before', 'After'])}</div></li>`).join('')}</ul>`;
+  const docs = DOC_FIELDS.filter((k) => r[k]);
+  if (docs.length) html += `<h4>Documents</h4><div style="display:flex;flex-wrap:wrap;gap:8px">${docs.map((k) => `<button class="btn" data-doc="${esc(r[k])}" data-bucket="insurance-documents">${titleCase(k.replace(/_url$/, '').replace('owner_', ''))}</button>`).join('')}</div>`;
+  if (r.damage_description) html += `<h4>Damage description</h4><div>${esc(r.damage_description)}</div>`;
+  if (Array.isArray(r.bill_items) && r.bill_items.length) html += `<h4>Bill</h4><dl class="kv">${r.bill_items.map((b) => `<dt>${esc(b.name)}</dt><dd>${inr(b.price)}</dd>`).join('')}</dl>`;
+  if (d.chats?.length) html += `<h4>Chat (${d.chats.length})</h4><div class="chat">${d.chats.map((c) => { const me = c.sender === 'admin' || c.sender_type === 'admin'; return `<div class="bubble ${me ? 'me' : ''}"><div><b>${esc(me ? 'Garage' : (c.sender_name || 'Customer'))}</b> ${esc(c.message)}</div><div class="when">${fmtDT(c.created_at)}</div></div>`; }).join('')}</div>`;
+  if (d.intent) html += `<h4>Checkout</h4><dl class="kv"><dt>Status</dt><dd>${esc(d.intent.status)}</dd><dt>Method</dt><dd>${esc(d.intent.payment_method)}</dd><dt>Amount</dt><dd>${inr(d.intent.amount)}</dd><dt>Razorpay payment</dt><dd class="mono">${esc(d.intent.razorpay_payment_id || '—')}</dd><dt>Razorpay order</dt><dd class="mono">${esc(d.intent.razorpay_order_id || '—')}</dd></dl>`;
+  const rest = Object.entries(r).filter(([k, v]) => v !== null && v !== '' && !SKIP_FIELDS.has(k) && !DOC_FIELDS.includes(k) && !STAGE_TIMES.some(([t]) => t === k) && typeof v !== 'object');
+  html += `<h4>All fields</h4><dl class="kv">${rest.map(([k, v]) => `<dt>${esc(titleCase(k))}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+  return html;
+}
+
+// ─────────────────────────────── Boot ─────────────────────────────────
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { showLogin(); return; }
+  const email = (session.user?.email || '').toLowerCase();
+  if (!email.endsWith('@' + DOMAIN)) { await sb.auth.signOut(); showLogin(`Only @${DOMAIN} accounts can open the CRM.`); return; }
+  try { await enterApp(); } catch (e) { if (e.message !== 'signed_out' && e.message !== 'forbidden') showLogin(e.message); }
+})();
+})();
+</script>
+</body>
+</html>
