@@ -1,29 +1,16 @@
-# Never cache the main entry files — always check for the latest version.
-# This ensures users get new deployments without needing to clear cache
-# or use incognito mode.
+# Cache policy for reperi.in (Cloudflare Pages)
+#
+# Flutter web does NOT hash its file names: main.dart.js, flutter_bootstrap.js,
+# assets/* etc. keep the same name on every build. Caching them "immutable"
+# for a year meant browsers kept OLD app code after a deploy and mixed it with
+# the NEW bootstrap -> blank screen.
+#
+# "no-cache" does NOT mean "download every time": the browser keeps its copy
+# and just asks Cloudflare "has this changed?" (ETag). Unchanged files come
+# back as a tiny 304, so it stays fast but is never stale.
+#
+# Keep this as ONE rule. Cloudflare Pages merges headers from every rule that
+# matches a path, so overlapping rules produce conflicting Cache-Control values.
 
-/index.html
-  Cache-Control: no-cache, no-store, must-revalidate
-
-/flutter_bootstrap.js
-  Cache-Control: no-cache, no-store, must-revalidate
-
-/flutter_service_worker.js
-  Cache-Control: no-cache, no-store, must-revalidate
-
-/version.json
-  Cache-Control: no-cache, no-store, must-revalidate
-
-/privacy-policy.html
-  Cache-Control: no-cache, must-revalidate
-
-/terms.html
-  Cache-Control: no-cache, must-revalidate
-
-# Hashed build assets (main.dart.js, canvaskit, etc.) are safe to cache
-# aggressively since Flutter changes their filenames/hashes on every build.
-/main.dart.js
-  Cache-Control: public, max-age=31536000, immutable
-
-/*.js
-  Cache-Control: public, max-age=31536000, immutable
+/*
+  Cache-Control: no-cache

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:reperi_garage/screens/splash_screen.dart';
@@ -98,14 +99,89 @@ class GarageApp extends StatelessWidget {
       // works, just capped) without letting it break layouts that were
       // never designed for arbitrary scale.
       builder: (context, child) {
+        final media = MediaQuery.of(context);
         final clampedScaler =
-            MediaQuery.textScalerOf(context).clamp(minScaleFactor: 0.9, maxScaleFactor: 1.15);
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: clampedScaler),
+            media.textScaler.clamp(minScaleFactor: 0.9, maxScaleFactor: 1.15);
+        final app = MediaQuery(
+          data: media.copyWith(textScaler: clampedScaler),
           child: child!,
         );
+        return kIsWeb ? _WebFrame(child: app) : app;
       },
       home: const SplashScreen(),
+    );
+  }
+}
+
+/// On a desktop/laptop browser the app is shown as a phone-width column in
+/// the middle of the screen. Every screen in this app is a hand-tuned
+/// portrait phone layout, so stretching it across a 1920px window made
+/// images and banners huge. Phones (and small windows) are untouched.
+class _WebFrame extends StatelessWidget {
+  const _WebFrame({required this.child});
+
+  final Widget child;
+
+  /// Wider than this and we frame the app.
+  static const double _breakpoint = 700;
+
+  /// Width of the framed app column.
+  static const double _appWidth = 460;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    if (media.size.width <= _breakpoint) return child;
+
+    final height = media.size.height;
+    final framedHeight = height > 980 ? 940.0 : height;
+    final vertical = (height - framedHeight) / 2;
+
+    return ColoredBox(
+      color: const Color(0xFF07090D),
+      child: Stack(
+        children: [
+          // Soft gold glow behind the app, matching the brand.
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(0, -0.2),
+                  radius: 0.9,
+                  colors: [Color(0x26D4A017), Color(0x0007090D)],
+                ),
+              ),
+            ),
+          ),
+          Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: vertical),
+              child: Container(
+                width: _appWidth,
+                height: framedHeight,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(vertical > 0 ? 28 : 0),
+                  border: Border.all(color: const Color(0x33D4A017)),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x80000000), blurRadius: 60, offset: Offset(0, 20)),
+                  ],
+                ),
+                // Screens size themselves from MediaQuery, so tell them the
+                // real space they have (the column), not the whole window.
+                child: MediaQuery(
+                  data: media.copyWith(
+                    size: Size(_appWidth, framedHeight),
+                    padding: EdgeInsets.zero,
+                    viewPadding: EdgeInsets.zero,
+                  ),
+                  child: child,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
