@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -29,6 +30,7 @@ import '../widgets/emergency_status_banner.dart';
 import '../widgets/error_display.dart';
 import '../widgets/location_row.dart';
 import '../widgets/notification_permission_dialog.dart';
+import '../widgets/web_notification_permission.dart';
 import '../widgets/packages_side_heading.dart';
 import '../widgets/promo_banner.dart';
 import '../widgets/quick_action_row.dart';
@@ -200,6 +202,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      // Website only: browsers need the permission request inside the tap,
+      // handle "blocked" and iPhone-Safari cases differently, and shouldn't
+      // re-ask after every booking (see web_notification_permission_web.dart).
+      // kIsWeb is a compile-time constant: the apps never run this branch.
+      if (kIsWeb) {
+        showWebNotificationPrompt(context);
+        return;
+      }
       if (PushNotificationService.hasPermission()) return;
       showNotificationPermissionPrimer(context);
     });
