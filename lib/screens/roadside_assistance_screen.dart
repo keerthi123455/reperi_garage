@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/geocoding_bridge.dart';
+import '../widgets/web_location_permission.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'payment_screen.dart';
 import '../theme/app_colors.dart';
@@ -25,6 +26,10 @@ class _RoadsideAssistanceScreenState
     extends State<RoadsideAssistanceScreen> {
 
   String address = "Detecting location...";
+
+  // Website only: true when our own location prompt / "unblock" steps were
+  // just shown, so Book Now doesn't stack the generic "Sorry" dialog on top.
+  bool _webLocationDialogShown = false;
 
   @override
   void initState() {
@@ -52,10 +57,10 @@ class _RoadsideAssistanceScreenState
   Future<void> _getLocation() async {
     try {
       // Web (especially Safari) doesn't reliably support the Permissions
-      // API that checkPermission()/requestPermission() depend on, so we
-      // skip straight to getCurrentPosition() on web — the browser shows
-      // its own native "Allow location" prompt automatically, and denial
-      // throws an error we catch below instead.
+      // API that checkPermission()/requestPermission() depend on, so the
+      // website uses its own soft-ask (askForWebLocation) and then
+      // getCurrentPosition(), which shows the browser's native "Allow
+      // location" popup; a denial throws an error we catch below.
       if (!kIsWeb) {
         LocationPermission permission =
             await Geolocator.checkPermission();
@@ -69,6 +74,19 @@ class _RoadsideAssistanceScreenState
                 LocationPermission.denied ||
             permission ==
                 LocationPermission.deniedForever) {
+          if (!mounted) return;
+          setState(() {
+            address = "Location unavailable";
+          });
+          return;
+        }
+      } else {
+        // Website: our own "Use your location?" prompt first (or unblock
+        // steps if the browser has blocked it). Apps never reach this.
+        _webLocationDialogShown = false;
+        final goAhead = await askForWebLocation(context);
+        if (!goAhead) {
+          _webLocationDialogShown = true;
           if (!mounted) return;
           setState(() {
             address = "Location unavailable";
@@ -101,6 +119,11 @@ class _RoadsideAssistanceScreenState
       setState(() {
         address = "Location unavailable";
       });
+      // Website: the browser refused location -> show how to turn it on.
+      if (kIsWeb && e is PermissionDeniedException) {
+        _webLocationDialogShown = true;
+        await showWebLocationBlockedHelp(context);
+      }
     }
   }
 
@@ -128,6 +151,8 @@ class _RoadsideAssistanceScreenState
     if (!mounted) return;
 
     if (!_isLocationDetected) {
+      // Website: our own prompt/unblock steps were already shown.
+      if (kIsWeb && _webLocationDialogShown) return;
       showDialog(
         context: context,
         builder: (_) => AlertDialog(

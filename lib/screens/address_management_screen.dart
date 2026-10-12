@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/geocoding_bridge.dart';
+import '../widgets/web_location_permission.dart';
 import 'package:reperi_garage/services/address_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
@@ -847,13 +848,10 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
   Future<void> _detectLocation() async {
     setState(() => isDetectingLocation = true);
     try {
-      // Request permission. Website only: Safari (iPhone) doesn't reliably
-      // support the Permissions API that requestPermission() relies on, so
-      // on web we go straight to getCurrentPosition() — the browser shows its
-      // own "Allow location" prompt and a denial lands in the catch below.
-      // Same approach as roadside_assistance_screen.dart. kIsWeb is a
-      // compile-time constant, so in the Android/iOS apps this is exactly
-      // the original code.
+      // Request permission. Android/iOS apps: exactly the original code
+      // (kIsWeb is a compile-time constant, so the website branch below is
+      // removed from app builds). Website: Safari doesn't reliably support
+      // requestPermission(), so the web branch uses its own soft-ask instead.
       if (!kIsWeb) {
         final permission = await Geolocator.requestPermission();
 
@@ -864,6 +862,14 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
             _showBottomToast(context, 'Location permission is required',
                 isError: true);
           }
+          return;
+        }
+      } else {
+        // Website: our own "Use your location?" prompt first (or unblock
+        // steps if the browser has blocked it), instead of failing silently.
+        final goAhead = await askForWebLocation(context);
+        if (!goAhead) {
+          if (mounted) setState(() => isDetectingLocation = false);
           return;
         }
       }
@@ -913,6 +919,15 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
         _showBottomToast(context, 'Location detected');
       }
     } catch (e) {
+      // Website: the browser refused location (blocked for this site or in
+      // the phone's settings) -> show how to turn it back on.
+      if (kIsWeb && e is PermissionDeniedException) {
+        if (mounted) {
+          setState(() => isDetectingLocation = false);
+          await showWebLocationBlockedHelp(context);
+        }
+        return;
+      }
       if (mounted) {
         setState(() => isDetectingLocation = false);
         ErrorDisplay.showPremiumError(
