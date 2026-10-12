@@ -1,9 +1,10 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
+import '../services/geocoding_bridge.dart';
 import 'package:reperi_garage/services/address_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
@@ -846,17 +847,25 @@ class _AddressInputSheetState extends State<_AddressInputSheet> {
   Future<void> _detectLocation() async {
     setState(() => isDetectingLocation = true);
     try {
-      // Request permission
-      final permission = await Geolocator.requestPermission();
+      // Request permission. Website only: Safari (iPhone) doesn't reliably
+      // support the Permissions API that requestPermission() relies on, so
+      // on web we go straight to getCurrentPosition() — the browser shows its
+      // own "Allow location" prompt and a denial lands in the catch below.
+      // Same approach as roadside_assistance_screen.dart. kIsWeb is a
+      // compile-time constant, so in the Android/iOS apps this is exactly
+      // the original code.
+      if (!kIsWeb) {
+        final permission = await Geolocator.requestPermission();
 
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          setState(() => isDetectingLocation = false);
-          _showBottomToast(context, 'Location permission is required',
-              isError: true);
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          if (mounted) {
+            setState(() => isDetectingLocation = false);
+            _showBottomToast(context, 'Location permission is required',
+                isError: true);
+          }
+          return;
         }
-        return;
       }
 
       // Get current position

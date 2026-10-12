@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
+import '../services/geocoding_bridge.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'payment_screen.dart';
 import '../theme/app_colors.dart';
