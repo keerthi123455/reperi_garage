@@ -185,6 +185,20 @@
             font-size: 15px;
         }
 
+        .subscription-plate {
+            display: inline-block;
+            margin-top: 6px;
+            padding: 3px 8px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 4px;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+
         .subscription-status {
             padding: 4px 10px;
             background: rgba(212, 160, 23, 0.15);
@@ -524,7 +538,8 @@
                 if (error) throw error;
 
                 console.log('✅ Subscriptions fetched:', subscriptions);
-                displaySubscriptions(subscriptions);
+                const vehiclesById = await fetchVehicles(subscriptions);
+                displaySubscriptions(subscriptions, vehiclesById);
             } catch (err) {
                 console.error('Error fetching subscriptions:', err);
                 document.getElementById('subscriptionsContent').innerHTML = `
@@ -535,7 +550,41 @@
             }
         }
 
-        function displaySubscriptions(subscriptions) {
+        // Looks up each subscription's vehicle (name + number plate) from the
+        // `vehicles` table, so washers see "Hyundai Creta · KA01AB1234"
+        // instead of an internal vehicle ID. Never breaks the dashboard: if
+        // the lookup fails (e.g. database rules don't allow it), cards fall
+        // back to the brand/model saved on the subscription itself.
+        async function fetchVehicles(subscriptions) {
+            const byId = {};
+            const ids = [...new Set((subscriptions || [])
+                .map((s) => s.vehicle_id)
+                .filter((id) => id != null && id !== ''))];
+            if (ids.length === 0) return byId;
+            try {
+                const { data, error } = await sbClient
+                    .from('vehicles')
+                    .select('id, car_brand, car_model, car_number, vehicle_type')
+                    .in('id', ids);
+                if (error) throw error;
+                (data || []).forEach((v) => { byId[String(v.id)] = v; });
+                if ((data || []).length < ids.length) {
+                    console.warn('⚠️ Some vehicles could not be read (missing, or blocked by database rules):',
+                        ids.filter((id) => !byId[String(id)]));
+                }
+            } catch (err) {
+                console.warn('⚠️ Could not load vehicle details:', err.message || err);
+            }
+            return byId;
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function displaySubscriptions(subscriptions, vehiclesById = {}) {
             const content = document.getElementById('subscriptionsContent');
 
             if (!subscriptions || subscriptions.length === 0) {
@@ -552,6 +601,10 @@
 
             subscriptions.forEach((sub) => {
                 const totalCompleted = sub.total_services_completed || 0;
+                const vehicle = vehiclesById[String(sub.vehicle_id)] || {};
+                const vehicleName = [vehicle.car_brand || sub.car_brand, vehicle.car_model || sub.car_model]
+                    .filter(Boolean).join(' ') || 'Vehicle';
+                const vehicleNumber = vehicle.car_number || sub.car_number || '';
                 const hasCoords = sub.pickup_latitude != null && sub.pickup_longitude != null;
                 const navigateHtml = hasCoords
                     ? `<a class="navigate-btn" href="https://www.google.com/maps/dir/?api=1&destination=${sub.pickup_latitude},${sub.pickup_longitude}&travelmode=driving" target="_blank" rel="noopener">🧭 Navigate</a>`
@@ -560,14 +613,16 @@
                     <div class="subscription-card">
                         <div class="subscription-header" onclick="toggleSubscription(${sub.id})">
                             <div>
-                                <div class="subscription-vehicle">${sub.car_brand || 'Vehicle'} ${sub.car_model || ''}</div>
+                                <div class="subscription-vehicle">${escapeHtml(vehicleName)}</div>
+                                ${vehicleNumber ? `<div class="subscription-plate">${escapeHtml(vehicleNumber)}</div>` : ''}
                                 <div class="subscription-status">${sub.status || 'Active'}</div>
                             </div>
                             <span class="expand-icon" id="icon-${sub.id}">▼</span>
                         </div>
 
                         <div class="subscription-details">
-                            <p><strong>Vehicle ID:</strong> ${sub.vehicle_id || 'N/A'}</p>
+                            <p><strong>Vehicle:</strong> ${escapeHtml(vehicleName)}</p>
+                            <p><strong>Vehicle Number:</strong> ${escapeHtml(vehicleNumber || 'Not available')}</p>
                             <p><strong>Subscription Type:</strong> ${sub.subscription_type || 'N/A'}</p>
                             <p><strong>Price:</strong> ₹${sub.price || '0'}</p>
                             <p><strong>Frequency:</strong> ${sub.frequency || 'N/A'}</p>
