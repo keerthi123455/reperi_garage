@@ -18,6 +18,10 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <!-- Tells phone browsers this page has its OWN dark version (below), so
+       Samsung Internet / Chrome "dark mode for websites" use it instead of
+       auto-darkening the yellow loader into a muddy brown. -->
+  <meta name="color-scheme" content="light dark">
   <!-- Phone layout from the very first moment. Without this, phones draw the
        page at desktop width (zoomed out) until Flutter adds its own tag. These
        are the same values Flutter uses, so nothing jumps when it takes over. -->
@@ -110,13 +114,16 @@
     #reperi-loader svg {
       width: min(88vw, 540px, calc((100vh - 170px) * 1.8));
       width: min(88vw, 540px, calc((100dvh - 170px) * 1.8));
+      /* --rp-vw / --rp-vh are only set on phones shown as a desktop page
+         (see the script under the loader): the phone's real screen size. */
+      width: min(calc(var(--rp-vw, 1vw) * 88), 540px, calc((var(--rp-vh, 1dvh) * 100 - 170px) * 1.8));
       height: auto; overflow: visible; display: block;
     }
     @media (min-width: 900px) {
-      #reperi-loader .spanner { width: 54px; height: 54px; }
-      #reperi-loader .brand { font-size: 17px; margin-bottom: 18px; }
-      #reperi-loader .msg { font-size: 17px; max-width: 460px; }
-      #reperi-loader .bar { width: 150px; }
+      #reperi-loader:not(.rp-zoomed) .spanner { width: 54px; height: 54px; }
+      #reperi-loader:not(.rp-zoomed) .brand { font-size: 17px; margin-bottom: 18px; }
+      #reperi-loader:not(.rp-zoomed) .msg { font-size: 17px; max-width: 460px; }
+      #reperi-loader:not(.rp-zoomed) .bar { width: 150px; }
     }
     #reperi-loader svg * { transform-box: view-box; }
 
@@ -233,6 +240,25 @@
 
     /* Puddle under the car while washing */
     #rp-puddle { transform-origin: 152px 184px; }
+
+    /* ---- Dark version: matches the app's black & gold theme. Used when the
+       phone is in dark mode, instead of the browser darkening the yellow
+       one itself. ---- */
+    @media (prefers-color-scheme: dark) {
+      html, body { background: #080808; }
+      #reperi-loader {
+        --navy: #D4A017;
+        background: radial-gradient(120% 80% at 50% 40%, #241b08 0%, #100d07 50%, #080808 100%);
+        color: #f3e7c6;
+      }
+      #reperi-loader .brand { color: #D4A017; }
+      #reperi-loader .spanner > rect { fill: #D4A017; }
+      #reperi-loader .bar { background: rgba(255, 255, 255, .12); }
+      #reperi-loader #rp-paint stop:first-child { stop-color: #4a6be0; }
+      #reperi-loader #rp-paint stop:last-child { stop-color: #2a45a0; }
+      #reperi-loader svg:not(.spanner) > rect { fill: #ffffff; }
+      #reperi-loader #rp-shadow { fill: #000000; opacity: .55; }
+    }
 
     @media (prefers-reduced-motion: reduce) {
       #reperi-loader *, #reperi-loader *::after { animation-duration: .01s !important; animation-iteration-count: 1 !important; }
@@ -422,6 +448,34 @@
     #reperi-loader .rp-tool-wash    { animation: rp-phase-a 6.4s ease-in-out 1.1s infinite both; }
     #reperi-loader .rp-tool-service { animation: rp-phase-b 6.4s ease-in-out 1.1s infinite both; }
   </style>
+
+  <script>
+    // Phone showing the site as a DESKTOP page (Chrome "Desktop site", links
+    // opened from WhatsApp, some in-app browsers): the page is laid out
+    // ~980px wide and shrunk, so the loader looked tiny. Scale it back up to
+    // normal phone size. (main.dart does the same for the app itself.)
+    (function () {
+      try {
+        var loader = document.getElementById('reperi-loader');
+        var iw = window.innerWidth, sw = screen.width;
+        var touch = (navigator.maxTouchPoints || 0) > 0;
+        var vv = window.visualViewport;
+        var phoneWidth = null;
+        if (touch && sw > 0 && sw <= 700 && iw > sw * 1.3) {
+          phoneWidth = sw;
+        } else if (touch && vv && vv.scale > 0 && vv.scale < 0.85 && iw * vv.scale <= 700) {
+          phoneWidth = iw * vv.scale;
+        }
+        if (loader && phoneWidth && iw / phoneWidth >= 1.3) {
+          var factor = iw / phoneWidth;
+          loader.style.zoom = factor.toFixed(3);
+          loader.classList.add('rp-zoomed');
+          loader.style.setProperty('--rp-vw', (phoneWidth / 100) + 'px');
+          loader.style.setProperty('--rp-vh', (window.innerHeight / factor / 100) + 'px');
+        }
+      } catch (e) {}
+    })();
+  </script>
 
   <script>
     (function () {

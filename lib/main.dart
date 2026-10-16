@@ -8,6 +8,7 @@ import 'screens/login_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'services/catalog_service.dart';
 import 'services/push_notification_service.dart';
+import 'services/web_display.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -131,6 +132,34 @@ class _WebFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
+
+    // A PHONE showing the site as a desktop page ("Desktop site" in Chrome,
+    // links opened from WhatsApp, some in-app browsers): the page is laid out
+    // ~980px wide and shrunk to fit, so the app looked tiny inside the laptop
+    // frame. Lay the app out at the phone's real width and scale it up to
+    // fill the screen, so it looks exactly like the normal phone version.
+    final zoom = phoneZoomFactor();
+    if (zoom != null) {
+      final phoneSize = media.size / zoom;
+      return FittedBox(
+        fit: BoxFit.fill,
+        alignment: Alignment.topLeft,
+        child: SizedBox.fromSize(
+          size: phoneSize,
+          child: MediaQuery(
+            data: media.copyWith(
+              size: phoneSize,
+              devicePixelRatio: media.devicePixelRatio * zoom,
+              padding: media.padding / zoom,
+              viewPadding: media.viewPadding / zoom,
+              viewInsets: media.viewInsets / zoom,
+            ),
+            child: child,
+          ),
+        ),
+      );
+    }
+
     if (media.size.width <= _breakpoint) return child;
 
     final height = media.size.height;
