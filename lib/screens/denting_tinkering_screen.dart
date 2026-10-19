@@ -4,6 +4,7 @@ import '../services/catalog_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/catalog_gate.dart';
+import '../widgets/requirements.dart';
 
 class DentingTinkeringScreen extends StatefulWidget {
   final Map<String, dynamic> vehicle;
@@ -122,16 +123,7 @@ class _DentingTinkeringScreenState extends State<DentingTinkeringScreen> {
 
   void _bookSelected() {
     if (selectedPackage == -1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please select a package',
-            style: TextStyle(color: Colors.white),
-          ),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      showMissingItems(context, title: 'Pick a package first', items: const ['Tap one of the packages above to choose it']);
       return;
     }
 

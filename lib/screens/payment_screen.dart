@@ -4,7 +4,6 @@ import 'package:shimmer/shimmer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '/services/payment_service_factory.dart';
 import 'home_screen.dart';
-import 'profile_screen.dart';
 import 'vehicle_bookings_screen.dart';
 import 'package:reperi_garage/services/address_service.dart';
 import 'package:reperi_garage/screens/address_management_screen.dart';
@@ -14,7 +13,8 @@ import '../services/payment_service.dart';
 import '../models/catalog_item.dart' show formatRupees;
 import '/services/service_area.dart';
 import '../widgets/error_display.dart';
-import '../widgets/guest_sheets.dart';
+import '../widgets/requirements.dart';
+import '../widgets/slot_picker.dart';
 
 /// Fixed white/blue corporate palette for this screen — set explicitly
 /// rather than pulled from Theme.of(context), so checkout looks identical
@@ -164,7 +164,64 @@ class _PaymentScreenState extends State<PaymentScreen>
   /// confirmation dialog.
   void _setPickupDrop(bool value) {
     if (_pickupLocked) return;
-    setState(() => _addPickupDrop = value);
+    setState(() {
+      _addPickupDrop = value;
+      // Pickup and garage drop-off use different hours — re-pick the time.
+      if (_slot != null && _slot!.mode != _slotMode) _slot = null;
+    });
+  }
+
+  // ── Time slot ──
+  // Pickup / doorstep: 9 AM – 7 PM. Garage drop-off (no pickup): 12 – 5 PM.
+  // Same day allowed from 3 hours after now. booking-api checks it again.
+  BookingSlot? _slot;
+  final GlobalKey _slotKey = GlobalKey();
+
+  /// Roadside, fleet, inspection (has its own planner) and the monthly
+  /// wash subscription don't take a slot here.
+  bool get _slotApplies =>
+      !_isFleet &&
+      !widget.serviceKeys.any((k) => k.contains('roadside')) &&
+      const {'bookings', 'pollution', 'claim'}.contains(widget.bookingSection);
+
+  SlotMode get _slotMode {
+    final mode = _quote?.pickupMode ?? 'none';
+    if (mode == 'none') return SlotMode.doorstep;
+    if (mode == 'optional') return _addPickupDrop ? SlotMode.pickup : SlotMode.garageDrop;
+    return SlotMode.pickup;
+  }
+
+  String get _slotTitle => switch (_slotMode) {
+        SlotMode.pickup => 'Pickup time',
+        SlotMode.garageDrop => 'Garage drop-off time',
+        SlotMode.doorstep => 'Visit time',
+      };
+
+  /// Booking options sent to booking-api, with the chosen slot added.
+  Map<String, dynamic> get _optionsWithSlot => {
+        ...widget.bookingOptions,
+        if (_slotApplies && _slot != null) 'slot': _slot!.toJson(),
+      };
+
+  Widget _slotCard() {
+    return Container(
+      key: _slotKey,
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecoration(),
+      child: SlotPicker(
+        mode: _slotMode,
+        value: _slot,
+        onChanged: (s) => setState(() => _slot = s),
+        style: const SlotPickerStyle(
+          accent: _PayColors.blue,
+          surface: _PayColors.surface,
+          border: _PayColors.border,
+          text: _PayColors.navy,
+          muted: _PayColors.muted,
+          tint: _PayColors.blueTint,
+        ),
+      ),
+    );
   }
 
   // ── Address state ──
@@ -212,11 +269,7 @@ class _PaymentScreenState extends State<PaymentScreen>
   }
 
   Future<void> _signUpThenContinue() async {
-    final ok = await requireAccount(
-      context,
-      title: 'Sign up to book',
-      subtitle: "Your booking is waiting — sign up with your email and you'll be right back here.",
-    );
+    final ok = await ensureReady(context, account: true);
     if (!mounted) return;
     if (!ok) {
       Navigator.pop(context); // back to the package they were looking at
@@ -277,47 +330,13 @@ class _PaymentScreenState extends State<PaymentScreen>
   /// still had no vehicle — and got asked again. Now Profile opens on top
   /// of this screen and closes itself as soon as the vehicle is saved,
   /// handing back its id, so checkout carries on right here.
-  void _showVehicleRequiredDialog() {
+  Future<void> _showVehicleRequiredDialog({bool leaveOnCancel = true}) async {
     if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: _PayColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'ADD A VEHICLE TO BOOK THIS SERVICE',
-          style: TextStyle(color: _PayColors.navy, fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(dialogContext); // close dialog
-              final addedId = await Navigator.push<String>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const ProfileScreen(
-                    autoOpenAddVehicle: true,
-                    returnAddedVehicle: true,
-                  ),
-                ),
-              );
-              if (!mounted) return;
-              final vehicleId = addedId ?? await _findCurrentVehicleId();
-              if (!mounted) return;
-              if (vehicleId != null) {
-                _useVehicle(vehicleId);
-              } else {
-                // Backed out of Profile without adding one — nothing to
-                // book against, so leave checkout.
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('ADD VEHICLE', style: TextStyle(color: _PayColors.blue)),
-          ),
-        ],
-      ),
-    );
+    final ok = await ensureReady(context, vehicle: true, onVehicle: _useVehicle);
+    if (!mounted) return;
+    // Opened on arrival with no vehicle: nothing to book against, so go
+    // back to the package. After tapping Pay: stay right here.
+    if (!ok && leaveOnCancel && _vehicleId.isEmpty) Navigator.pop(context);
   }
 
   /// Load the default address for display
@@ -413,45 +432,55 @@ class _PaymentScreenState extends State<PaymentScreen>
         selectedLongitude != null;
   }
 
-  /// Show error popup if address is invalid
-  void _showAddressErrorPopup() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _PayColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Address Required',
-          style: TextStyle(
-            color: _PayColors.navy,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        content: const Text(
-          'Enter valid address to continue to payment',
-          style: TextStyle(color: _PayColors.muted),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Close',
-              style: TextStyle(color: _PayColors.blue),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _navigateToAddressManagement();
-            },
-            child: const Text(
-              'Add Address',
-              style: TextStyle(color: _PayColors.blue),
-            ),
-          ),
-        ],
-      ),
+  /// Address missing: popup → Add opens the address screen → back here.
+  /// Returns true once a valid address is set.
+  Future<bool> _showAddressErrorPopup() async {
+    final add = await showMissingPopup(
+      context,
+      icon: Icons.location_on_rounded,
+      title: 'Pickup address missing',
+      message: "Add the address where we should pick up your vehicle. You'll come right back here.",
+      addLabel: 'Add address',
     );
+    if (!add || !mounted) return false;
+    await _navigateToAddressManagement();
+    return mounted && _isAddressValid();
+  }
+
+  /// Everything a booking needs, checked one by one with a popup for
+  /// whatever is missing. Each "Add" comes back here and carries on.
+  Future<bool> _checkReady() async {
+    if (_isFleet) return true;
+    if (!await ensureReady(context, contact: true)) return false;
+    if (!mounted) return false;
+    if (widget.vehicleRequired && _vehicleId.isEmpty) {
+      if (!await ensureReady(context, vehicle: true, onVehicle: _useVehicle)) return false;
+      if (!mounted) return false;
+    }
+    if (!_isAddressValid()) {
+      if (!await _showAddressErrorPopup()) return false;
+    }
+    if (!mounted) return false;
+    if (_slotApplies && (_slot == null || !_slot!.isStillValid || _slot!.mode != _slotMode)) {
+      final expired = _slot != null;
+      await showMissingPopup(
+        context,
+        icon: Icons.schedule_rounded,
+        title: expired ? 'Pick another time' : 'Pick a time',
+        message: expired
+            ? 'That time slot is no longer available. Choose a new one — same-day slots open 3 hours from now.'
+            : 'Choose the day and time that works for you.',
+        addLabel: 'Choose time',
+      );
+      if (!mounted) return false;
+      if (expired) setState(() => _slot = null);
+      final ctx = _slotKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 400), curve: Curves.easeOut, alignment: 0.2);
+      }
+      return false;
+    }
+    return mounted;
   }
 
   /// Navigate to address management screen
@@ -564,7 +593,7 @@ class _PaymentScreenState extends State<PaymentScreen>
           _showOutOfServiceAreaDialog();
           return;
         case 'vehicle_required':
-          _showVehicleRequiredDialog();
+          _showVehicleRequiredDialog(leaveOnCancel: false);
           return;
         case 'service_unavailable':
         case 'not_payable':
@@ -585,12 +614,7 @@ class _PaymentScreenState extends State<PaymentScreen>
   /// PATH 1: Pay Online via Razorpay. The server creates the order for the
   /// amount IT calculates, then books the service after verifying payment.
   Future<void> placeOnlineOrder() async {
-    if (!_isFleet && !await requireAccount(context)) return;
-    if (!mounted) return;
-    if (!_isFleet && !_isAddressValid()) {
-      _showAddressErrorPopup();
-      return;
-    }
+    if (!await _checkReady()) return;
     if (_quote == null) {
       await _loadQuote();
       if (!mounted || _quote == null) return;
@@ -605,7 +629,7 @@ class _PaymentScreenState extends State<PaymentScreen>
         cash: false,
         pickupDrop: _addPickupDrop,
         vehicleId: _vehicleId,
-        options: widget.bookingOptions,
+        options: _optionsWithSlot,
         fleetRequestId: widget.fleetRequestId,
       );
     } catch (e) {
@@ -753,12 +777,7 @@ class _PaymentScreenState extends State<PaymentScreen>
 
   /// PATH 2: Cash on Pickup — the server books it straight away.
   Future<void> placeCashOnPickupOrder() async {
-    if (!_isFleet && !await requireAccount(context)) return;
-    if (!mounted) return;
-    if (!_isAddressValid()) {
-      _showAddressErrorPopup();
-      return;
-    }
+    if (!await _checkReady()) return;
     if (_quote == null) {
       await _loadQuote();
       if (!mounted || _quote == null) return;
@@ -771,7 +790,7 @@ class _PaymentScreenState extends State<PaymentScreen>
         cash: true,
         pickupDrop: _addPickupDrop,
         vehicleId: _vehicleId,
-        options: widget.bookingOptions,
+        options: _optionsWithSlot,
       );
       if (!created.booked) {
         throw const BookingApiException('unexpected', 'Could not place your booking. Please try again.');
@@ -1628,6 +1647,11 @@ class _PaymentScreenState extends State<PaymentScreen>
                                   const SizedBox(height: 22),
                                   _sectionLabel('Service address'),
                                   _addressCard(),
+                                ],
+                                if (_slotApplies && _quote != null) ...[
+                                  const SizedBox(height: 22),
+                                  _sectionLabel(_slotTitle),
+                                  _slotCard(),
                                 ],
                               ],
                             ),

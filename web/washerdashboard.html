@@ -692,10 +692,11 @@
         function displayOfferBookings(rows) {
             const box = document.getElementById('offerContent');
             if (!rows.length) { box.innerHTML = ''; return; }
-            // Open jobs first (oldest first, so the earliest booking is on
-            // top), then finished ones (newest first).
+            // Open jobs first — soonest wash time on top (older bookings with
+            // no time picked go by booking time) — then finished ones.
+            const sortKey = (b) => new Date(b.slot_start || b.created_at).getTime();
             const open = rows.filter((b) => !isOfferDone(b))
-                .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                .sort((a, b) => sortKey(a) - sortKey(b));
             const done = rows.filter(isOfferDone);
 
             let html = `<div class="subscriptions-title">Offer Washes (${open.length} to do)</div>
@@ -712,6 +713,13 @@
                 const callHtml = phone
                     ? `<a class="navigate-btn" href="tel:${escapeHtml(phone)}">📞 Call customer</a>`
                     : '';
+                let slotHtml = '';
+                if (b.slot_date) {
+                    const d = new Date(String(b.slot_date).slice(0, 10) + 'T00:00:00Z');
+                    const day = isNaN(d) ? String(b.slot_date)
+                        : d.toLocaleDateString('en-IN', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
+                    slotHtml = `<p style="font-size:15px"><strong>🕒 Wash time:</strong> <b>${escapeHtml(day)}${b.slot_time ? ', ' + escapeHtml(b.slot_time) : ''}</b></p>`;
+                }
                 const when = b.created_at
                     ? new Date(b.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
                     : '';
@@ -725,6 +733,7 @@
                             </div>
                         </div>
                         <div class="subscription-details">
+                            ${slotHtml}
                             <p><strong>Customer:</strong> ${escapeHtml(b.customer_name || '—')}</p>
                             <p><strong>Phone:</strong> ${escapeHtml(phone || '—')}</p>
                             <p><strong>Price:</strong> ₹${escapeHtml(b.package_price ?? '0')} (${escapeHtml(b.payment_status || 'paid')})</p>

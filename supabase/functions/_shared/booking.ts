@@ -393,6 +393,78 @@ const CLAIM_DOC_RE: Record<string, RegExp> = {
   photo: /^damage-photos\/claim-[A-Za-z0-9_-]{6,80}-damage\.jpg$/,
 };
 
+// ── Time slots ─────────────────────────────────────────────────────────
+// Same rules as the app (lib/widgets/slot_picker.dart), in IST:
+//   pickup / doorstep visit: 9–11, 11–1, 1–3, 3–5, 5–7
+//   garage drop-off (customer brings the car, no pickup): 12–1 … 4–5
+// Same day allowed from 3 hours after now (30 min grace here for slow
+// checkouts), up to 8 days ahead. Optional, so older app versions that
+// don't send a slot still book fine.
+type SlotMode = "pickup" | "garage_drop" | "doorstep";
+const SLOT_WINDOWS: Record<SlotMode, Array<[number, number]>> = {
+  pickup: [[9, 11], [11, 13], [13, 15], [15, 17], [17, 19]],
+  doorstep: [[9, 11], [11, 13], [13, 15], [15, 17], [17, 19]],
+  garage_drop: [[12, 13], [13, 14], [14, 15], [15, 16], [16, 17]],
+};
+const SLOT_TABLES = new Set(["bookings", "offer_bookings", "pollution_booking", "claim_table", "inspection_booking"]);
+const IST_MS = 5.5 * 3600 * 1000;
+
+function hourLabel(h: number): string {
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2, "0")}:00 ${h < 12 ? "AM" : "PM"}`;
+}
+
+/** Which kind of slot this booking takes — decided here, not by the app. */
+function slotModeFor(quote: Quote): SlotMode {
+  if (quote.apartmentBased || quote.pickupMode === "none") return "doorstep";
+  if (quote.bookingTable === "inspection_booking") return "doorstep";
+  return quote.pickupDrop ? "pickup" : "garage_drop";
+}
+
+export interface BookingSlot {
+  date: string; // IST YYYY-MM-DD
+  label: string; // "11:00 AM – 01:00 PM"
+  start: string; // ISO UTC
+  end: string;
+  mode: SlotMode;
+}
+
+function parseSlot(quote: Quote, raw: unknown): BookingSlot | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const startMs = typeof r["start"] === "string" ? Date.parse(r["start"] as string) : NaN;
+  if (!Number.isFinite(startMs)) throw new ApiError("invalid_slot", "Please pick a time slot again.");
+  const mode = slotModeFor(quote);
+  const ist = new Date(startMs + IST_MS);
+  const h = ist.getUTCHours();
+  const win = SLOT_WINDOWS[mode].find(([a]) => a === h);
+  if (!win || ist.getUTCMinutes() !== 0) {
+    throw new ApiError("invalid_slot", "That time slot isn't available — please pick another.");
+  }
+  const now = Date.now();
+  if (startMs < now + 2.5 * 3600 * 1000) {
+    throw new ApiError("invalid_slot", "That time slot is too soon — same-day slots open 3 hours from now.");
+  }
+  if (startMs > now + 8 * 24 * 3600 * 1000) {
+    throw new ApiError("invalid_slot", "Please pick a time within the next 7 days.");
+  }
+  const endMs = startMs + (win[1] - win[0]) * 3600 * 1000;
+  return {
+    date: ist.toISOString().slice(0, 10),
+    label: `${hourLabel(win[0])} – ${hourLabel(win[1])}`,
+    start: new Date(startMs).toISOString(),
+    end: new Date(endMs).toISOString(),
+    mode,
+  };
+}
+
+/** Slot columns for the booking row (empty when no slot was picked). */
+function slotCols(options: Record<string, unknown>): Record<string, unknown> {
+  const s = options["slot"] as BookingSlot | undefined;
+  if (!s) return {};
+  return { slot_date: s.date, slot_time: s.label, slot_start: s.start, slot_end: s.end, slot_mode: s.mode };
+}
+
 /** Validates the per-table extra fields the booking needs. */
 function validateOptions(quote: Quote, raw: unknown): Record<string, unknown> {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -400,6 +472,11 @@ function validateOptions(quote: Quote, raw: unknown): Record<string, unknown> {
 
   const label = cleanText(o["label"], 80);
   if (label) out.label = label;
+
+  if (quote.bookingTable && SLOT_TABLES.has(quote.bookingTable)) {
+    const slot = parseSlot(quote, o["slot"]);
+    if (slot) out.slot = slot;
+  }
 
   if (quote.bookingTable === "inspection_booking") {
     const insp = (o["inspection"] ?? {}) as Record<string, unknown>;
@@ -812,6 +889,7 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
         payment_status: online ? "paid" : "cod",
         ...pickupDropAddress,
         ...customerCols,
+        ...slotCols(intent.options),
         assigned_to_admin_id: adminRef,
       };
       break;
@@ -827,6 +905,7 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
         pickupdrop: "yes",
         status: "booked",
         ...customerCols,
+        ...slotCols(intent.options),
       };
       break;
     }
@@ -845,6 +924,7 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
         package_price: price,
         slot_date: insp.slot_date ?? null,
         slot_time: insp.slot_time ?? null,
+        ...slotCols(intent.options),
         ...customerCols,
       };
       break;
@@ -872,6 +952,7 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
         payment_status: online ? "paid" : "cod",
         ...rzpIds,
         ...customerCols,
+        ...slotCols(intent.options),
       };
       break;
     }

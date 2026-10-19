@@ -11,6 +11,7 @@ import '../widgets/error_display.dart';
 import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../widgets/catalog_gate.dart';
+import '../widgets/requirements.dart';
 
 class ClaimScreen extends StatefulWidget {
   final String vehicleId;
@@ -389,37 +390,47 @@ class _ClaimScreenState extends State<ClaimScreen> {
     // keyboard doesn't get stuck on screen through the navigation.
     FocusManager.instance.primaryFocus?.unfocus();
 
+    // Anything missing → a popup that says exactly what.
     if (!_allDocsReady) {
-      // showPremiumToast renders above the open bottom sheet (a plain
-      // SnackBar would render behind it).
-      ErrorDisplay.showPremiumToast(
+      await showMissingItems(
         context,
-        message: 'Please upload all documents and add a description',
-        icon: Icons.error_outline_rounded,
-        accent: const Color(0xFFE5484D),
+        title: 'A few things are missing',
+        icon: Icons.upload_file_rounded,
+        items: [
+          if (rcCopyFile == null) 'RC copy',
+          if (drivingLicenseFile == null) 'Driving licence',
+          if (aadhaarFile == null) 'Aadhaar card',
+          if (panFile == null) 'PAN card',
+          if (insuranceCopyFile == null) 'Insurance copy',
+          if (damagePhotoFile == null) 'Photo of the damage',
+          if (_damageDescriptionController.text.trim().isEmpty) 'Description of the damage',
+        ],
       );
       return;
     }
 
     if (!_consentGiven) {
-      ErrorDisplay.showPremiumToast(
+      await showMissingItems(
         context,
-        message: 'Please confirm you consent to sharing these documents to submit your claim',
-        icon: Icons.error_outline_rounded,
-        accent: const Color(0xFFE5484D),
+        title: 'Your consent is needed',
+        icon: Icons.verified_user_rounded,
+        items: const ['Tick the box to confirm you consent to sharing these documents for your claim'],
       );
       return;
     }
 
-    if (_supabase.auth.currentUser == null) {
-      ErrorDisplay.showPremiumToast(
-        context,
-        message: 'Please sign in again to submit your claim',
-        icon: Icons.error_outline_rounded,
-        accent: const Color(0xFFE5484D),
-      );
+    // Login, name & phone, and a vehicle — each "Add" comes back right
+    // here with the documents still selected.
+    if (!await ensureReady(
+      context,
+      contact: true,
+      vehicle: true,
+      vehicleId: _vehicleId,
+      onVehicle: (id) => _resolvedVehicleId = id,
+    )) {
       return;
     }
+    if (!mounted) return;
 
     Navigator.pop(context); // close the upload sheet
 

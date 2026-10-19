@@ -8,6 +8,8 @@ const List<String> kCoverflowBanners = [
   'assets/images/washing.jpg',
   'assets/images/service.jpg',
   'assets/images/ac.jpg',
+  'assets/images/lighting_services_banner.jpeg',
+  'assets/images/other_services_banner.jpeg',
 ];
 
 /// Which [kCoverflowBanners] entry is centered/selected when the coverflow

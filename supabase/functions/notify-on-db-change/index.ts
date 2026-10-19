@@ -71,6 +71,28 @@ async function sendPush(
   }
 }
 
+/** " for Wed 22 Oct, 11:00 AM – 01:00 PM" — empty when no slot was picked. */
+function slotText(record: Record<string, unknown>): string {
+  const date = record.slot_date ? String(record.slot_date).slice(0, 10) : "";
+  const time = record.slot_time ? String(record.slot_time) : "";
+  if (!date) return "";
+  const d = new Date(`${date}T00:00:00Z`);
+  const day = Number.isNaN(d.getTime())
+    ? date
+    : d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  return ` for ${day}${time ? `, ${time}` : ""}`;
+}
+
+/** What the slot means for the customer, by kind. */
+function slotHint(record: Record<string, unknown>): string {
+  switch (String(record.slot_mode ?? "")) {
+    case "pickup": return " We'll pick up your car then.";
+    case "garage_drop": return " Please drop your car at the garage in that window.";
+    case "doorstep": return " We'll come to you then.";
+    default: return "";
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     const payload = (await req.json()) as WebhookPayload;
@@ -81,18 +103,19 @@ Deno.serve(async (req) => {
       case "bookings": {
         if (type === "INSERT") {
           const packageName = String(record.package_name ?? "your service");
+          const when = slotText(record);
           await Promise.all([
             sendPush(
               "admin",
               "New booking",
-              `${packageName} — a new booking just came in.`,
+              `${packageName}${when} — a new booking just came in.`,
               { type: "booking", bookingId: record.id },
             ),
             record.user_id
               ? sendPush(
                   `customer_${record.user_id}`,
                   "Booking confirmed",
-                  `Your booking for ${packageName} was placed successfully.`,
+                  `Your booking for ${packageName}${when} was placed successfully.${slotHint(record)}`,
                   { type: "booking", bookingId: record.id },
                 )
               : Promise.resolve(),
@@ -108,20 +131,21 @@ Deno.serve(async (req) => {
         const packageName = String(record.package_name ?? "your wash");
         const apartment = String(record.pickup_address_name ?? "the apartment");
         const data = { type: "offer_booking", bookingId: record.id };
+        const when = slotText(record);
 
         if (type === "INSERT") {
           await Promise.all([
             sendPush(
               "admin",
               "New offer booking",
-              `${packageName} at ${apartment} — a new offer booking just came in.`,
+              `${packageName} at ${apartment}${when} — a new offer booking just came in.`,
               data,
             ),
             record.user_id
               ? sendPush(
                   `customer_${record.user_id}`,
                   "Booking confirmed",
-                  `Your ${packageName} at ${apartment} is booked.`,
+                  `Your ${packageName} at ${apartment} is booked${when}.`,
                   data,
                 )
               : Promise.resolve(),
@@ -129,7 +153,7 @@ Deno.serve(async (req) => {
               ? sendPush(
                   `washer_${record.washer_id}`,
                   "New wash assigned",
-                  `${packageName} at ${apartment}. Open your dashboard for details.`,
+                  `${packageName} at ${apartment}${when}. Open your dashboard for details.`,
                   data,
                 )
               : Promise.resolve(),
@@ -282,9 +306,12 @@ Deno.serve(async (req) => {
               : Promise.resolve(),
           ]);
         } else if (type === "UPDATE") {
+          // New price, or the price note / photo changed.
           const priced =
             record.quoted_price != null &&
-            String(record.quoted_price) !== String(old_record?.quoted_price ?? "");
+            (String(record.quoted_price) !== String(old_record?.quoted_price ?? "") ||
+              String(record.quote_note ?? "") !== String(old_record?.quote_note ?? "") ||
+              String(record.quote_image_path ?? "") !== String(old_record?.quote_image_path ?? ""));
           const accepted =
             record.status === "Accepted" && old_record?.status !== "Accepted";
           if (priced && record.user_id) {

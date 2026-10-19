@@ -18,6 +18,8 @@ import '../widgets/bottom_nav_bar.dart';
 import '../widgets/emergency_status_banner.dart';
 import '../widgets/error_display.dart';
 import '../widgets/offer_bookings_list.dart';
+import '../widgets/resolve_requests_list.dart';
+import '../widgets/slot_picker.dart';
 import 'booking_tracking_screen.dart';
 
 // Same brand catalog as profile_screen.dart's "Add/Edit Vehicle" sheet —
@@ -2361,6 +2363,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                 formatFullDateTime(booking['created_at']),
                                 style: TextStyle(color: AppColors.mut, fontSize: 13),
                               ),
+                              BookingSlotBadge(record: booking),
 
                               const SizedBox(height: 20),
 
@@ -2633,6 +2636,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                     // Shows nothing when they have none.
                     const OfferBookingsSection(),
 
+                    // ReperiResolve: after-service issues the customer sent,
+                    // with the price / message / photo your team sends from
+                    // the CRM. Shows nothing when there are none.
+                    ResolveRequestsSection(vehicleId: widget.vehicleId),
+
                     if (claims.isNotEmpty) ...[
                       const SizedBox(height: 24),
                       Text(
@@ -2734,6 +2742,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
             dateStr,
             style: TextStyle(color: AppColors.mut, fontSize: 13),
           ),
+          // Inspection shows its own "Scheduled" row below.
+          if (table != 'inspection_booking') BookingSlotBadge(record: booking),
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -2848,6 +2858,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
             dateStr,
             style: TextStyle(color: AppColors.mut, fontSize: 13),
           ),
+          BookingSlotBadge(record: claim),
           if (description.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(

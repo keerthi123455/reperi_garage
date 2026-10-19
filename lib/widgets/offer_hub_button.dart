@@ -19,7 +19,7 @@ import 'offer_booking_sheet.dart';
 /// The banner itself is `assets/images/offer_banner.jpeg` (swap the file to
 /// change the offer). If that file is missing, the button never shows.
 ///
-/// Looks: a gold-ringed circle that gently hops and wiggles every few
+/// Looks: a gold-ringed rounded card that gently hops and wiggles every few
 /// seconds to invite a tap. Tapped, it smoothly grows into the full banner
 /// card while the Home screen behind blurs out; closing shrinks it back into
 /// the button.
@@ -34,7 +34,10 @@ class OfferHubButton extends StatefulWidget {
 
 class _OfferHubButtonState extends State<OfferHubButton>
     with TickerProviderStateMixin, WidgetsBindingObserver {
-  static const double _size = 64; // ~10% bigger than the original 58
+  // A small rounded "poster" of the offer banner (was a 64px circle).
+  static const double _w = 84;
+  static const double _h = 118;
+  static const double _r = 20; // corner radius
   static const Color _gold = Color(0xFFD4A017);
 
   bool _enabled = false; // status == SHOW in Supabase
@@ -152,7 +155,7 @@ class _OfferHubButtonState extends State<OfferHubButton>
         child: ScaleTransition(scale: animation, child: child),
       ),
       child: !visible
-          ? const SizedBox(key: ValueKey('off'), width: _size, height: _size)
+          ? const SizedBox(key: ValueKey('off'), width: _w, height: _h)
           : Opacity(
               key: const ValueKey('on'),
               // Hidden while expanded: the banner card IS the button then.
@@ -187,8 +190,8 @@ class _OfferHubButtonState extends State<OfferHubButton>
       child: GestureDetector(
         onTap: _openBanner,
         child: SizedBox(
-          width: _size,
-          height: _size + 10,
+          width: _w,
+          height: _h + 10,
           child: Stack(
             clipBehavior: Clip.none,
             alignment: Alignment.topCenter,
@@ -203,10 +206,10 @@ class _OfferHubButtonState extends State<OfferHubButton>
                     return Transform.scale(
                       scale: 1 + 0.75 * Curves.easeOutCubic.transform(p),
                       child: Container(
-                        width: _size,
-                        height: _size,
+                        width: _w,
+                        height: _h,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
+                          borderRadius: BorderRadius.circular(_r),
                           border: Border.all(
                             color: _gold.withOpacity(0.7 * (1 - p)),
                             width: 2.5 * (1 - p) + 0.5,
@@ -221,10 +224,10 @@ class _OfferHubButtonState extends State<OfferHubButton>
               AnimatedBuilder(
                 animation: _glow,
                 builder: (_, __) => Container(
-                  width: _size,
-                  height: _size,
+                  width: _w,
+                  height: _h,
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(_r),
                     boxShadow: [
                       BoxShadow(
                         color: _gold.withOpacity(0.25 + 0.25 * _glow.value),
@@ -246,11 +249,11 @@ class _OfferHubButtonState extends State<OfferHubButton>
               AnimatedBuilder(
                 animation: _spin,
                 builder: (_, child) => Container(
-                  width: _size,
-                  height: _size,
+                  width: _w,
+                  height: _h,
                   padding: const EdgeInsets.all(2.5),
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(_r),
                     gradient: SweepGradient(
                       transform: GradientRotation(
                           reduceMotion ? 0 : _spin.value * 2 * math.pi),
@@ -265,7 +268,8 @@ class _OfferHubButtonState extends State<OfferHubButton>
                   ),
                   child: child,
                 ),
-                child: ClipOval(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(_r - 2.5),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -282,13 +286,13 @@ class _OfferHubButtonState extends State<OfferHubButton>
                             if (p == null) return const SizedBox.shrink();
                             // A diagonal band of light gliding left → right.
                             return Transform.translate(
-                              offset: Offset(-_size + 2 * _size * p, 0),
+                              offset: Offset(-_w + 2 * _w * p, 0),
                               child: Transform.rotate(
                                 angle: 0.45,
                                 child: Center(
                                   child: Container(
                                     width: 20,
-                                    height: _size * 1.8,
+                                    height: _h * 1.8,
                                     decoration: BoxDecoration(
                                       gradient: LinearGradient(
                                         colors: [
@@ -354,8 +358,8 @@ class _OfferHubButtonState extends State<OfferHubButton>
     const spots = [
       // left, top, size, phase
       (-6.0, -6.0, 13.0, 0.0),
-      (_size - 4, 4.0, 9.0, 0.35),
-      (-10.0, _size * 0.55, 8.0, 0.68),
+      (_w - 4, 4.0, 9.0, 0.35),
+      (-10.0, _h * 0.55, 8.0, 0.68),
     ];
     return [
       for (final (left, top, size, phase) in spots)
@@ -555,7 +559,7 @@ class _OfferBannerViewState extends State<_OfferBannerView>
             final t = _curved.value; // route open/close
             final s = Curves.easeInOutCubic.transform(_stage.value); // banner → cards
             final rect = Rect.lerp(widget.origin, target, t)!;
-            final radius = ui.lerpDouble(widget.origin.shortestSide / 2, 26, t)!;
+            final radius = ui.lerpDouble(18, 26, t)!;
             final controlsOpacity =
                 ((t - 0.65) / 0.35).clamp(0.0, 1.0) * (1 - s);
 

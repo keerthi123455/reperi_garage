@@ -4,6 +4,8 @@ import '../screens/ai_advisor_sheet.dart';
 import '../screens/profile_screen.dart';
 import '../screens/services_screen.dart';
 import '../screens/vehicle_bookings_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'requirements.dart';
 
 /// Shared navigation for the four [BottomNavBar] destinations — Home (0),
 /// Bookings (1), Services (3), Profile (4); index 2 is the floating "Ask AI"
@@ -29,9 +31,8 @@ void handleBottomNavSelect(
   }
 
   if (index == 1 && activeVehicle == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Add a vehicle first')),
-    );
+    // No vehicle: popup → Add vehicle → back, then open its bookings.
+    _openBookingsAfterAddingVehicle(context);
     return;
   }
 
@@ -66,5 +67,28 @@ void openAiAdvisor(BuildContext context, Map<String, dynamic>? activeVehicle) {
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
     builder: (_) => AiAdvisorSheet(vehicle: activeVehicle),
+  );
+}
+
+Future<void> _openBookingsAfterAddingVehicle(BuildContext context) async {
+  String? vehicleId;
+  if (!await ensureReady(context, vehicle: true, onVehicle: (id) => vehicleId = id)) return;
+  if (!context.mounted || vehicleId == null) return;
+  Map<String, dynamic>? v;
+  try {
+    v = await Supabase.instance.client.from('vehicles').select().eq('id', vehicleId!).maybeSingle();
+  } catch (_) {}
+  if (!context.mounted) return;
+  Navigator.pushAndRemoveUntil(
+    context,
+    MaterialPageRoute(
+      builder: (_) => VehicleBookingsScreen(
+        vehicleId: vehicleId!,
+        carModel: (v?['car_model'] ?? '').toString(),
+        carBrand: (v?['car_brand'] ?? '').toString(),
+        carNumber: (v?['car_number'] ?? '').toString(),
+      ),
+    ),
+    (route) => route.isFirst,
   );
 }

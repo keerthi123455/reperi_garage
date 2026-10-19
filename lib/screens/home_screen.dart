@@ -55,6 +55,8 @@ import 'fleet_dashboard_screen.dart';
 import 'fleet_login_sheet.dart';
 import 'fleet_management_screen.dart';
 import 'inspection_screen.dart';
+import 'lighting_services_screen.dart';
+import 'other_services_screen.dart';
 import 'claim_screen.dart';
 import 'login_screen.dart';
 import 'paint_care_package_screen.dart';
@@ -73,6 +75,7 @@ import 'tyre_care_screen.dart';
 import 'vehicle_bookings_screen.dart';
 import 'washing_package_screen.dart';
 import 'wheel_management_package_screen.dart';
+import '../widgets/requirements.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -448,6 +451,10 @@ class _HomeScreenState extends State<HomeScreen> {
         (_) => WheelManagementPackageScreen(vehicleId: vehicleId),
       'assets/images/paintcare.jpg' => (_) => PaintCarePackageScreen(vehicleId: vehicleId),
       'assets/images/ac.jpg' => (_) => AcPackageScreen(vehicleId: vehicleId),
+      'assets/images/lighting_services_banner.jpeg' =>
+        (_) => LightingServicesScreen(vehicle: _activeVehicleMap),
+      'assets/images/other_services_banner.jpeg' =>
+        (_) => OtherServicesScreen(vehicle: _activeVehicleMap),
       _ => null,
     };
     if (builder == null) return;
@@ -1390,7 +1397,7 @@ class _BatteryEnquirySheetState extends State<_BatteryEnquirySheet> {
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    if (!await requireAccount(context, title: 'Sign up to send your enquiry')) return;
+    if (!await ensureReady(context, contact: true)) return;
     if (!mounted) return;
 
     setState(() => _submitting = true);

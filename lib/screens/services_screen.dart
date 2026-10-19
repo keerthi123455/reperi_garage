@@ -12,6 +12,10 @@ import 'car_spa_screen.dart';
 import 'denting_tinkering_screen.dart';
 import 'detailing_packages_screen.dart';
 import 'fleet_management_screen.dart';
+import 'inspection_screen.dart';
+import 'lighting_services_screen.dart';
+import 'other_services_screen.dart';
+import 'pollution_screen.dart';
 import 'claim_screen.dart';
 import 'paint_care_package_screen.dart';
 import 'paint_care_screen.dart';
@@ -89,6 +93,9 @@ const Map<String, Color> _kCategoryAccent = {
   'Car Wash & Cleaning': Color(0xFF26C6DA),
   'Wheels & Tyres': Color(0xFFFF8A65),
   'Paint & Body': Color(0xFFBA68C8),
+  'Lighting': Color(0xFFFFD54F),
+  'Compliance': Color(0xFF4DB6AC),
+  'Expert Help': Color(0xFFFDF003),
   'Premium Detailing': Color(0xFFD4A017),
   'Claim Assistance': Color(0xFF66BB6A),
   'Monthly Wash': Color(0xFFFFB74D),
@@ -101,6 +108,9 @@ const Map<String, IconData> _kCategoryIcon = {
   'Car Wash & Cleaning': Icons.local_car_wash_rounded,
   'Wheels & Tyres': Icons.tire_repair_rounded,
   'Paint & Body': Icons.format_paint_rounded,
+  'Lighting': Icons.lightbulb_rounded,
+  'Compliance': Icons.fact_check_rounded,
+  'Expert Help': Icons.engineering_rounded,
   'Premium Detailing': Icons.auto_awesome_rounded,
   'Claim Assistance': Icons.verified_user_rounded,
   'Monthly Wash': Icons.subscriptions_rounded,
@@ -110,11 +120,14 @@ const Map<String, IconData> _kCategoryIcon = {
 
 const List<String> _kCategoryOrder = [
   'Periodic Servicing',
+  'Expert Help',
   'Car Wash & Cleaning',
   'Wheels & Tyres',
   'Paint & Body',
+  'Lighting',
   'Premium Detailing',
   'Claim Assistance',
+  'Compliance',
   'Monthly Wash',
   'Roadside Assistance',
   'Business Solutions',
@@ -230,8 +243,8 @@ const Map<String, List<String>> _kSearchSynonyms = {
   'slipping': ['brake', 'balancing'],
   'burning': ['brake', 'engine'],
   'warning': ['diagnostic'],
-  'light': ['diagnostic'],
-  'lights': ['diagnostic'],
+  'light': ['bulb', 'headlight', 'diagnostic'],
+  'lights': ['bulb', 'headlight', 'diagnostic'],
   'error': ['diagnostic'],
   'sensor': ['diagnostic'],
   'mileage': ['diagnostic', 'engine'],
@@ -313,6 +326,69 @@ const Map<String, List<String>> _kSearchSynonyms = {
   'cleaning': ['wash', 'clean'],
   'detailing': ['detailing'],
   'detail': ['detailing'],
+  // Lighting
+  'bulb': ['bulb'],
+  'bulbs': ['bulb'],
+  'lamp': ['bulb', 'headlight'],
+  'lamps': ['bulb', 'headlight'],
+  'headlight': ['headlight'],
+  'headlights': ['headlight'],
+  'headlamp': ['headlight'],
+  'headlamps': ['headlight'],
+  'taillight': ['bulb'],
+  'taillights': ['bulb'],
+  'indicator': ['bulb'],
+  'indicators': ['bulb'],
+  'fog': ['bulb', 'headlight'],
+  'foggy': ['headlight'],
+  'yellow': ['headlight'],
+  'yellowed': ['headlight'],
+  'hazy': ['headlight'],
+  'cloudy': ['headlight'],
+  'blur': ['headlight'],
+  'cracked': ['headlight', 'glass'],
+  'broken': ['headlight', 'glass'],
+  'fused': ['bulb'],
+  'dim': ['bulb', 'headlight'],
+  'lighting': ['bulb', 'headlight'],
+  // Inspection / PDI
+  'pdi': ['inspection'],
+  'predelivery': ['inspection'],
+  'delivery': ['inspection'],
+  'inspection': ['inspection'],
+  'inspect': ['inspection'],
+  'checkup': ['inspection', 'health'],
+  'health': ['inspection', 'health'],
+  'buying': ['inspection'],
+  'purchase': ['inspection'],
+  'used': ['inspection'],
+  'secondhand': ['inspection'],
+  // Expert help: inspection, second opinion, OBD
+  'opinion': ['opinion'],
+  'second': ['opinion'],
+  'quote': ['opinion', 'inspection'],
+  'quotation': ['opinion', 'inspection'],
+  'estimate': ['opinion', 'inspection'],
+  'overcharged': ['opinion'],
+  'expensive': ['opinion'],
+  'advice': ['opinion'],
+  'obd': ['obd', 'inspection'],
+  'scan': ['obd', 'inspection'],
+  'scanner': ['obd', 'inspection'],
+  'diagnose': ['inspection', 'diagnostic'],
+  'diagnosis': ['inspection', 'diagnostic'],
+  'wrong': ['inspection'],
+  'doorstep': ['inspection'],
+  // Pollution certificate
+  'puc': ['pollution'],
+  'pollution': ['pollution'],
+  'emission': ['pollution'],
+  'emissions': ['pollution'],
+  'certificate': ['pollution'],
+  // Claims
+  'claims': ['insurance', 'claim'],
+  'insurer': ['insurance', 'claim'],
+  'cashless': ['insurance', 'claim'],
 };
 
 // These builders used to force-unwrap the active vehicle (`v!`), which
@@ -355,6 +431,14 @@ Widget _roadside(Map<String, dynamic>? v, {String? highlightPackage}) =>
     RoadsideAssistanceScreen(highlightPackage: highlightPackage);
 Widget _fleetMgmt(Map<String, dynamic>? v, {String? highlightPackage}) =>
     FleetManagementScreen(highlightPackage: highlightPackage);
+Widget _lighting(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    LightingServicesScreen(vehicle: v, highlightPackage: highlightPackage);
+Widget _otherServices(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    OtherServicesScreen(vehicle: v, highlightPackage: highlightPackage);
+Widget _pollution(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    PollutionScreen(vehicleId: v?['id']?.toString() ?? '');
+Widget _inspection(Map<String, dynamic>? v, {String? highlightPackage}) =>
+    InspectionScreen(vehicleId: v?['id']?.toString() ?? '');
 
 /// The full catalog — every tier from every package screen in the app.
 /// Which package screen each service opens, keyed by the first entry of
@@ -374,11 +458,15 @@ const Map<String, _ScreenBuilder> _kScreenBuilders = {
   'monthly_wash': _subscriptions,
   'roadside': _roadside,
   'fleet_management': _fleetMgmt,
+  'lighting': _lighting,
+  'pollution': _pollution,
+  'other_services': _otherServices,
+  'inspection': _inspection,
 };
 
 /// Screens whose packages need a choice made on their own screen first
 /// (documents, a plan, a slot) — never booked straight from this catalog.
-const Set<String> _kOpenScreenFirst = {'claim', 'monthly_wash', 'inspection'};
+const Set<String> _kOpenScreenFirst = {'claim', 'monthly_wash', 'inspection', 'lighting', 'pollution', 'other_services'};
 
 /// The full catalog — every package with show_in_catalog = true in the
 /// Supabase `services` table, so names, prices and features here always

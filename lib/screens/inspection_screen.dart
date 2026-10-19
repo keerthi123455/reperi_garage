@@ -8,6 +8,7 @@ import '../widgets/placeholder_box.dart';
 import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../widgets/catalog_gate.dart';
+import '../widgets/slot_picker.dart';
 
 /// One of the 10 inspection categories shown in "What we check".
 class _Category {
@@ -177,6 +178,14 @@ class _InspectionScreenState extends State<InspectionScreen> {
   DateTime? _selectedSlotDate;
   String? _selectedSlotTime;
 
+  /// The chosen date + time as a [BookingSlot] (doorstep visit hours).
+  BookingSlot? get _inspectionSlot {
+    final d = _selectedSlotDate;
+    final i = _PlanInspectionSheetState._timeSlots.indexOf(_selectedSlotTime ?? '');
+    if (d == null || i < 0) return null;
+    return slotsFor(DateTime.utc(d.year, d.month, d.day), SlotMode.doorstep)[i];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -300,6 +309,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
               'slot_date': _selectedSlotDate?.toIso8601String().split('T').first,
               'slot_time': _selectedSlotTime,
             },
+            if (_inspectionSlot != null) 'slot': _inspectionSlot!.toJson(),
           },
           bookingSection: 'inspection',
         ),
@@ -1079,8 +1089,8 @@ class _StickyPlanBar extends StatelessWidget {
 
 // ── PLAN INSPECTION POPUP (condition -> vehicle type -> slot) ───────────
 /// A 3-step premium bottom sheet: vehicle condition, then vehicle type
-/// (each its own fixed price), then a pickup slot — starting tomorrow,
-/// never today. Pops with `{condition, vehicleType, price, slotDate,
+/// (each its own fixed price), then a pickup slot — today allowed for
+/// slots 3+ hours away, up to 7 days ahead. Pops with `{condition, vehicleType, price, slotDate,
 /// slotTime}` once all three are chosen, or null if dismissed early.
 class _PlanInspectionSheet extends StatefulWidget {
   const _PlanInspectionSheet();
@@ -1335,13 +1345,12 @@ class _PlanInspectionSheetState extends State<_PlanInspectionSheet> {
   }
 
   Widget _slotStep() {
-    // Tomorrow onward only — today is never offered, whatever time this
-    // is booked at.
-    final today = DateTime.now();
-    final dates = List.generate(
-      14,
-      (i) => DateTime(today.year, today.month, today.day + 1 + i),
-    );
+    // Same rules as every other booking (see slot_picker.dart): today is
+    // fine, but only slots starting 3+ hours from now; next 7 days; IST.
+    final dates = slotDays(SlotMode.doorstep);
+    final day = _slotDate;
+    final daySlots = day == null ? const <BookingSlot>[] : slotsFor(day, SlotMode.doorstep);
+    bool timeOpen(int i) => day == null || (i < daySlots.length && daySlots[i].isStillValid);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1375,7 +1384,12 @@ class _PlanInspectionSheetState extends State<_PlanInspectionSheet> {
               return _DateChip(
                 date: d,
                 selected: selected,
-                onTap: () => setState(() => _slotDate = d),
+                onTap: () => setState(() {
+                  _slotDate = d;
+                  // Drop a time that has already closed on the new day.
+                  final i = _timeSlots.indexOf(_slotTime ?? '');
+                  if (i >= 0 && !slotsFor(d, SlotMode.doorstep)[i].isStillValid) _slotTime = null;
+                }),
               );
             },
           ),
@@ -1394,10 +1408,14 @@ class _PlanInspectionSheetState extends State<_PlanInspectionSheet> {
         Wrap(
           spacing: 10,
           runSpacing: 10,
-          children: _timeSlots.map((slot) {
+          children: _timeSlots.asMap().entries.map((e) {
+            final slot = e.value;
+            final open = timeOpen(e.key);
             final selected = _slotTime == slot;
-            return GestureDetector(
-              onTap: () => setState(() => _slotTime = slot),
+            return Opacity(
+              opacity: open ? 1 : 0.4,
+              child: GestureDetector(
+              onTap: open ? () => setState(() => _slotTime = slot) : null,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1414,8 +1432,10 @@ class _PlanInspectionSheetState extends State<_PlanInspectionSheet> {
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: selected ? AppColors.onAccentDark : AppColors.txt,
+                    decoration: open ? null : TextDecoration.lineThrough,
                   ),
                 ),
+              ),
               ),
             );
           }).toList(),

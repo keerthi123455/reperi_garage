@@ -13,6 +13,9 @@
 //   → one row with its progress updates, chats and cancellation info.
 // POST { action: "doc", path }
 //   → a 5-minute signed URL for a claim document (insurance-documents).
+// POST { action: "resolve_quote", id, price, note, image?: base64 JPEG, removeImage? }
+//   → sends a ReperiResolve price (text + amount + optional photo) to the
+//     customer. Shows in their app; the DB webhook sends the push.
 // POST { action: "me" }
 //   → { email } — used by the page to confirm access after sign-in.
 
@@ -325,6 +328,51 @@ async function detail(client: SupabaseClient, body: Row) {
   return { row: rows[0], ...extra, intent: intent[0] ?? null, errors };
 }
 
+// ReperiResolve: staff send the customer a price, a note and (optionally) a
+// photo. The photo goes in the customer's own folder of the private
+// resolve-media bucket so their app can open it.
+async function resolveQuote(client: SupabaseClient, body: Row, user: User) {
+  const id = String(body.id ?? "");
+  const price = Number(body.price);
+  const note = String(body.note ?? "").trim().slice(0, 2000);
+  if (!id) throw new HttpError(400, "bad_request", "Missing request.");
+  if (!Number.isFinite(price) || price <= 0 || price > 10_000_000) {
+    throw new HttpError(400, "bad_price", "Enter a valid price.");
+  }
+  const { data: row, error } = await client.from("resolve_requests")
+    .select("id,user_id,status,quote_image_path").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!row) throw new HttpError(404, "not_found", "Request not found.");
+  if (row.status === "Closed" || row.status === "Cancelled") {
+    throw new HttpError(400, "closed", "This request is closed.");
+  }
+
+  let imagePath: string | null = (row.quote_image_path as string | null) ?? null;
+  if (body.removeImage) imagePath = null;
+  const b64 = typeof body.image === "string" ? body.image.replace(/^data:[^,]+,/, "") : "";
+  if (b64) {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    if (bytes.length > 8 * 1024 * 1024) throw new HttpError(400, "too_big", "Image is too large (max 8 MB).");
+    imagePath = `${row.user_id}/quotes/${id}-${Date.now()}.jpg`;
+    const { error: upErr } = await client.storage.from("resolve-media")
+      .upload(imagePath, bytes, { contentType: "image/jpeg", upsert: true });
+    if (upErr) throw upErr;
+  }
+
+  const { data: updated, error: updErr } = await client.from("resolve_requests").update({
+    quoted_price: price,
+    quote_note: note || null,
+    quote_image_path: imagePath,
+    quoted_by: user.email ?? null,
+    // Re-sending a price after the customer accepted puts it back to "Quoted"
+    // so they can accept the new one.
+    status: "Quoted",
+    accepted_at: null,
+  }).eq("id", id).select("*").single();
+  if (updErr) throw updErr;
+  return { row: updated };
+}
+
 async function signedDoc(client: SupabaseClient, body: Row) {
   const path = String(body.path ?? "").replace(/^\/+/, "");
   if (!path || path.includes("..")) throw new HttpError(400, "bad_request", "Invalid document.");
@@ -354,6 +402,8 @@ Deno.serve(async (req: Request) => {
         return json(await detail(client, body));
       case "doc":
         return json(await signedDoc(client, body));
+      case "resolve_quote":
+        return json(await resolveQuote(client, body, user));
       default:
         throw new HttpError(400, "invalid_action", "Unknown action.");
     }

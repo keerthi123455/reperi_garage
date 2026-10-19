@@ -7,7 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_colors.dart';
 import '../widgets/error_display.dart';
 import '../widgets/resolve_requests_list.dart';
-import '../widgets/guest_sheets.dart';
+import '../widgets/requirements.dart';
 
 /// ReperiResolve — "Problem after a service? Show us, get a fixed price."
 ///
@@ -156,13 +156,8 @@ class _ReperiResolveScreenState extends State<ReperiResolveScreen> {
   Future<void> _send() async {
     if (!_canSend) return;
     // Guest: sign up right here — everything they added stays on screen.
-    if (!await requireAccount(
-      context,
-      title: 'Sign up to get your price',
-      subtitle: "We'll email you a code. Your photos stay right here.",
-    )) {
-      return;
-    }
+    // Your photos and text stay right here while you sign up.
+    if (!await ensureReady(context, contact: true)) return;
     if (!mounted) return;
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return;

@@ -392,6 +392,22 @@
             text-align: center;
         }
 
+        /* Time the customer picked in the app (booking slot). */
+        .slot-banner {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 4px 0 10px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(212, 160, 23, 0.12);
+            border: 1px solid rgba(212, 160, 23, 0.45);
+        }
+        .slot-banner .slot-icon { font-size: 20px; line-height: 1; }
+        .slot-banner .slot-when { font-weight: 800; font-size: 14px; color: #f5c84c; }
+        .slot-banner .slot-mode { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+        .slot-banner.soon { background: rgba(229, 57, 53, 0.14); border-color: rgba(229, 57, 53, 0.55); }
+        .slot-banner.soon .slot-when { color: #ff8a80; }
         .cod-pill {
             display: inline-block;
             background: rgba(255, 152, 0, 0.15);
@@ -846,6 +862,8 @@
                     vehicleType: r.vehicle_type || null,
                     slotDate: r.slot_date || null,
                     slotTime: r.slot_time || null,
+                    slotStart: r.slot_start || null,
+                    slotMode: r.slot_mode || null,
                     // customer_name/customer_phone are now snapshotted at
                     // booking time on every table (payment_screen.dart,
                     // inspection_screen.dart, pollution_screen.dart,
@@ -864,7 +882,15 @@
                     ...normalize(claimRes.data, 'Claim Assistance', 'Claim Assistance', 'claim_table'),
                 ];
 
-                all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+                // Open trips with a picked time first, soonest slot on top;
+                // everything else newest first, as before.
+                const upcoming = (b) => b.slotStart && b.deliveryStage !== 'delivered';
+                all.sort((a, b) => {
+                    const ua = upcoming(a), ub = upcoming(b);
+                    if (ua && ub) return new Date(a.slotStart) - new Date(b.slotStart);
+                    if (ua !== ub) return ua ? -1 : 1;
+                    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+                });
 
                 bookingsIndex = {};
                 all.forEach((b) => { bookingsIndex[keyFor(b)] = b; });
@@ -1121,6 +1147,7 @@
                             ${b.isCod ? `<div class="cod-pill">💰 Collect Cash</div>` : ''}
                         </div>
                     </div>
+                    ${renderSlotBanner(b)}
                     <div class="booking-detail-row"><strong>Booked:</strong> ${escapeHtml(formatFullDateTime(b.createdAt))}</div>
                     <div class="booking-detail-row"><strong>Status:</strong> ${escapeHtml(b.status)}</div>
                     <div class="booking-detail-row"><strong>Pickup${b.pickupAddressName ? ` (${escapeHtml(b.pickupAddressName)})` : ''}:</strong> ${escapeHtml(b.pickupAddress || 'Not specified')}</div>
@@ -1144,13 +1171,35 @@
         function renderInspectionDetails(b) {
             if (b.sourceTable !== 'inspection_booking') return '';
 
-            const slot = b.slotDate
-                ? `${escapeHtml(formatSlotDate(b.slotDate))}${b.slotTime ? ` • ${escapeHtml(b.slotTime)}` : ''}`
-                : null;
-
+            // The slot itself is shown by renderSlotBanner on every card.
             return `
                 <div class="booking-detail-row"><strong>Vehicle:</strong> ${escapeHtml(b.vehicleCondition || '—')} ${escapeHtml(b.vehicleType || '')}</div>
-                ${slot ? `<div class="booking-detail-row"><strong>Scheduled Slot:</strong> ${slot}</div>` : ''}
+            `;
+        }
+
+        // The day + time window the customer picked in the app, at the top
+        // of every card. Red when it starts within 2 hours (or has started)
+        // and the trip hasn't been started yet.
+        const SLOT_MODE_TEXT = {
+            pickup: '🚗 Pick up the car from the customer in this window',
+            garage_drop: '🏠 Customer drops the car at the garage in this window',
+            doorstep: '📍 Visit the customer in this window',
+        };
+        function renderSlotBanner(b) {
+            if (!b.slotDate) return '';
+            const date = formatSlotDate(String(b.slotDate).slice(0, 10));
+            const startMs = b.slotStart ? new Date(b.slotStart).getTime() : NaN;
+            const notStarted = !b.deliveryStage;
+            const soon = notStarted && !isNaN(startMs) && startMs - Date.now() < 2 * 3600 * 1000;
+            const modeText = SLOT_MODE_TEXT[b.slotMode] || 'Scheduled slot';
+            return `
+                <div class="slot-banner${soon ? ' soon' : ''}">
+                    <div class="slot-icon">🕒</div>
+                    <div>
+                        <div class="slot-when">${escapeHtml(date)}${b.slotTime ? ` • ${escapeHtml(b.slotTime)}` : ''}</div>
+                        <div class="slot-mode">${escapeHtml(modeText)}</div>
+                    </div>
+                </div>
             `;
         }
 

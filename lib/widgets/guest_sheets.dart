@@ -123,13 +123,43 @@ Future<bool> requireAccount(BuildContext context, {String? title, String? subtit
   return ok == true && Supabase.instance.client.auth.currentUser != null;
 }
 
+/// Signed in, but the account has no name / phone yet (e.g. an older
+/// account): opens the same yellow sheet straight at "One last thing".
+Future<bool> requireContactDetails(BuildContext context) async {
+  if (Supabase.instance.client.auth.currentUser == null) return requireAccount(context);
+  final ok = await _showYellowSheet<bool>(
+    context,
+    (ctx) => const _AccountSheet(detailsOnly: true),
+    dismissible: true,
+  );
+  return ok == true;
+}
+
+/// True when the signed-in account has both a name and a phone number.
+Future<bool> hasContactDetails() async {
+  final supabase = Supabase.instance.client;
+  final user = supabase.auth.currentUser;
+  if (user == null) return false;
+  final meta = user.userMetadata ?? const {};
+  final phone = (user.phone ?? meta['phone'] ?? '').toString().trim();
+  var name = (meta['full_name'] ?? meta['name'] ?? '').toString().trim();
+  if (name.isEmpty) {
+    try {
+      final p = await supabase.from('profiles').select('name').eq('id', user.id).maybeSingle();
+      name = (p?['name'] ?? '').toString().trim();
+    } catch (_) {}
+  }
+  return name.isNotEmpty && phone.isNotEmpty;
+}
+
 enum _Step { email, code, details, done }
 
 class _AccountSheet extends StatefulWidget {
-  const _AccountSheet({this.title, this.subtitle});
+  const _AccountSheet({this.title, this.subtitle, this.detailsOnly = false});
 
   final String? title;
   final String? subtitle;
+  final bool detailsOnly;
 
   @override
   State<_AccountSheet> createState() => _AccountSheetState();
@@ -147,6 +177,27 @@ class _AccountSheetState extends State<_AccountSheet> {
   String? _error;
   int _resendIn = 0;
   Timer? _resendTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.detailsOnly) {
+      _step = _Step.details;
+      final user = _auth.currentUser;
+      final meta = user?.userMetadata ?? const {};
+      _name.text = (meta['full_name'] ?? meta['name'] ?? '').toString();
+      _phone.text = (user?.phone ?? meta['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+      if (_phone.text.length == 12 && _phone.text.startsWith('91')) _phone.text = _phone.text.substring(2);
+      if (_name.text.trim().isEmpty && user != null) _prefillName(user.id);
+    }
+  }
+
+  Future<void> _prefillName(String userId) async {
+    try {
+      final p = await Supabase.instance.client.from('profiles').select('name').eq('id', userId).maybeSingle();
+      if (mounted && _name.text.trim().isEmpty) _name.text = (p?['name'] ?? '').toString();
+    } catch (_) {}
+  }
 
   @override
   void dispose() {

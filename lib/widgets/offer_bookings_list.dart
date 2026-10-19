@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme/app_colors.dart';
 import 'guest_sheets.dart';
+import 'slot_picker.dart';
 
 /// The customer's apartment offer washes (₹1 / ₹199 / ₹999), read from the
 /// `offer_bookings` table. They're booked per apartment, not per vehicle,
@@ -218,6 +219,7 @@ class _OfferBookingsSectionState extends State<OfferBookingsSection> {
           ],
           const SizedBox(height: 10),
           Text(_date(b['created_at']), style: TextStyle(color: AppColors.mut, fontSize: 13)),
+          BookingSlotBadge(record: b),
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

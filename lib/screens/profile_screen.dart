@@ -12,7 +12,7 @@ import '../widgets/bottom_nav_actions.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/emergency_status_banner.dart';
 import '../widgets/error_display.dart';
-import '../widgets/guest_sheets.dart';
+import '../widgets/requirements.dart';
 
 // Brand highlight yellow — a fixed accent, not a themed surface, used for
 // the badges/CTAs on this screen.
@@ -507,13 +507,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// Guests sign up first (in place), then the add-car sheet opens.
   Future<void> openAddVehicleSheet() async {
-    if (!await requireAccount(
-      context,
-      title: 'Sign up to add your car',
-      subtitle: "So it's saved to your account. We'll email you a code.",
-    )) {
-      return;
-    }
+    if (!await ensureReady(context, account: true)) return;
     if (!mounted) return;
     fetchVehicles();
     _openAddVehicleSheetNow();

@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'profile_screen.dart';
 import '../services/ai_chat_session.dart';
 import '../services/catalog_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/error_display.dart';
+import '../widgets/requirements.dart';
 import 'services_screen.dart'
     show exportPackageCatalogForAi, buildPackageScreenFor, categoryAccentColor, categoryIconFor;
 
@@ -293,75 +293,26 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet>
   /// [buildPackageScreenFor] — so it always lands exactly where that
   /// package actually lives, never a guess. Prompts to add a vehicle first
   /// if none is linked.
-  void _openPackage(Map<String, dynamic> pkg) {
-    final vehicleId = widget.vehicle?['id']?.toString() ?? '';
+  Future<void> _openPackage(Map<String, dynamic> pkg) async {
+    var vehicle = widget.vehicle;
 
-    if (vehicleId.isEmpty) {
-      showDialog(
-        context: context,
-        builder: (_) => Dialog(
-          backgroundColor: _surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    color: _gold.withOpacity(0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.directions_car_outlined,
-                      color: _gold, size: 34),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'ADD A VEHICLE TO BOOK THIS SERVICE',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: _white, fontSize: 20, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 24),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context); // close dialog
-                    Navigator.pop(context); // close the AI sheet
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const ProfileScreen(autoOpenAddVehicle: true)),
-                    );
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: _gold,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Center(
-                      child: Text('ADD VEHICLE',
-                          style: TextStyle(
-                              color: AppColors.onAccentDark,
-                              fontWeight: FontWeight.w900)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-      return;
+    if ((vehicle?['id']?.toString() ?? '').isEmpty) {
+      // No vehicle yet: popup → Add vehicle → straight back to this chat,
+      // then the package opens for the new vehicle.
+      String? addedId;
+      if (!await ensureReady(context, vehicle: true, onVehicle: (id) => addedId = id)) return;
+      if (!mounted || addedId == null) return;
+      try {
+        vehicle = await Supabase.instance.client.from('vehicles').select().eq('id', addedId!).maybeSingle();
+      } catch (_) {}
+      vehicle ??= {'id': addedId};
+      if (!mounted) return;
     }
 
     final targetScreen = buildPackageScreenFor(
       pkg['category'] as String,
       pkg['name'] as String,
-      widget.vehicle,
+      vehicle,
     );
 
     if (targetScreen == null) {
