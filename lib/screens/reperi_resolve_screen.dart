@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/call_expert_button.dart';
 import '../widgets/error_display.dart';
 import '../widgets/resolve_requests_list.dart';
 import '../widgets/requirements.dart';
@@ -334,6 +335,10 @@ class _ReperiResolveScreenState extends State<ReperiResolveScreen> {
       ),
       body: _sent ? _sentView() : _formView(),
       bottomNavigationBar: _sent ? null : _sendBar(),
+      // Green "Call an expert" hub: in the send bar's right corner while
+      // filling the form; in the screen's bottom-right corner once sent.
+      floatingActionButton: _sent ? const CallExpertButton() : null,
+      floatingActionButtonLocation: kCallExpertLocation,
     );
   }
 
@@ -669,8 +674,10 @@ class _ReperiResolveScreenState extends State<ReperiResolveScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              width: double.infinity,
+            Row(
+              children: [
+            Expanded(
+              child: SizedBox(
               height: 54,
               child: ElevatedButton(
                 onPressed: _canSend ? _send : null,
@@ -692,12 +699,22 @@ class _ReperiResolveScreenState extends State<ReperiResolveScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2.4, color: Color(0xFF12100B)),
                           ),
                           const SizedBox(width: 12),
-                          Text(_progress, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                          Flexible(
+                            child: Text(_progress,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                          ),
                         ],
                       )
                     : const Text('Send & get my price',
                         style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
               ),
+            ),
+            ),
+                const SizedBox(width: 12),
+                const CallExpertButton(showLabel: false),
+              ],
             ),
             const SizedBox(height: 8),
             Text(

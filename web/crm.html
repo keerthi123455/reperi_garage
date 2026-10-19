@@ -564,6 +564,7 @@ function buildModel(d) {
   const push = (j) => {
     const sl = slotOf(j.raw);
     j.slot = sl.text; j.slotMode = sl.mode; j.slotStart = sl.start;
+    j.coupon = j.raw?.coupon_code || ''; j.couponOff = Number(j.raw?.coupon_discount || 0);
     const cust = customers.get(String(j.userId || ''));
     const veh = vehicles.get(String(j.vehicleId || ''));
     j.customer = j.customer || cust?.name || '—';
@@ -1020,7 +1021,7 @@ function filteredJobs() {
     if (f.type !== 'all' && j.type !== f.type) return false;
     if (f.pay !== 'all' && j.pay !== f.pay) return false;
     if (q) {
-      const hay = [j.id, j.title, j.customer, j.phone, j.email, j.vehicle, j.garage, j.deliveryName, j.washerName, j.status, j.address, j.slot].join(' ').toLowerCase();
+      const hay = [j.id, j.title, j.customer, j.phone, j.email, j.vehicle, j.garage, j.deliveryName, j.washerName, j.status, j.address, j.slot, j.coupon].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -1059,7 +1060,7 @@ function bookings() {
     ${jobTable(list)}`;
 }
 function exportCsv(list) {
-  const cols = ['id', 'table', 'type', 'created', 'title', 'customer', 'phone', 'email', 'vehicle', 'garage', 'deliveryName', 'washerName', 'status', 'stage', 'slot', 'slotMode', 'pay', 'amount', 'address', 'test'];
+  const cols = ['id', 'table', 'type', 'created', 'title', 'customer', 'phone', 'email', 'vehicle', 'garage', 'deliveryName', 'washerName', 'status', 'stage', 'slot', 'slotMode', 'coupon', 'couponOff', 'pay', 'amount', 'address', 'test'];
   const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
   const csv = [cols.join(',')].concat(list.map((j) => cols.map((c) => q(c === 'created' ? fmtDT(j.created) : j[c])).join(','))).join('\n');
   const a = document.createElement('a');
@@ -1471,6 +1472,7 @@ function summaryHtml(j) {
     ['Garage', esc(j.garage || '—')], ['Delivery partner', esc(j.deliveryName || '—')], ['Washer', esc(j.washerName || '—')],
     ['Pickup & drop', j.pickup ? 'Yes' : 'No'], ['Address', esc(j.address || '—')],
   ];
+  if (j.coupon) rows.push(['Coupon', '<b>' + esc(j.coupon) + '</b>' + (j.couponOff ? ' · ₹' + esc(j.couponOff) + ' off (amount shown is after discount)' : '')]);
   if (j.slot) rows.push(['Slot', esc(j.slot) + (j.slotMode ? ' · <b>' + esc(j.slotMode) + '</b>' : '')]);
   if (j.table === 'monthlywash_table') rows.push(['Plan period', `${fmtD(j.start)} → ${fmtD(j.end)}`], ['Washes done', num(j.washes)]);
   return `<dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;

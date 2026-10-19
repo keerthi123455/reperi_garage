@@ -34,6 +34,7 @@ import '../widgets/location_row.dart';
 import '../widgets/notification_permission_dialog.dart';
 import '../widgets/offer_bookings_list.dart';
 import '../widgets/offer_hub_button.dart';
+import '../widgets/other_services_hub_button.dart';
 import '../widgets/web_notification_permission.dart';
 import '../widgets/packages_side_heading.dart';
 import '../widgets/promo_banner.dart';
@@ -1352,10 +1353,25 @@ class _HomeScreenState extends State<HomeScreen> {
             // Offer hub (switched on/off from Supabase: offer_banner_control).
             // Sits just above the spot where the emergency banner shrinks
             // into its red circle, so the two never overlap.
+            // Other Reperi Services hub (yellow spanner) sits right above it:
+            // grows into the 16:9 banner; tapping the banner opens the
+            // Other Services screen.
             Positioned(
               right: 16,
               bottom: 212 + bottomInset,
-              child: const OfferHubButton(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  OtherServicesHubButton(
+                    onOpen: () => Navigator.push(
+                      context,
+                      premiumPageRoute((_) => OtherServicesScreen(vehicle: _activeVehicleMap)),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const OfferHubButton(),
+                ],
+              ),
             ),
             if (_toastMessage != null)
               Positioned(

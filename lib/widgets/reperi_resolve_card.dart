@@ -13,9 +13,17 @@ import 'package:google_fonts/google_fonts.dart';
 ///   2. Brake squeak — sound waves pulse from the front wheel
 ///   3. Rattle       — the car shakes with little zig-zags
 class ReperiResolveCard extends StatefulWidget {
-  const ReperiResolveCard({super.key, required this.onTap});
+  const ReperiResolveCard({
+    super.key,
+    required this.onTap,
+    this.padding = const EdgeInsets.symmetric(horizontal: 18),
+  });
 
   final VoidCallback onTap;
+
+  /// Space around the card (Home uses 18 at the sides; screens that already
+  /// pad their content pass EdgeInsets.zero).
+  final EdgeInsetsGeometry padding;
 
   @override
   State<ReperiResolveCard> createState() => _ReperiResolveCardState();
@@ -51,7 +59,7 @@ class _ReperiResolveCardState extends State<ReperiResolveCard>
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
+      padding: widget.padding,
       child: GestureDetector(
         onTapDown: (_) => setState(() => _pressed = true),
         onTapCancel: () => setState(() => _pressed = false),

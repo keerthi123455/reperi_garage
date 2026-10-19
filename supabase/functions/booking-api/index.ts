@@ -1,6 +1,6 @@
 // booking-api — the only way the app prices, pays for and creates bookings.
 //
-// POST { action: "quote",   items: [serviceKey...], pickup_drop?, fleet_request_id? }
+// POST { action: "quote",   items: [serviceKey...], pickup_drop?, fleet_request_id?, coupon? }
 //   → the server's price breakdown (what the payment screen shows)
 // POST { action: "create",  items, pickup_drop?, vehicle_id?, payment_method: "online"|"cod",
 //        options?: { label?, inspection?, claim? }, fleet_request_id? }
@@ -41,7 +41,9 @@ Deno.serve(async (req: Request) => {
 
     switch (body.action) {
       case "quote": {
-        const quote = await buildQuote(db, body, settings);
+        // Signed-in user (optional) — only used for per-customer coupon limits.
+        const user = await getUser(req, db);
+        const quote = await buildQuote(db, body, settings, user?.id ?? null);
         return json(publicQuote(quote));
       }
 

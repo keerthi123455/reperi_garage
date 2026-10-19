@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -121,7 +122,64 @@ class _PaymentScreenState extends State<PaymentScreen>
     final q = _quote;
     if (q == null) return null;
     final fee = (q.pickupMode == 'locked' || (q.pickupMode == 'optional' && _addPickupDrop)) ? q.pickupFee : 0;
-    return q.subtotal + fee;
+    return q.subtotal - q.discount + fee;
+  }
+
+  // ── Coupon ──
+  // The server checks the code and works out the discount (coupons table);
+  // the app only shows what comes back.
+  String? _coupon; // applied code, e.g. REPERIFIRST10
+  final TextEditingController _couponCtrl = TextEditingController();
+  bool _couponOpen = false;
+  bool _couponBusy = false;
+  String? _couponError;
+
+  Future<void> _applyCoupon() async {
+    final code = _couponCtrl.text.trim().toUpperCase().replaceAll(RegExp(r'\s+'), '');
+    FocusScope.of(context).unfocus();
+    if (code.isEmpty) {
+      setState(() => _couponError = 'Enter a coupon code.');
+      return;
+    }
+    setState(() {
+      _couponBusy = true;
+      _couponError = null;
+    });
+    try {
+      final q = await BookingApi.quote(
+        items: widget.serviceKeys,
+        fleetRequestId: widget.fleetRequestId,
+        coupon: code,
+      );
+      if (!mounted) return;
+      setState(() {
+        _couponBusy = false;
+        _quote = q;
+        if (q.couponCode != null && q.discount > 0) {
+          _coupon = q.couponCode;
+          _couponOpen = false;
+        } else {
+          _coupon = null;
+          _couponError = "This coupon doesn't take anything off this booking.";
+        }
+      });
+      if (_coupon != null) HapticFeedback.mediumImpact();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _couponBusy = false;
+        _couponError = e is BookingApiException ? e.message : "Couldn't check the coupon. Try again.";
+      });
+    }
+  }
+
+  void _removeCoupon() {
+    setState(() {
+      _coupon = null;
+      _couponCtrl.clear();
+      _couponError = null;
+    });
+    _loadQuote();
   }
 
   String get _totalPriceDisplay {
@@ -137,10 +195,21 @@ class _PaymentScreenState extends State<PaymentScreen>
       });
     }
     try {
-      final q = await BookingApi.quote(
-        items: widget.serviceKeys,
-        fleetRequestId: widget.fleetRequestId,
-      );
+      BookingQuote q;
+      try {
+        q = await BookingApi.quote(
+          items: widget.serviceKeys,
+          fleetRequestId: widget.fleetRequestId,
+          coupon: _coupon,
+        );
+      } on BookingApiException catch (e) {
+        // The applied coupon stopped working (expired / used up) — drop it
+        // and show the normal price.
+        if (!e.isCouponError || _coupon == null) rethrow;
+        _coupon = null;
+        _couponError = e.message;
+        q = await BookingApi.quote(items: widget.serviceKeys, fleetRequestId: widget.fleetRequestId);
+      }
       if (!mounted) return;
       setState(() {
         _quote = q;
@@ -601,6 +670,15 @@ class _PaymentScreenState extends State<PaymentScreen>
           _loadQuote();
           break;
       }
+      if (e.isCouponError) {
+        // Coupon ran out between applying and paying — back to full price.
+        setState(() {
+          _coupon = null;
+          _couponError = e.message;
+          _couponOpen = true;
+        });
+        _loadQuote();
+      }
       ErrorDisplay.showPremiumError(context, error: e, customMessage: e.message);
       return;
     }
@@ -631,6 +709,7 @@ class _PaymentScreenState extends State<PaymentScreen>
         vehicleId: _vehicleId,
         options: _optionsWithSlot,
         fleetRequestId: widget.fleetRequestId,
+        coupon: _coupon,
       );
     } catch (e) {
       _handleCreateError(e);
@@ -791,6 +870,7 @@ class _PaymentScreenState extends State<PaymentScreen>
         pickupDrop: _addPickupDrop,
         vehicleId: _vehicleId,
         options: _optionsWithSlot,
+        coupon: _coupon,
       );
       if (!created.booked) {
         throw const BookingApiException('unexpected', 'Could not place your booking. Please try again.');
@@ -1073,6 +1153,8 @@ class _PaymentScreenState extends State<PaymentScreen>
         children: [
           for (final line in q.lines) _billLine(line.name, line.display),
           if (_pickupFeeCharged > 0) _billLine('Doorstep pickup & drop', formatRupees(_pickupFeeCharged)),
+          if (q.discount > 0)
+            _billLine('Coupon (${q.couponCode ?? ''})', '-${formatRupees(q.discount)}', valueColor: _PayColors.success),
           _billLine('Platform fee', 'Free', valueColor: _PayColors.success),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1108,6 +1190,184 @@ class _PaymentScreenState extends State<PaymentScreen>
         curve: Curves.easeOutCubic,
         alignment: Alignment.topCenter,
         child: body,
+      ),
+    );
+  }
+
+  // ── Coupon card ───────────────────────────────────────────────────────
+
+  /// Under the bill. Three looks: "Apply coupon" row → code field + Apply
+  /// → green "applied, you save ₹X" with Remove.
+  Widget _couponCard() {
+    final q = _quote;
+    final applied = _coupon != null && q != null && q.discount > 0;
+
+    Widget child;
+    if (applied) {
+      child = Row(
+        key: const ValueKey('coupon-applied'),
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(color: _PayColors.success.withOpacity(0.12), shape: BoxShape.circle),
+            child: const Icon(Icons.check_circle_rounded, color: _PayColors.success, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('$_coupon applied', style: _t(14, FontWeight.w800, _PayColors.navy)),
+                const SizedBox(height: 2),
+                Text('You save ${formatRupees(q.discount)}', style: _t(12.5, FontWeight.w700, _PayColors.success)),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: isProcessing ? null : _removeCoupon,
+            child: Text('Remove', style: _t(13, FontWeight.w800, const Color(0xFFE5484D))),
+          ),
+        ],
+      );
+    } else if (!_couponOpen) {
+      child = InkWell(
+        key: const ValueKey('coupon-closed'),
+        borderRadius: BorderRadius.circular(14),
+        onTap: isProcessing ? null : () => setState(() => _couponOpen = true),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: const BoxDecoration(color: _PayColors.blueTint, shape: BoxShape.circle),
+                child: const Icon(Icons.local_offer_rounded, color: _PayColors.blue, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Apply coupon', style: _t(14, FontWeight.w800, _PayColors.navy)),
+                    if (_couponError != null) ...[
+                      const SizedBox(height: 2),
+                      Text(_couponError!, style: _t(12, FontWeight.w600, const Color(0xFFE5484D))),
+                    ],
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: _PayColors.muted),
+            ],
+          ),
+        ),
+      );
+    } else {
+      child = Column(
+        key: const ValueKey('coupon-open'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.local_offer_rounded, color: _PayColors.blue, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Have a coupon code?', style: _t(14, FontWeight.w800, _PayColors.navy))),
+              GestureDetector(
+                onTap: () => setState(() {
+                  _couponOpen = false;
+                  _couponError = null;
+                }),
+                child: const Icon(Icons.close_rounded, color: _PayColors.muted, size: 20),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _couponCtrl,
+                  autofocus: true,
+                  enabled: !_couponBusy,
+                  textCapitalization: TextCapitalization.characters,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _applyCoupon(),
+                  onChanged: (_) {
+                    if (_couponError != null) setState(() => _couponError = null);
+                  },
+                  style: _t(15, FontWeight.w800, _PayColors.navy, spacing: 1.2),
+                  decoration: InputDecoration(
+                    hintText: 'ENTER CODE',
+                    hintStyle: _t(14, FontWeight.w700, _PayColors.muted.withOpacity(0.6), spacing: 1.2),
+                    isDense: true,
+                    filled: true,
+                    fillColor: _PayColors.bg,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _PayColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: _couponError != null ? const Color(0xFFE5484D) : _PayColors.border,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _PayColors.blue, width: 1.6),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                height: 46,
+                child: ElevatedButton(
+                  onPressed: _couponBusy ? null : _applyCoupon,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _PayColors.blue,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: _PayColors.blue.withOpacity(0.5),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: _couponBusy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                        )
+                      : Text('Apply', style: _t(14, FontWeight.w800, Colors.white)),
+                ),
+              ),
+            ],
+          ),
+          if (_couponError != null) ...[
+            const SizedBox(height: 8),
+            Text(_couponError!, style: _t(12.5, FontWeight.w600, const Color(0xFFE5484D))),
+          ],
+        ],
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      decoration: _cardDecoration().copyWith(
+        border: Border.all(
+          color: applied ? _PayColors.success.withOpacity(0.5) : _PayColors.border,
+          width: applied ? 1.4 : 1,
+        ),
+      ),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          child: child,
+        ),
       ),
     );
   }
@@ -1600,6 +1860,7 @@ class _PaymentScreenState extends State<PaymentScreen>
   @override
   void dispose() {
     _controller.dispose();
+    _couponCtrl.dispose();
     super.dispose();
   }
 
@@ -1643,6 +1904,10 @@ class _PaymentScreenState extends State<PaymentScreen>
                                 const SizedBox(height: 22),
                                 _sectionLabel('Bill details'),
                                 _billCard(),
+                                if (!_isFleet && _quote != null) ...[
+                                  const SizedBox(height: 12),
+                                  _couponCard(),
+                                ],
                                 if (!_isFleet) ...[
                                   const SizedBox(height: 22),
                                   _sectionLabel('Service address'),

@@ -7,6 +7,8 @@ import '../models/catalog_item.dart' show formatRupees;
 import '../services/catalog_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/call_expert_button.dart';
+import '../widgets/reperi_resolve_card.dart';
 import 'lighting_services_screen.dart';
 import 'payment_screen.dart';
 import 'reperi_resolve_screen.dart';
@@ -326,6 +328,15 @@ class _OtherServicesScreenState extends State<OtherServicesScreen> with TickerPr
                       ),
                     ),
                   ],
+                )),
+                // ReperiResolve — problem left after a service? Get a price.
+                r(_label('Issue after a service?')),
+                r(ReperiResolveCard(
+                  padding: EdgeInsets.zero,
+                  onTap: () => _open(ReperiResolveScreen(
+                    vehicleId: v?['id']?.toString(),
+                    vehicleLabel: vehicleLabel,
+                  )),
                 )),
               ]),
             ),
@@ -850,7 +861,7 @@ class _BookBar extends StatelessWidget {
                 onTap: onBook,
                 child: Container(
                   height: 54,
-                  padding: const EdgeInsets.symmetric(horizontal: 22),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
                     color: _gold,
                     borderRadius: BorderRadius.circular(18),
@@ -866,6 +877,9 @@ class _BookBar extends StatelessWidget {
                   ),
                 ),
               ),
+              // Green "Call an expert" hub — bottom-right corner of the screen.
+              const SizedBox(width: 12),
+              const CallExpertButton(showLabel: false),
             ],
           ),
         ),

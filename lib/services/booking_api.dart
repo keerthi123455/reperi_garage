@@ -31,15 +31,20 @@ class BookingApi {
   }
 
   /// Price breakdown for [items] (service keys) — what the payment screen shows.
+  ///
+  /// [coupon]: a code typed by the customer. An invalid one throws a
+  /// [BookingApiException] whose [BookingApiException.isCouponError] is true.
   static Future<BookingQuote> quote({
     required List<String> items,
     bool pickupDrop = false,
     String? fleetRequestId,
+    String? coupon,
   }) async {
     final data = await _call({
       'action': 'quote',
       if (fleetRequestId != null) 'fleet_request_id': fleetRequestId else 'items': items,
       'pickup_drop': pickupDrop,
+      if (coupon != null && coupon.isNotEmpty) 'coupon': coupon,
     });
     return BookingQuote.fromJson(data);
   }
@@ -53,11 +58,13 @@ class BookingApi {
     String vehicleId = '',
     Map<String, dynamic> options = const {},
     String? fleetRequestId,
+    String? coupon,
   }) async {
     final data = await _call({
       'action': 'create',
       if (fleetRequestId != null) 'fleet_request_id': fleetRequestId else 'items': items,
       'pickup_drop': pickupDrop,
+      if (coupon != null && coupon.isNotEmpty) 'coupon': coupon,
       'payment_method': cash ? 'cod' : 'online',
       if (vehicleId.isNotEmpty) 'vehicle_id': vehicleId,
       'options': options,
@@ -101,6 +108,9 @@ class BookingApiException implements Exception {
   /// The customer has paid but the booking isn't saved yet — retrying is safe.
   bool get paidButNotSaved => code == 'booking_save_failed' && paymentId != null;
 
+  /// The coupon code was rejected (invalid, expired, used up, …).
+  bool get isCouponError => code == 'invalid_coupon' || code.startsWith('coupon_');
+
   @override
   String toString() => message;
 }
@@ -124,6 +134,8 @@ class BookingQuote {
     required this.totalDisplay,
     required this.allowCod,
     required this.bookingName,
+    this.couponCode,
+    this.discount = 0,
   });
 
   final List<QuoteLine> lines;
@@ -136,6 +148,10 @@ class BookingQuote {
   final String totalDisplay;
   final bool allowCod;
   final String bookingName;
+
+  /// Applied coupon (null = none) and the ₹ it takes off [subtotal].
+  final String? couponCode;
+  final int discount;
 
   bool get showsPickupCard => pickupMode == 'optional' || pickupMode == 'locked';
   bool get pickupLocked => pickupMode == 'locked';
@@ -160,6 +176,8 @@ class BookingQuote {
         totalDisplay: (j['total_display'] ?? '').toString(),
         allowCod: j['allow_cod'] == true,
         bookingName: (j['booking_name'] ?? '').toString(),
+        couponCode: j['coupon_code']?.toString(),
+        discount: _int(j['discount']),
       );
 }
 

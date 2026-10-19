@@ -136,12 +136,94 @@ export interface Quote {
   services: ServiceRow[];
   primary: ServiceRow | null;
   fleetRequestId: string | null;
+  /** Applied coupon (null = none). `discount` comes off the services subtotal. */
+  couponCode: string | null;
+  discount: number;
 }
 
 export interface QuoteInput {
   items?: unknown;
   pickup_drop?: unknown;
   fleet_request_id?: unknown;
+  /** Coupon code typed by the customer, e.g. "REPERIFIRST10". */
+  coupon?: unknown;
+}
+
+// ── Coupons ────────────────────────────────────────────────────────────
+// Codes live in the `coupons` table (add / remove rows in Supabase).
+//   discount_type 'percent' → discount_value % off the services subtotal
+//                 'flat'    → ₹discount_value off
+// Optional: max_discount (₹ cap for percent), min_order, valid_from /
+// valid_until, max_uses (all customers), per_user_limit, active.
+// The pickup & drop fee is never discounted, and at least ₹1 is always
+// charged (Razorpay's minimum).
+
+interface CouponRow {
+  code: string;
+  discount_type: "percent" | "flat";
+  discount_value: number | string;
+  max_discount: number | null;
+  min_order: number | null;
+  active: boolean;
+  valid_from: string | null;
+  valid_until: string | null;
+  max_uses: number | null;
+  per_user_limit: number | null;
+}
+
+const COUPON_RE = /^[A-Z0-9_-]{3,30}$/;
+
+export function normalizeCoupon(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const code = raw.trim().toUpperCase().replace(/\s+/g, "");
+  return code ? code : null;
+}
+
+async function applyCoupon(
+  db: SupabaseClient,
+  code: string,
+  subtotal: number,
+  userId: string | null,
+): Promise<number> {
+  const invalid = () => new ApiError("invalid_coupon", "That coupon code isn't valid.");
+  if (!COUPON_RE.test(code)) throw invalid();
+
+  const { data, error } = await db.from("coupons").select("*").eq("code", code).maybeSingle();
+  if (error) throw error;
+  const c = data as CouponRow | null;
+  if (!c || !c.active) throw invalid();
+
+  const now = Date.now();
+  if (c.valid_from && Date.parse(c.valid_from) > now) {
+    throw new ApiError("coupon_not_started", "This coupon isn't active yet.");
+  }
+  if (c.valid_until && Date.parse(c.valid_until) < now) {
+    throw new ApiError("coupon_expired", "This coupon has expired.");
+  }
+  if (c.min_order && subtotal < c.min_order) {
+    throw new ApiError("coupon_min_order", `This coupon needs a booking of at least ${rupees(c.min_order)}.`);
+  }
+  if (c.max_uses) {
+    const { count, error: e } = await db
+      .from("coupon_redemptions").select("id", { count: "exact", head: true }).eq("code", code);
+    if (e) throw e;
+    if ((count ?? 0) >= c.max_uses) throw new ApiError("coupon_used_up", "This coupon has been fully used.");
+  }
+  if (c.per_user_limit && userId) {
+    const { count, error: e } = await db
+      .from("coupon_redemptions").select("id", { count: "exact", head: true }).eq("code", code).eq("user_id", userId);
+    if (e) throw e;
+    if ((count ?? 0) >= c.per_user_limit) {
+      throw new ApiError("coupon_already_used", "You've already used this coupon.");
+    }
+  }
+
+  const value = Number(c.discount_value);
+  if (!Number.isFinite(value) || value <= 0) throw invalid();
+  let discount = c.discount_type === "flat" ? Math.round(value) : Math.floor((subtotal * value) / 100);
+  if (c.max_discount && c.max_discount > 0) discount = Math.min(discount, c.max_discount);
+  discount = Math.max(0, Math.min(discount, subtotal - 1)); // always charge at least ₹1
+  return discount;
 }
 
 // ── Settings ───────────────────────────────────────────────────────────
@@ -212,6 +294,7 @@ export async function buildQuote(
   db: SupabaseClient,
   input: QuoteInput,
   settings: Settings,
+  userId: string | null = null,
 ): Promise<Quote> {
   const fleetRequestId = parseFleetRequestId(input.fleet_request_id);
   if (fleetRequestId !== null) return await buildFleetQuote(db, fleetRequestId);
@@ -265,6 +348,9 @@ export async function buildQuote(
     if (primary && typeof suffix === "string") bookingName += suffix;
   }
 
+  const couponCode = normalizeCoupon(input.coupon);
+  const discount = couponCode ? await applyCoupon(db, couponCode, subtotal, userId) : 0;
+
   return {
     kind: "service",
     lines,
@@ -273,7 +359,7 @@ export async function buildQuote(
     pickupFee: settings.pickupDropFee,
     pickupDrop,
     pickupFeeCharged,
-    total: subtotal + pickupFeeCharged,
+    total: subtotal - discount + pickupFeeCharged,
     allowCod: services.every((s) => s.allow_cod),
     vehicleRequired: services.some((s) => s.vehicle_required),
     apartmentBased: services.some((s) => s.details?.["apartment_based"] === true),
@@ -282,6 +368,8 @@ export async function buildQuote(
     services,
     primary,
     fleetRequestId: null,
+    couponCode: couponCode && discount > 0 ? couponCode : null,
+    discount,
   };
 }
 
@@ -318,6 +406,8 @@ async function buildFleetQuote(db: SupabaseClient, requestId: string): Promise<Q
     services: [],
     primary: null,
     fleetRequestId: requestId,
+    couponCode: null, // coupons don't apply to fleet bills
+    discount: 0,
   };
 }
 
@@ -331,6 +421,9 @@ export function publicQuote(q: Quote) {
     pickup_fee: q.pickupFee,
     pickup_drop: q.pickupDrop,
     pickup_fee_charged: q.pickupFeeCharged,
+    coupon_code: q.couponCode,
+    discount: q.discount,
+    discount_display: q.discount ? `-${rupees(q.discount)}` : null,
     total: q.total,
     total_display: rupees(q.total),
     allow_cod: q.allowCod,
@@ -538,7 +631,7 @@ export async function createIntent(
   input: CreateInput,
   settings: Settings,
 ): Promise<{ intent: Intent; quote: Quote }> {
-  const quote = await buildQuote(db, input, settings);
+  const quote = await buildQuote(db, input, settings, user?.id ?? null);
   const method = input.payment_method === "cod" ? "cod" : "online";
   if (method === "cod" && !quote.allowCod) {
     throw new ApiError("cod_not_allowed", "This booking can only be paid online.");
@@ -614,6 +707,9 @@ export async function createIntent(
     };
   } else {
     options.fleet_request_id = quote.fleetRequestId;
+  }
+  if (quote.couponCode && quote.discount > 0) {
+    options.coupon = { code: quote.couponCode, discount: quote.discount };
   }
 
   const row = {
@@ -742,6 +838,28 @@ const toInt = (v: string | null) => (v === null ? null : Number.isInteger(Number
 
 // ── Finalize (create the booking) ──────────────────────────────────────
 
+/** Coupon applied to this checkout, if any. */
+function couponOf(intent: Intent): { code: string; discount: number } | null {
+  const c = intent.options["coupon"] as { code?: string; discount?: number } | undefined;
+  if (!c?.code || !c.discount) return null;
+  return { code: c.code, discount: Math.round(Number(c.discount)) || 0 };
+}
+
+/** Counts a coupon use once the booking exists. Never fails the booking. */
+async function recordCouponUse(db: SupabaseClient, intent: Intent, bookingId: string | null): Promise<void> {
+  const c = couponOf(intent);
+  if (!c) return;
+  const { error } = await db.from("coupon_redemptions").upsert({
+    code: c.code,
+    user_id: intent.user_id,
+    intent_id: intent.id,
+    booking_table: intent.booking_table,
+    booking_id: bookingId,
+    discount: c.discount,
+  }, { onConflict: "intent_id", ignoreDuplicates: true });
+  if (error) console.error(`Coupon use not recorded for intent ${intent.id}:`, error.message);
+}
+
 export interface BookingResult {
   status: "booked" | "pending";
   booking_table?: string | null;
@@ -788,6 +906,7 @@ export async function finalizeIntent(
       .update({ status: "booked", booking_id: bookingId, error: null })
       .eq("id", intent.id);
     if (error) throw error;
+    await recordCouponUse(db, intent, bookingId);
     return { status: "booked", booking_table: intent.booking_table, booking_id: bookingId };
   } catch (err) {
     const message = err instanceof Error ? err.message : JSON.stringify(err);
@@ -853,7 +972,11 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
   const bookingName = label && typeof fmt === "string"
     ? fmt.replace("{label}", label)
     : (intent.options["booking_name"] as string) ?? route.name;
-  const price = rupees(intent.subtotal);
+  // With a coupon, the booking shows (and cash collects) the discounted price.
+  const coupon = couponOf(intent);
+  const netSubtotal = intent.subtotal - (coupon?.discount ?? 0);
+  const price = rupees(netSubtotal);
+  const couponCols = coupon ? { coupon_code: coupon.code, coupon_discount: coupon.discount } : {};
   const vehicle = intent.vehicle_id ? { vehicle_id: intent.vehicle_id } : {};
   const pickupDropAddress = {
     pickup_address: addr.address ?? "Not specified",
@@ -890,6 +1013,7 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
         ...pickupDropAddress,
         ...customerCols,
         ...slotCols(intent.options),
+        ...couponCols,
         assigned_to_admin_id: adminRef,
       };
       break;
@@ -906,6 +1030,7 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
         status: "booked",
         ...customerCols,
         ...slotCols(intent.options),
+        ...couponCols,
       };
       break;
     }
@@ -925,6 +1050,7 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
         slot_date: insp.slot_date ?? null,
         slot_time: insp.slot_time ?? null,
         ...slotCols(intent.options),
+        ...couponCols,
         ...customerCols,
       };
       break;
@@ -953,6 +1079,7 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
         ...rzpIds,
         ...customerCols,
         ...slotCols(intent.options),
+        ...couponCols,
       };
       break;
     }
@@ -965,7 +1092,7 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
         ...vehicle,
         plan_type: (route.details?.["plan_type"] as string) ?? null,
         plan_title: bookingName,
-        price: intent.subtotal,
+        price: netSubtotal,
         status: "active",
         start_date: start.toISOString(),
         end_date: end.toISOString(),
@@ -976,6 +1103,7 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
         pickup_longitude: addr.longitude ?? null,
         pickup_address_name: addr.name ?? null,
         ...(washerRef ? { washer_id: toInt(washerRef) } : {}),
+        ...couponCols,
       };
       break;
     }
