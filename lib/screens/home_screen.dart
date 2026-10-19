@@ -30,6 +30,7 @@ import '../widgets/emergency_status_banner.dart';
 import '../widgets/error_display.dart';
 import '../widgets/location_row.dart';
 import '../widgets/notification_permission_dialog.dart';
+import '../widgets/offer_hub_button.dart';
 import '../widgets/web_notification_permission.dart';
 import '../widgets/packages_side_heading.dart';
 import '../widgets/promo_banner.dart';
@@ -1267,6 +1268,14 @@ class _HomeScreenState extends State<HomeScreen> {
               right: 0,
               bottom: 134 + bottomInset,
               child: const EmergencyStatusBanner(),
+            ),
+            // Offer hub (switched on/off from Supabase: offer_banner_control).
+            // Sits just above the spot where the emergency banner shrinks
+            // into its red circle, so the two never overlap.
+            Positioned(
+              right: 16,
+              bottom: 212 + bottomInset,
+              child: const OfferHubButton(),
             ),
             if (_toastMessage != null)
               Positioned(
