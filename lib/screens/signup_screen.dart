@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../widgets/error_display.dart';
+import '../widgets/guest_sheets.dart';
 import 'home_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -47,6 +48,22 @@ class _SignupScreenState extends State<SignupScreen>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
+
+    // "Sign in as guest — do the boring stuff later" (once per launch).
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(milliseconds: 700));
+      if (!mounted) return;
+      showGuestInvite(context, screen: 'signup', onGuest: _continueAsGuest);
+    });
+  }
+
+  void _continueAsGuest() {
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      (route) => false,
+    );
   }
 
   @override

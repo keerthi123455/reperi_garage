@@ -101,6 +101,55 @@ Deno.serve(async (req) => {
         break;
       }
 
+      // ── Apartment offer washes (₹1 / ₹199 / ₹999) ──
+      // New: notify admin, confirm to the customer, alert the assigned washer.
+      // Marked Completed by the washer: tell the customer it's done.
+      case "offer_bookings": {
+        const packageName = String(record.package_name ?? "your wash");
+        const apartment = String(record.pickup_address_name ?? "the apartment");
+        const data = { type: "offer_booking", bookingId: record.id };
+
+        if (type === "INSERT") {
+          await Promise.all([
+            sendPush(
+              "admin",
+              "New offer booking",
+              `${packageName} at ${apartment} — a new offer booking just came in.`,
+              data,
+            ),
+            record.user_id
+              ? sendPush(
+                  `customer_${record.user_id}`,
+                  "Booking confirmed",
+                  `Your ${packageName} at ${apartment} is booked.`,
+                  data,
+                )
+              : Promise.resolve(),
+            record.washer_id
+              ? sendPush(
+                  `washer_${record.washer_id}`,
+                  "New wash assigned",
+                  `${packageName} at ${apartment}. Open your dashboard for details.`,
+                  data,
+                )
+              : Promise.resolve(),
+          ]);
+        } else if (type === "UPDATE") {
+          const nowDone =
+            String(record.booking_status ?? "") === "Completed" &&
+            String(old_record?.booking_status ?? "") !== "Completed";
+          if (nowDone && record.user_id) {
+            await sendPush(
+              `customer_${record.user_id}`,
+              "Wash complete!",
+              `Your ${packageName} at ${apartment} is done. Thanks for choosing Reperi!`,
+              data,
+            );
+          }
+        }
+        break;
+      }
+
       // ── Admin posts a progress update on a booking: notify the customer ──
       case "booking_updates": {
         if (type === "INSERT") {
@@ -207,6 +256,53 @@ Deno.serve(async (req) => {
                 { type: "fleet_chat", requestId: record.request_id },
               );
             }
+          }
+        }
+        break;
+      }
+
+      // ── ReperiResolve: problem photos/video → your team sends a price ──
+      // New request → admin. Price typed in → customer. Price accepted → admin.
+      case "resolve_requests": {
+        const car = String(record.vehicle_label ?? "a car");
+        const cats = Array.isArray(record.categories) ? (record.categories as string[]).join(", ") : "";
+        const what = cats || String(record.description ?? "").slice(0, 80) || "photos / video";
+        const data = { type: "resolve_request", requestId: record.id };
+
+        if (type === "INSERT") {
+          await Promise.all([
+            sendPush("admin", "New ReperiResolve request", `${car}: ${what}. Send them a price.`, data),
+            record.user_id
+              ? sendPush(
+                  `customer_${record.user_id}`,
+                  "Request received",
+                  "We're looking at your problem and will send you a fixed price soon.",
+                  data,
+                )
+              : Promise.resolve(),
+          ]);
+        } else if (type === "UPDATE") {
+          const priced =
+            record.quoted_price != null &&
+            String(record.quoted_price) !== String(old_record?.quoted_price ?? "");
+          const accepted =
+            record.status === "Accepted" && old_record?.status !== "Accepted";
+          if (priced && record.user_id) {
+            await sendPush(
+              `customer_${record.user_id}`,
+              "Your price is ready",
+              `₹${record.quoted_price} to fix ${what.toLowerCase()} on your ${car}. Tap to accept.`,
+              data,
+            );
+          }
+          if (accepted) {
+            const who = [record.customer_name, record.customer_phone].filter(Boolean).join(" · ");
+            await sendPush(
+              "admin",
+              "ReperiResolve price accepted",
+              `${who || "Customer"} accepted ₹${record.quoted_price} for ${car}. Call to schedule.`,
+              data,
+            );
           }
         }
         break;

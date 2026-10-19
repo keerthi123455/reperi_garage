@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/login_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'services/catalog_service.dart';
+import 'services/guest_mode.dart';
 import 'services/push_notification_service.dart';
 import 'services/web_display.dart';
 
@@ -66,6 +67,8 @@ Future<void> main() async {
       final userId = data.session?.user.id;
       if (userId != null) {
         PushNotificationService.loginAsCustomer(userId);
+        // Signed in for real — no longer a guest.
+        GuestMode.disable();
       }
     } else if (data.event == AuthChangeEvent.signedOut) {
       PushNotificationService.logout();

@@ -537,7 +537,7 @@ const STAGE_LABEL = {
 const ON_ROAD = new Set(['pickup_started', 'picked_up', 'out_for_delivery']);
 const DONE_STATUS = /^(delivered|completed|rejected|cancell?ed)$/i;
 const GARAGE_WORK = /picked up|inspection|service in progress|billing/i;
-const TYPE_TONE = { Service: 'blue', Wash: 'violet', Roadside: 'red', PUC: 'amber', Inspection: 'amber', Claim: 'gold', 'Monthly wash': 'violet', Fleet: 'green', Detailing: '' };
+const TYPE_TONE = { Service: 'blue', Wash: 'violet', Roadside: 'red', PUC: 'amber', Inspection: 'amber', Claim: 'gold', 'Monthly wash': 'violet', Fleet: 'green', Detailing: '', 'Offer wash': 'violet', ReperiResolve: 'green' };
 const TYPE_COLOR = { Service: '#2563eb', Wash: '#7c3aed', Roadside: '#dc2626', PUC: '#d97706', Inspection: '#ca8a04', Claim: '#b8860b', 'Monthly wash': '#a855f7', Fleet: '#16a34a', Detailing: '#64748b' };
 
 function buildModel(d) {
@@ -583,6 +583,36 @@ function buildModel(d) {
       garageId: r.assigned_to_admin_id, deliveryId: r.delivery_partner_id, washerId: r.washer_id,
       userId: r.user_id, vehicleId: r.vehicle_id, customer: r.customer_name, phone: r.customer_phone,
       address: r.pickup_address, created: r.created_at, done, doneAt: r.stage_delivered_at || r.return_otp_verified_at || r.marked_done_at,
+    });
+  }
+  // Apartment offer washes (₹1 / ₹199 / ₹999) from the offer_bookings table.
+  for (const r of d.offer || []) {
+    const name = r.package_name || 'Offer wash';
+    const done = DONE_STATUS.test(r.booking_status || '') || !!r.completed_at;
+    push({
+      table: 'offer_bookings', id: r.id, raw: r, type: 'Offer wash', title: name, amount: money(r.package_price),
+      pay: (r.payment_status || '').toLowerCase() === 'cod' ? 'cod' : (r.payment_status ? 'paid' : 'unknown'),
+      status: r.booking_status || 'Booked', stage: null, pickup: false,
+      washerId: r.washer_id, userId: r.user_id, vehicleId: r.vehicle_id,
+      customer: r.customer_name, phone: r.customer_phone,
+      address: r.pickup_address_name ? r.pickup_address_name + (r.pickup_address && r.pickup_address !== r.pickup_address_name ? ' · ' + r.pickup_address : '') : r.pickup_address,
+      created: r.created_at, done, doneAt: r.completed_at,
+    });
+  }
+  // ReperiResolve: customer sent photos/video of a problem; we send a price
+  // (type it into quoted_price in Supabase → resolve_requests).
+  for (const r of d.resolve || []) {
+    const cats = Array.isArray(r.categories) ? r.categories.join(', ') : '';
+    const st = r.status || 'Submitted';
+    push({
+      table: 'resolve_requests', id: r.id, raw: r, type: 'ReperiResolve',
+      title: cats || (r.description || '').slice(0, 60) || 'Problem photos / video',
+      amount: money(r.quoted_price), priceText: r.quoted_price != null ? '₹' + r.quoted_price : 'Needs a price',
+      pay: 'enquiry', enquiry: true,
+      status: st === 'Submitted' ? 'Needs a price' : st === 'Quoted' ? 'Price sent' : st === 'Accepted' ? 'Accepted — call to schedule' : st,
+      stage: null, pickup: false, userId: r.user_id, vehicleId: r.vehicle_id, vehicle: r.vehicle_label || '',
+      customer: r.customer_name, phone: r.customer_phone, created: r.created_at,
+      done: st === 'Closed' || st === 'Cancelled', doneAt: r.accepted_at,
     });
   }
   for (const r of d.pollution || []) {
@@ -703,16 +733,19 @@ async function load(silent = false) {
 }
 function startAutoRefresh() {
   stopAutoRefresh();
-  state.timer = setInterval(() => { if (!document.hidden && !$('drawer').classList.contains('on')) load(true); }, AUTO_REFRESH_MS);
+  state.timer = setInterval(() => { if (!document.hidden && !$('drawer').classList.contains('on') && !editingResolve()) load(true); }, AUTO_REFRESH_MS);
 }
 function stopAutoRefresh() { if (state.timer) clearInterval(state.timer); state.timer = null; }
-document.addEventListener('visibilitychange', () => { if (!document.hidden && state.model) load(true); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.model && !editingResolve()) load(true); });
+// Don't wipe a half-typed price by auto-refreshing.
+function editingResolve() { return !!document.querySelector('[data-resolve-form][data-dirty]'); }
 
 // ─────────────────────────────── Chrome ───────────────────────────────
 const TABS = [
   ['overview', 'Overview'], ['live', 'Live ops'], ['bookings', 'All bookings'], ['deliveries', 'Deliveries'],
   ['washes', 'Washes'], ['claims', 'Claims'], ['fleet', 'Fleet'], ['customers', 'Customers'],
   ['partners', 'Partners'], ['payments', 'Payments'], ['cancellations', 'Cancellations'],
+  ['resolve', 'After service issue'],
 ];
 function buildChrome() {
   document.querySelectorAll('#rangeSeg button').forEach((b) => {
@@ -742,10 +775,11 @@ function renderNav() {
     live: open.length,
     deliveries: open.filter((j) => ON_ROAD.has(j.stage)).length,
     overview: att,
+    resolve: vis(m.jobs).filter((j) => j.table === 'resolve_requests' && j.raw.status === 'Submitted').length,
   };
   $('nav').innerHTML = TABS.map(([k, label]) => {
     const c = counts[k];
-    const badge = c ? `<span class="count ${k === 'overview' ? 'alert' : ''}">${c}</span>` : '';
+    const badge = c ? `<span class="count ${k === 'overview' || k === 'resolve' ? 'alert' : ''}">${c}</span>` : '';
     return `<button data-tab="${k}" class="${state.tab === k ? 'active' : ''}"><span>${label}</span>${badge}</button>`;
   }).join('');
   $('nav').querySelectorAll('button').forEach((b) => b.onclick = () => go(b.dataset.tab));
@@ -766,7 +800,7 @@ function render() {
   $('pageTitle').textContent = label;
   const errs = Object.keys(state.data.errors || {});
   const banner = errs.length ? `<div class="banner">Some data couldn't be loaded (${esc(errs.join(', '))}). Everything else is accurate.</div>` : '';
-  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations }[state.tab] || overview;
+  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve }[state.tab] || overview;
   $('content').innerHTML = banner + view();
   bindRows();
   afterRender.splice(0).forEach((fn) => fn());
@@ -933,6 +967,7 @@ function jobCard(j) {
 
 // ── Job table (shared) ──
 function statusPill(j) {
+  if (j.table === 'resolve_requests') return pill(j.status, j.done ? 'green' : /needs/i.test(j.status) ? 'amber' : /accepted/i.test(j.status) ? 'green' : 'blue');
   if (j.enquiry) return pill('Enquiry');
   if (j.done) return pill(j.status === 'Pending' ? 'Done' : titleCase(j.status), 'green');
   if (j.stage) return pill(STAGE_LABEL[j.stage] || titleCase(j.stage), ON_ROAD.has(j.stage) ? 'violet' : 'blue');
@@ -983,7 +1018,7 @@ function filteredJobs() {
 }
 function bookings() {
   const f = state.filters;
-  const types = ['Service', 'Wash', 'Roadside', 'PUC', 'Inspection', 'Claim', 'Monthly wash', 'Fleet', 'Detailing'];
+  const types = ['Service', 'Wash', 'Offer wash', 'ReperiResolve', 'Roadside', 'PUC', 'Inspection', 'Claim', 'Monthly wash', 'Fleet', 'Detailing'];
   const list = filteredJobs();
   const total = list.reduce((s, j) => s + j.amount, 0);
   afterRender.push(() => {
@@ -1110,6 +1145,139 @@ function claims() {
     </div>
     <div class="section-title"><h3>Claims</h3><span class="hint">Open the claim to view documents</span></div>
     ${jobTable(list)}`;
+}
+
+// ── After service issue (ReperiResolve) ──
+// Every request with every detail on one card: customer, phone, vehicle,
+// what's wrong, photos/videos, dealer quote and the price we sent.
+function resolve() {
+  const all = vis(state.model.jobs).filter((j) => j.table === 'resolve_requests');
+  const list = all.filter((j) => j.inRange || !j.done).sort((a, b) => {
+    const rank = (j) => ({ Submitted: 0, Accepted: 1, Quoted: 2 }[j.raw.status] ?? 3);
+    return rank(a) - rank(b) || new Date(b.created) - new Date(a.created);
+  });
+  const st = (x) => all.filter((j) => j.raw.status === x).length;
+  const vehById = new Map((state.model.raw.vehicles || []).map((v) => [String(v.id), v]));
+  const row = (k, v) => v === null || v === undefined || v === '' ? '' : `<dt>${k}</dt><dd>${v}</dd>`;
+  const card = (j) => {
+    const r = j.raw;
+    const veh = vehById.get(String(r.vehicle_id || '')) || {};
+    const phone = j.phone || '';
+    const digits = phone.replace(/\D/g, '');
+    const wa = digits ? `https://wa.me/${digits.length === 10 ? '91' + digits : digits}` : '';
+    const media = Array.isArray(r.media) ? r.media : [];
+    const cats = Array.isArray(r.categories) ? r.categories : [];
+    const tone = r.status === 'Submitted' ? 'amber' : r.status === 'Accepted' ? 'green' : r.status === 'Quoted' ? 'blue' : '';
+    return `<div class="card" style="padding:18px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+        <div>
+          <div style="font-weight:800;font-size:16px">${esc(cats.join(' · ') || (r.description || 'Problem photos / video').slice(0, 80))}</div>
+          <div class="secondary" style="margin-top:2px">${fmtDT(j.created)} · ${ago(j.created)} · <span class="mono">#${esc(r.id)}</span></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">${pill(j.status, tone)}<button class="btn" data-job="resolve_requests:${esc(r.id)}">Open</button></div>
+      </div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-top:14px">
+        <div><h4 style="margin:0 0 6px">Customer</h4><dl class="kv">
+          ${row('Name', esc(j.customer || '—'))}
+          ${row('Phone', phone ? `<a href="tel:${esc(phone)}">${esc(phone)}</a>${wa ? ` · <a href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ''}` : '—')}
+          ${row('Email', j.email ? `<a href="mailto:${esc(j.email)}">${esc(j.email)}</a>` : '—')}
+          ${row('Customer ID', `<span class="mono">${esc(r.user_id || '—')}</span>`)}
+        </dl></div>
+        <div><h4 style="margin:0 0 6px">Vehicle</h4><dl class="kv">
+          ${row('Vehicle', esc([veh.car_brand, veh.car_model].filter(Boolean).join(' ') || r.vehicle_label || '—'))}
+          ${row('Number', esc(veh.car_number || (String(r.vehicle_label || '').split(' · ')[1] || '—')))}
+          ${row('Type', veh.vehicle_type ? esc(titleCase(veh.vehicle_type.replace('_', ' '))) : '')}
+          ${row('Vehicle ID', `<span class="mono">${esc(r.vehicle_id || '—')}</span>`)}
+        </dl></div>
+        <div><h4 style="margin:0 0 6px">Price</h4><dl class="kv">
+          ${row('Dealer quote', r.dealer_quote_amount != null ? `<b>${inr(r.dealer_quote_amount)}</b>` : '—')}
+          ${row('Our price', r.quoted_price != null ? `<b style="color:var(--green)">${inr(r.quoted_price)}</b>` : '<span style="color:var(--amber)">Not sent yet</span>')}
+          ${row('Note to customer', esc(r.quote_note || ''))}
+          ${row('Photo sent', r.quote_image_path ? `<button class="btn-link" style="color:var(--blue)" data-doc="${esc(r.quote_image_path)}" data-bucket="resolve-media">View</button>` : '')}
+          ${row('Sent by', esc(r.quoted_by || ''))}
+          ${row('Price sent', r.quoted_at ? fmtDT(r.quoted_at) : '')}
+          ${row('Accepted', r.accepted_at ? fmtDT(r.accepted_at) : '')}
+        </dl></div>
+      </div>
+      ${r.description ? `<h4>Customer says</h4><div style="white-space:pre-wrap">${esc(r.description)}</div>` : ''}
+      <h4>Photos, videos & quote</h4>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${media.map((m, i) => `<button class="btn" data-doc="${esc(m.path)}" data-bucket="resolve-media">${m.type === 'video' ? '▶ Video' : '🖼 Photo'} ${i + 1}</button>`).join('')}
+        ${r.dealer_quote_path ? `<button class="btn" data-doc="${esc(r.dealer_quote_path)}" data-bucket="resolve-media">🧾 Dealer quote</button>` : ''}
+        ${!media.length && !r.dealer_quote_path ? '<span class="secondary">No files</span>' : ''}
+      </div>
+      ${j.done ? '' : `<h4>${r.quoted_price != null ? 'Update the price sent to the customer' : 'Send a price to the customer'}</h4>
+      <form data-resolve-form="${esc(r.id)}" style="display:grid;gap:10px;grid-template-columns:minmax(140px,200px) 1fr;align-items:start">
+        <div><label class="field">Price (₹)</label><input class="input" name="price" type="number" min="1" step="1" required value="${r.quoted_price ?? ''}" placeholder="e.g. 1500"></div>
+        <div><label class="field">Message to customer</label><textarea class="input" name="note" rows="3" style="height:auto;padding:10px 14px;resize:vertical" placeholder="What we'll fix, parts included, time needed…">${esc(r.quote_note || '')}</textarea></div>
+        <div style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+          <label class="btn" style="cursor:pointer">📷 ${r.quote_image_path ? 'Replace photo' : 'Add photo'}<input name="image" type="file" accept="image/*" hidden></label>
+          <span class="secondary" data-file-name></span>
+          ${r.quote_image_path ? `<label class="secondary" style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="removeImage"> Remove current photo</label>` : ''}
+          <span style="flex:1"></span>
+          <span class="secondary" data-status></span>
+          <button class="btn btn-primary" type="submit">${r.quoted_price != null ? 'Update & notify customer' : 'Send price to customer'}</button>
+        </div>
+      </form>`}
+    </div>`;
+  };
+  afterRender.push(bindResolveForms);
+  return `<div class="grid kpis">
+      ${kpi('New in period', num(all.filter((j) => j.inRange).length), rangeBounds().label, 'gold')}
+      ${kpi('Needs a price', num(st('Submitted')), 'any date', 'amber')}
+      ${kpi('Price sent', num(st('Quoted')), 'waiting for customer', 'blue')}
+      ${kpi('Accepted', num(st('Accepted')), 'call to schedule', 'green')}
+    </div>
+    <div class="banner" style="background:var(--blue-soft);color:var(--text)">Type the price, a message and (optionally) a photo at the bottom of a request, then press <b>Send price to customer</b>. It shows up in their app straight away with a notification.</div>
+    <div class="section-title"><h3>After service issues</h3><span class="hint">Needs a price first · then accepted · then price sent</span></div>
+    ${list.length ? list.map(card).join('') : '<div class="card"><div class="empty">No after-service issues yet.</div></div>'}`;
+}
+
+// Shrinks a photo in the browser before sending it (max 1600px JPEG).
+function imageToJpegBase64(file, max = 1600) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', 0.82).split(',')[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't read that image.")); };
+    img.src = url;
+  });
+}
+function bindResolveForms() {
+  document.querySelectorAll('[data-resolve-form]').forEach((form) => {
+    const fileInput = form.querySelector('input[name="image"]');
+    fileInput.onchange = () => { form.querySelector('[data-file-name]').textContent = fileInput.files[0]?.name || ''; };
+    form.addEventListener('input', () => { form.dataset.dirty = '1'; });
+    form.addEventListener('change', () => { form.dataset.dirty = '1'; });
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const status = form.querySelector('[data-status]');
+      const btn = form.querySelector('button[type="submit"]');
+      const price = Number(form.price.value);
+      if (!price || price <= 0) { status.textContent = 'Enter a price.'; return; }
+      btn.disabled = true; status.style.color = ''; status.textContent = 'Sending…';
+      try {
+        const image = fileInput.files[0] ? await imageToJpegBase64(fileInput.files[0]) : undefined;
+        await api('resolve_quote', {
+          id: form.dataset.resolveForm, price, note: form.note.value,
+          image, removeImage: !!form.removeImage?.checked,
+        });
+        status.style.color = 'var(--green)'; status.textContent = 'Sent ✓ Customer notified';
+        await load(true);
+      } catch (err) {
+        if (err.message === 'signed_out') return;
+        status.style.color = 'var(--red)'; status.textContent = err.message || 'Failed';
+        btn.disabled = false;
+      }
+    };
+  });
 }
 
 // ── Fleet ──
@@ -1306,6 +1474,18 @@ function detailHtml(j, d) {
   if (d.washes?.length) html += `<h4>Washes (${d.washes.length})</h4><ul class="timeline">${d.washes.map((w) => `<li><div><b>Wash completed</b></div><div class="when">${fmtDT(w.created_at)} · ${photoLinks([w.before_photo_url, w.after_photo_url], 'subscription-services', ['Before', 'After'])}</div></li>`).join('')}</ul>`;
   const docs = DOC_FIELDS.filter((k) => r[k]);
   if (docs.length) html += `<h4>Documents</h4><div style="display:flex;flex-wrap:wrap;gap:8px">${docs.map((k) => `<button class="btn" data-doc="${esc(r[k])}" data-bucket="insurance-documents">${titleCase(k.replace(/_url$/, '').replace('owner_', ''))}</button>`).join('')}</div>`;
+  if (j.table === 'offer_bookings') {
+    const ph = [['before_photo_url', 'Before'], ['during_photo_url', 'During'], ['after_photo_url', 'After']].filter(([k]) => r[k]);
+    if (ph.length) html += `<h4>Wash photos</h4><div style="display:flex;gap:10px;flex-wrap:wrap">${ph.map(([k, l]) => `<a href="${esc(r[k])}" target="_blank" rel="noopener" style="text-align:center;text-decoration:none;color:inherit"><img src="${esc(r[k])}" alt="${l}" style="width:110px;height:110px;object-fit:cover;border-radius:10px;display:block"><div class="secondary" style="margin-top:4px">${l}</div></a>`).join('')}</div>`;
+  }
+  if (j.table === 'resolve_requests') {
+    const media = Array.isArray(r.media) ? r.media : [];
+    if (media.length) html += `<h4>Photos & videos (${media.length})</h4><div style="display:flex;flex-wrap:wrap;gap:8px">${media.map((m, i) => `<button class="btn" data-doc="${esc(m.path)}" data-bucket="resolve-media">${m.type === 'video' ? '▶ Video' : 'Photo'} ${i + 1}</button>`).join('')}</div>`;
+    if (r.description) html += `<h4>Customer says</h4><div>${esc(r.description)}</div>`;
+    if (r.dealer_quote_amount != null || r.dealer_quote_path) html += `<h4>Dealer quote</h4><div>${r.dealer_quote_amount != null ? `<b>${inr(r.dealer_quote_amount)}</b>` : ''} ${r.dealer_quote_path ? `<button class="btn" style="margin-left:8px" data-doc="${esc(r.dealer_quote_path)}" data-bucket="resolve-media">View quote</button>` : ''}</div>`;
+    if (r.quoted_price != null) html += `<h4>Price sent</h4><div><b>${inr(r.quoted_price)}</b>${r.quote_note ? ` — ${esc(r.quote_note)}` : ''}${r.quote_image_path ? ` <button class="btn" style="margin-left:8px" data-doc="${esc(r.quote_image_path)}" data-bucket="resolve-media">View photo</button>` : ''}</div>`;
+    html += `<div style="color:var(--muted);margin-top:10px">Send or update the price from the <b>After service issue</b> tab.</div>`;
+  }
   if (r.damage_description) html += `<h4>Damage description</h4><div>${esc(r.damage_description)}</div>`;
   if (Array.isArray(r.bill_items) && r.bill_items.length) html += `<h4>Bill</h4><dl class="kv">${r.bill_items.map((b) => `<dt>${esc(b.name)}</dt><dd>${inr(b.price)}</dd>`).join('')}</dl>`;
   if (d.chats?.length) html += `<h4>Chat (${d.chats.length})</h4><div class="chat">${d.chats.map((c) => { const me = c.sender === 'admin' || c.sender_type === 'admin'; return `<div class="bubble ${me ? 'me' : ''}"><div><b>${esc(me ? 'Garage' : (c.sender_name || 'Customer'))}</b> ${esc(c.message)}</div><div class="when">${fmtDT(c.created_at)}</div></div>`; }).join('')}</div>`;

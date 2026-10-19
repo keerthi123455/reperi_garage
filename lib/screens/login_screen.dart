@@ -8,6 +8,7 @@ import 'home_screen.dart';
 import 'signup_screen.dart';
 import 'admin_dashboard_screen.dart';
 import 'package:reperi_garage/widgets/error_display.dart';
+import 'package:reperi_garage/widgets/guest_sheets.dart';
 
 // Same project URL/anon key as Supabase.initialize() in main.dart — used
 // to spin up a throwaway SupabaseClient for the admin OTP reset flow below
@@ -116,6 +117,22 @@ class _LoginScreenState extends State<LoginScreen>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
+
+    // "Sign in as guest — do the boring stuff later" (once per launch).
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(milliseconds: 700));
+      if (!mounted) return;
+      showGuestInvite(context, screen: 'login', onGuest: _continueAsGuest);
+    });
+  }
+
+  void _continueAsGuest() {
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      (route) => false,
+    );
   }
 
   @override

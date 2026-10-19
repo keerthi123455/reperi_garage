@@ -139,6 +139,8 @@ async function snapshot(client: SupabaseClient, body: Row) {
     intentsR, intentsStuck,
     admins, deliveryPartners, washers,
     reviewOverrides, chatReports, unreadChats,
+    offerR, offerOpen,
+    resolveR, resolveOpen,
   ] = await Promise.all([
     inRange("bookings"),
     safe(errors, "bookings_open", () =>
@@ -179,6 +181,17 @@ async function snapshot(client: SupabaseClient, body: Row) {
     safe(errors, "booking_chats_unread", () =>
       client.from("booking_chats").select("id,booking_id,created_at")
         .eq("sender", "consumer").eq("is_read_by_admin", false).gte("created_at", openSince).limit(MAX_ROWS)),
+    // Apartment offer washes (₹1 / ₹199 / ₹999) — their own table.
+    inRange("offer_bookings"),
+    safe(errors, "offer_bookings_open", () =>
+      client.from("offer_bookings").select("*").gte("created_at", openSince)
+        .or("booking_status.is.null,booking_status.not.in.(Delivered,delivered,completed,Completed,cancelled,canceled)")
+        .limit(MAX_ROWS)),
+    // ReperiResolve requests (photos/video of a problem → we send a price).
+    inRange("resolve_requests"),
+    safe(errors, "resolve_requests_open", () =>
+      client.from("resolve_requests").select("*").gte("created_at", openSince)
+        .in("status", ["Submitted", "Quoted", "Accepted"]).limit(MAX_ROWS)),
   ]);
 
   const bookings = mergeById(bookingsR, bookingsOpen);
@@ -188,11 +201,13 @@ async function snapshot(client: SupabaseClient, body: Row) {
   const fleet = mergeById(fleetR, fleetOpen);
   const monthly = mergeById(monthlyR, monthlyActive);
   const intents = mergeById(intentsR, intentsStuck);
+  const offer = mergeById(offerR, offerOpen);
+  const resolve = mergeById(resolveR, resolveOpen);
 
   // Customers and vehicles referenced by any row.
   const userIds = new Set<string>();
   const vehicleIds = new Set<string>();
-  for (const list of [bookings, pollution, inspection, claims, monthly, detailing, cancellations, intents]) {
+  for (const list of [bookings, pollution, inspection, claims, monthly, detailing, cancellations, intents, offer, resolve]) {
     for (const r of list) {
       if (r.user_id) userIds.add(String(r.user_id));
       if (r.vehicle_id) vehicleIds.add(String(r.vehicle_id));
@@ -250,6 +265,8 @@ async function snapshot(client: SupabaseClient, body: Row) {
     generated_at: new Date().toISOString(),
     range: { from, to },
     bookings,
+    offer,
+    resolve,
     pollution,
     inspection,
     claims,
@@ -272,7 +289,7 @@ async function snapshot(client: SupabaseClient, body: Row) {
 
 const DETAIL_TABLES = new Set([
   "bookings", "pollution_booking", "inspection_booking", "claim_table",
-  "fleet_pickup_requests", "monthlywash_table", "detailing_bookings",
+  "fleet_pickup_requests", "monthlywash_table", "detailing_bookings", "offer_bookings", "resolve_requests",
 ]);
 
 async function detail(client: SupabaseClient, body: Row) {
@@ -312,7 +329,8 @@ async function signedDoc(client: SupabaseClient, body: Row) {
   const path = String(body.path ?? "").replace(/^\/+/, "");
   if (!path || path.includes("..")) throw new HttpError(400, "bad_request", "Invalid document.");
   if (/^https?:\/\//i.test(path)) return { url: path };
-  const bucket = body.bucket === "booking-images" || body.bucket === "subscription-services"
+  const bucket = body.bucket === "booking-images" || body.bucket === "subscription-services" ||
+      body.bucket === "resolve-media"
     ? String(body.bucket)
     : "insurance-documents";
   const { data, error } = await client.storage.from(bucket).createSignedUrl(path, 300);

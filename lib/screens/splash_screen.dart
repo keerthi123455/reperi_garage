@@ -8,6 +8,7 @@ import 'reset_password_screen.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
 import '../main.dart' show isPasswordRecoveryInProgress;
+import '../services/guest_mode.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -161,7 +162,9 @@ _navigate();
       // its own session locally — currentUser is non-null here on a cold
       // start as long as that session hasn't expired or been signed out.
       final user = Supabase.instance.client.auth.currentUser;
-      if (user != null) {
+      // A guest ("Login as guest") also goes straight to Home.
+      if (user != null || await GuestMode.isEnabled()) {
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const HomeScreen()),

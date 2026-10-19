@@ -6,6 +6,7 @@ import '../theme/theme_controller.dart';
 import '../widgets/error_display.dart';
 import '../services/catalog_service.dart';
 import '../widgets/catalog_gate.dart';
+import '../widgets/guest_sheets.dart';
 
 class DetailingPackagesScreen extends StatefulWidget {
   /// When set, opens the matching category tab (PPF / Ceramic / Graphene /
@@ -1371,6 +1372,9 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
     Map<String, dynamic>? package,
     String? preferredBrand,
   }) async {
+    // Guest: sign up in place first, then the enquiry goes through.
+    if (!await requireAccount(context, title: 'Sign up to send your enquiry')) return;
+    if (!mounted) return;
     final saved = await _saveBookingToDatabase(
       serviceName,
       package: package,

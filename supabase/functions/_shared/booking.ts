@@ -78,7 +78,8 @@ export type BookingTable =
   | "pollution_booking"
   | "inspection_booking"
   | "claim_table"
-  | "monthlywash_table";
+  | "monthlywash_table"
+  | "offer_bookings"; // apartment offer washes — same columns as bookings
 
 type PickupMode = "optional" | "none" | "included" | "locked";
 
@@ -128,6 +129,8 @@ export interface Quote {
   total: number;
   allowCod: boolean;
   vehicleRequired: boolean;
+  /** Booked at an apartment from the `apartments` table (offer washes), not the customer's saved address. */
+  apartmentBased?: boolean;
   bookingTable: BookingTable | null;
   bookingName: string;
   services: ServiceRow[];
@@ -273,6 +276,7 @@ export async function buildQuote(
     total: subtotal + pickupFeeCharged,
     allowCod: services.every((s) => s.allow_cod),
     vehicleRequired: services.some((s) => s.vehicle_required),
+    apartmentBased: services.some((s) => s.details?.["apartment_based"] === true),
     bookingTable: route.booking_table,
     bookingName,
     services,
@@ -486,17 +490,43 @@ export async function createIntent(
       throw new ApiError("vehicle_required", "Add a vehicle to book this service.");
     }
 
-    const address = await defaultAddress(db, user.id);
-    if (!address || !address.address || address.latitude === null || address.longitude === null) {
-      throw new ApiError("address_required", "Add a pickup address to continue.");
-    }
-    if (settings.serviceArea) {
-      const km = distanceKm(settings.serviceArea.lat, settings.serviceArea.lng, address.latitude, address.longitude);
-      if (km > settings.serviceArea.radius_km) {
-        throw new ApiError("out_of_service_area", "We are not operational in your area yet! Try a different pickup address.");
+    if (quote.apartmentBased) {
+      // Offer washes are done at a partner apartment the customer picks
+      // from the `apartments` table — that becomes the service address.
+      const rawOpts = (input.options && typeof input.options === "object" ? input.options : {}) as Record<string, unknown>;
+      const aptId = Number(rawOpts["apartment_id"]);
+      if (!Number.isInteger(aptId) || aptId <= 0) {
+        throw new ApiError("apartment_required", "Please choose your apartment.");
       }
+      const { data: apt, error: aptErr } = await db
+        .from("apartments")
+        .select("id,name,address,latitude,longitude,active")
+        .eq("id", aptId)
+        .maybeSingle();
+      if (aptErr) throw aptErr;
+      if (!apt || apt.active === false) {
+        throw new ApiError("apartment_unavailable", "That apartment isn't available right now. Please pick another.");
+      }
+      options.apartment = { id: apt.id, name: apt.name };
+      options.address = {
+        address: apt.address ? `${apt.name}, ${apt.address}` : apt.name,
+        latitude: apt.latitude === null || apt.latitude === undefined ? null : Number(apt.latitude),
+        longitude: apt.longitude === null || apt.longitude === undefined ? null : Number(apt.longitude),
+        name: apt.name,
+      };
+    } else {
+      const address = await defaultAddress(db, user.id);
+      if (!address || !address.address || address.latitude === null || address.longitude === null) {
+        throw new ApiError("address_required", "Add a pickup address to continue.");
+      }
+      if (settings.serviceArea) {
+        const km = distanceKm(settings.serviceArea.lat, settings.serviceArea.lng, address.latitude, address.longitude);
+        if (km > settings.serviceArea.radius_km) {
+          throw new ApiError("out_of_service_area", "We are not operational in your area yet! Try a different pickup address.");
+        }
+      }
+      options.address = address;
     }
-    options.address = address;
 
     // Snapshot who the customer is, so the webhook can book without them.
     const { data: profile } = await db.from("profiles").select("*").eq("id", user.id).maybeSingle();
@@ -768,7 +798,8 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
 
   let row: Record<string, unknown>;
   switch (table) {
-    case "bookings": {
+    case "bookings":
+    case "offer_bookings": {
       row = {
         user_id: intent.user_id,
         ...vehicle,

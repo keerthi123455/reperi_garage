@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'offer_booking_sheet.dart';
+
 /// Floating "offer" hub on the Home screen (app + website).
 ///
 /// Switched on/off from Supabase WITHOUT an app update:
@@ -32,7 +34,7 @@ class OfferHubButton extends StatefulWidget {
 
 class _OfferHubButtonState extends State<OfferHubButton>
     with TickerProviderStateMixin, WidgetsBindingObserver {
-  static const double _size = 58;
+  static const double _size = 64; // ~10% bigger than the original 58
   static const Color _gold = Color(0xFFD4A017);
 
   bool _enabled = false; // status == SHOW in Supabase
@@ -49,6 +51,18 @@ class _OfferHubButtonState extends State<OfferHubButton>
     duration: const Duration(milliseconds: 1800),
   )..repeat(reverse: true);
 
+  // Slowly turning gold ring, so the edge always glints.
+  late final AnimationController _spin = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 5000),
+  )..repeat();
+
+  // Sparkles twinkling around the button.
+  late final AnimationController _twinkle = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  )..repeat();
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +76,8 @@ class _OfferHubButtonState extends State<OfferHubButton>
     WidgetsBinding.instance.removeObserver(this);
     _attention.dispose();
     _glow.dispose();
+    _spin.dispose();
+    _twinkle.dispose();
     super.dispose();
   }
 
@@ -158,13 +174,13 @@ class _OfferHubButtonState extends State<OfferHubButton>
                     ),
                   );
                 },
-                child: _buildBubble(),
+                child: _buildBubble(reduceMotion),
               ),
             ),
     );
   }
 
-  Widget _buildBubble() {
+  Widget _buildBubble(bool reduceMotion) {
     return Semantics(
       button: true,
       label: 'View current offer',
@@ -177,6 +193,30 @@ class _OfferHubButtonState extends State<OfferHubButton>
             clipBehavior: Clip.none,
             alignment: Alignment.topCenter,
             children: [
+              // Gold "ping" ripple that spreads out each time it lands.
+              if (!reduceMotion)
+                AnimatedBuilder(
+                  animation: _attention,
+                  builder: (_, __) {
+                    final p = _ripple(_attention.value);
+                    if (p == null) return const SizedBox.shrink();
+                    return Transform.scale(
+                      scale: 1 + 0.75 * Curves.easeOutCubic.transform(p),
+                      child: Container(
+                        width: _size,
+                        height: _size,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: _gold.withOpacity(0.7 * (1 - p)),
+                            width: 2.5 * (1 - p) + 0.5,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
               // Breathing gold glow.
               AnimatedBuilder(
                 animation: _glow,
@@ -200,31 +240,78 @@ class _OfferHubButtonState extends State<OfferHubButton>
                   ),
                 ),
               ),
-              // Gold ring + the banner itself, cropped into the circle.
-              Container(
-                width: _size,
-                height: _size,
-                padding: const EdgeInsets.all(2.5),
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: SweepGradient(
-                    colors: [
-                      Color(0xFFFFE08A),
-                      _gold,
-                      Color(0xFFB8860B),
-                      _gold,
-                      Color(0xFFFFE08A),
+
+              // Turning gold ring + the banner itself, cropped into the circle,
+              // with a bright shine that sweeps across it.
+              AnimatedBuilder(
+                animation: _spin,
+                builder: (_, child) => Container(
+                  width: _size,
+                  height: _size,
+                  padding: const EdgeInsets.all(2.5),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: SweepGradient(
+                      transform: GradientRotation(
+                          reduceMotion ? 0 : _spin.value * 2 * math.pi),
+                      colors: const [
+                        Color(0xFFFFF4C2),
+                        _gold,
+                        Color(0xFF9C7208),
+                        _gold,
+                        Color(0xFFFFF4C2),
+                      ],
+                    ),
+                  ),
+                  child: child,
+                ),
+                child: ClipOval(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.asset(
+                        OfferHubButton.imagePath,
+                        fit: BoxFit.cover,
+                        filterQuality: FilterQuality.medium,
+                      ),
+                      if (!reduceMotion)
+                        AnimatedBuilder(
+                          animation: _attention,
+                          builder: (_, __) {
+                            final p = _shine(_attention.value);
+                            if (p == null) return const SizedBox.shrink();
+                            // A diagonal band of light gliding left → right.
+                            return Transform.translate(
+                              offset: Offset(-_size + 2 * _size * p, 0),
+                              child: Transform.rotate(
+                                angle: 0.45,
+                                child: Center(
+                                  child: Container(
+                                    width: 20,
+                                    height: _size * 1.8,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Colors.white.withOpacity(0),
+                                          Colors.white.withOpacity(0.85),
+                                          Colors.white.withOpacity(0),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                     ],
                   ),
                 ),
-                child: ClipOval(
-                  child: Image.asset(
-                    OfferHubButton.imagePath,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.medium,
-                  ),
-                ),
               ),
+
+              // Twinkling sparkles around the button.
+              if (!reduceMotion) ..._sparkles(),
+
               // Small "OFFER" tag.
               Positioned(
                 bottom: 0,
@@ -262,6 +349,45 @@ class _OfferHubButtonState extends State<OfferHubButton>
     );
   }
 
+  /// Three little four-point stars that twinkle in turn around the button.
+  List<Widget> _sparkles() {
+    const spots = [
+      // left, top, size, phase
+      (-6.0, -6.0, 13.0, 0.0),
+      (_size - 4, 4.0, 9.0, 0.35),
+      (-10.0, _size * 0.55, 8.0, 0.68),
+    ];
+    return [
+      for (final (left, top, size, phase) in spots)
+        Positioned(
+          left: left,
+          top: top,
+          child: IgnorePointer(
+            child: AnimatedBuilder(
+              animation: _twinkle,
+              builder: (_, __) {
+                final w = math.sin(((_twinkle.value + phase) % 1.0) * math.pi);
+                final o = w * w; // sharp on, soft off
+                return Opacity(
+                  opacity: o,
+                  child: Transform.rotate(
+                    angle: o * 0.8,
+                    child: Transform.scale(
+                      scale: 0.4 + 0.6 * o,
+                      child: CustomPaint(
+                        size: Size.square(size),
+                        painter: _SparklePainter(),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+    ];
+  }
+
   // ── Attention animation (one 4.2s cycle, mostly resting) ──────────────
   // 0.00–0.08 hop up · 0.08–0.22 drop with a soft bounce · 0.22–0.40
   // wiggle that fades out · then rests until the next cycle.
@@ -281,6 +407,18 @@ class _OfferHubButtonState extends State<OfferHubButton>
     return math.sin(p * math.pi * 4) * 0.16 * (1 - p);
   }
 
+  /// Ripple progress 0→1 starting as it lands, else null.
+  static double? _ripple(double v) {
+    if (v < 0.17 || v >= 0.55) return null;
+    return (v - 0.17) / 0.38;
+  }
+
+  /// Shine sweep progress 0→1 after the wiggle, else null.
+  static double? _shine(double v) {
+    if (v < 0.42 || v >= 0.62) return null;
+    return Curves.easeInOutCubic.transform((v - 0.42) / 0.20);
+  }
+
   /// Tiny squash just as it lands, so the hop feels physical.
   static double _squash(double v) {
     if (v < 0.17 || v >= 0.24) return 1;
@@ -290,8 +428,9 @@ class _OfferHubButtonState extends State<OfferHubButton>
 }
 
 /// Transparent route that grows the banner out of the button and blurs the
-/// Home screen behind it. Closing (X button, tapping outside, or Back)
-/// plays it in reverse, shrinking the card back into the button.
+/// Home screen behind it. Tapping the banner opens a 3D carousel of offer
+/// cards. Closing (X, the banner's close button, tapping outside the banner,
+/// or Back) fades everything away back to the Home screen.
 class _OfferBannerRoute extends PageRouteBuilder<void> {
   _OfferBannerRoute({required Rect origin, required double aspect})
       : super(
@@ -304,7 +443,26 @@ class _OfferBannerRoute extends PageRouteBuilder<void> {
         );
 }
 
-class _OfferBannerView extends StatelessWidget {
+/// One card in the offer carousel.
+class _OfferCard {
+  const _OfferCard(this.image, this.title, this.serviceKey, this.price);
+  final String image;
+  final String title;
+  /// Row in the Supabase `services` table — the server charges ITS price.
+  final String serviceKey;
+  /// Shown only until the server's price loads.
+  final int price;
+}
+
+/// The cards shown after tapping the banner. To change them, swap these
+/// images in assets/images (same names), or edit this list.
+const List<_OfferCard> _offerCards = [
+  _OfferCard('assets/images/bucket_wash.jpeg', 'Bucket Wash', 'offer_bucket_wash', 1),
+  _OfferCard('assets/images/shampoo_wash.jpeg', 'Shampoo Wash', 'offer_shampoo_wash', 199),
+  _OfferCard('assets/images/full_cleaning.jpeg', 'Complete Wash', 'offer_complete_wash', 999),
+];
+
+class _OfferBannerView extends StatefulWidget {
   const _OfferBannerView({
     required this.animation,
     required this.origin,
@@ -316,105 +474,241 @@ class _OfferBannerView extends StatelessWidget {
   final double aspect;
 
   @override
-  Widget build(BuildContext context) {
-    final curved = CurvedAnimation(
-      parent: animation,
-      curve: Curves.easeOutQuart,
-      reverseCurve: Curves.easeInCubic,
-    );
+  State<_OfferBannerView> createState() => _OfferBannerViewState();
+}
 
+class _OfferBannerViewState extends State<_OfferBannerView>
+    with SingleTickerProviderStateMixin {
+  /// 0 = banner showing, 1 = 3D card carousel showing.
+  late final AnimationController _stage = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  final PageController _pages = PageController(viewportFraction: 0.74);
+  int _current = 0;
+
+  late final CurvedAnimation _curved = CurvedAnimation(
+    parent: widget.animation,
+    curve: Curves.easeOutQuart,
+    reverseCurve: Curves.easeInCubic,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Decode the card images now, so the carousel opens without a flicker.
+    for (final card in _offerCards) {
+      precacheImage(AssetImage(card.image), context, onError: (_, __) {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _stage.dispose();
+    _pages.dispose();
+    _curved.dispose();
+    super.dispose();
+  }
+
+  void _close() => Navigator.of(context).maybePop();
+
+  void _showCards() {
+    if (_stage.status == AnimationStatus.dismissed) _stage.forward();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final screen = constraints.biggest;
         final padding = MediaQuery.of(context).padding;
+        final usableHeight = screen.height - padding.vertical;
 
-        // Final card: as wide as the screen allows (max 460), shaped exactly
+        // Banner card: as wide as the screen allows (max 460), shaped exactly
         // like the banner image, never taller than 78% of the screen.
         var width = math.min(screen.width - 32, 460.0);
-        var height = width / aspect;
-        final maxHeight = (screen.height - padding.vertical) * 0.78;
+        var height = width / widget.aspect;
+        final maxHeight = usableHeight * 0.78;
         if (height > maxHeight) {
           height = maxHeight;
-          width = height * aspect;
+          width = height * widget.aspect;
         }
         final target = Rect.fromCenter(
-          center: Offset(screen.width / 2,
-              padding.top + (screen.height - padding.vertical) / 2),
+          center: Offset(screen.width / 2, padding.top + usableHeight / 2),
           width: width,
           height: height,
         );
 
-        return AnimatedBuilder(
-          animation: curved,
-          builder: (context, _) {
-            final t = curved.value;
-            final rect = Rect.lerp(origin, target, t)!;
-            final radius = ui.lerpDouble(origin.shortestSide / 2, 26, t)!;
-            final controlsOpacity = ((t - 0.65) / 0.35).clamp(0.0, 1.0);
+        // Carousel cards: 9:16 like the 720x1280 images, narrow enough that
+        // the neighbouring cards peek in at the sides.
+        var cardWidth = math.min(screen.width * 0.74 - 24, 300.0);
+        var cardHeight = cardWidth * 16 / 9;
+        if (cardHeight > usableHeight * 0.72) {
+          cardHeight = usableHeight * 0.72;
+          cardWidth = cardHeight * 9 / 16;
+        }
 
+        return AnimatedBuilder(
+          animation: Listenable.merge([_curved, _stage]),
+          builder: (context, _) {
+            final t = _curved.value; // route open/close
+            final s = Curves.easeInOutCubic.transform(_stage.value); // banner → cards
+            final rect = Rect.lerp(widget.origin, target, t)!;
+            final radius = ui.lerpDouble(widget.origin.shortestSide / 2, 26, t)!;
+            final controlsOpacity =
+                ((t - 0.65) / 0.35).clamp(0.0, 1.0) * (1 - s);
+
+            // Every layer below has a KEY: layers appear/disappear during the
+            // banner → cards switch, and without keys Flutter could reuse the
+            // wrong slot for the carousel, attaching the PageController twice
+            // ("ScrollController attached to multiple scroll views").
             return Stack(
               children: [
-                // Blurred, dimmed Home screen. Tap anywhere outside to close.
+                // Blurred, dimmed Home screen. While the banner shows, tap
+                // outside to close; in the carousel only the X closes, so a
+                // stray tap while swiping doesn't throw people out.
                 Positioned.fill(
+                  key: const ValueKey('offer-backdrop'),
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: () => Navigator.of(context).maybePop(),
+                    onTap: _stage.value == 0 ? _close : null,
                     child: BackdropFilter(
                       filter: ui.ImageFilter.blur(
-                        sigmaX: 16 * t,
-                        sigmaY: 16 * t,
+                        sigmaX: 16 * t + 6 * s,
+                        sigmaY: 16 * t + 6 * s,
                       ),
                       child: ColoredBox(
-                        color: Colors.black.withOpacity(0.45 * t),
+                        color: Colors.black.withOpacity(0.45 * t + 0.15 * s * t),
                       ),
                     ),
                   ),
                 ),
 
-                // The card, growing from the button.
-                Positioned.fromRect(
-                  rect: rect,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(radius),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.45 * t),
-                          blurRadius: 40 * t,
-                          offset: Offset(0, 18 * t),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(radius),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Image.asset(
-                            OfferHubButton.imagePath,
-                            fit: BoxFit.cover,
-                            filterQuality: FilterQuality.high,
-                          ),
-                          // Round glass close button, top-left (like the
-                          // reference design), fades in as the card lands.
-                          Positioned(
-                            top: 14,
-                            left: 14,
-                            child: Opacity(
-                              opacity: controlsOpacity,
-                              child: IgnorePointer(
-                                ignoring: controlsOpacity < 0.5,
-                                child: _CloseButton(
-                                  onTap: () => Navigator.of(context).maybePop(),
+                // The banner: grows from the button; tap it to see the cards.
+                if (s < 1)
+                  Positioned.fromRect(
+                    key: const ValueKey('offer-banner'),
+                    rect: rect,
+                    child: Opacity(
+                      opacity: 1 - s,
+                      child: Transform.scale(
+                        scale: 1 - 0.18 * s,
+                        child: GestureDetector(
+                          onTap: t > 0.95 ? _showCards : null,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(radius),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.45 * t),
+                                  blurRadius: 40 * t,
+                                  offset: Offset(0, 18 * t),
                                 ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(radius),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Image.asset(
+                                    OfferHubButton.imagePath,
+                                    fit: BoxFit.cover,
+                                    filterQuality: FilterQuality.high,
+                                  ),
+                                  // Close (top-left), fades in as the card lands.
+                                  Positioned(
+                                    top: 14,
+                                    left: 14,
+                                    child: Opacity(
+                                      opacity: controlsOpacity,
+                                      child: IgnorePointer(
+                                        ignoring: controlsOpacity < 0.5,
+                                        child: _CloseButton(onTap: _close),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // The 3D card carousel.
+                if (s > 0)
+                  Positioned.fill(
+                    key: const ValueKey('offer-cards'),
+                    child: Opacity(
+                      opacity: t.clamp(0.0, 1.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            height: cardHeight + 40,
+                            child: PageView.builder(
+                              controller: _pages,
+                              itemCount: _offerCards.length,
+                              physics: const BouncingScrollPhysics(),
+                              onPageChanged: (i) => setState(() => _current = i),
+                              itemBuilder: (context, i) => _carouselCard(
+                                i,
+                                s,
+                                cardWidth,
+                                cardHeight,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          // Page dots.
+                          Opacity(
+                            opacity: _cardEntry(s, 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (var i = 0; i < _offerCards.length; i++)
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 280),
+                                    curve: Curves.easeOutCubic,
+                                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                                    width: i == _current ? 22 : 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      color: i == _current
+                                          ? const Color(0xFFD4A017)
+                                          : Colors.white.withOpacity(0.45),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
-                ),
+
+                // X (top-right) — back to the Home screen.
+                if (s > 0)
+                  Positioned(
+                    key: const ValueKey('offer-close'),
+                    top: padding.top + 14,
+                    right: 16,
+                    child: Opacity(
+                      opacity: (s * t).clamp(0.0, 1.0),
+                      child: Transform.rotate(
+                        angle: (1 - s) * -math.pi / 2,
+                        child: _CloseButton(
+                          onTap: _close,
+                          icon: Icons.close_rounded,
+                          size: 44,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             );
           },
@@ -422,12 +716,145 @@ class _OfferBannerView extends StatelessWidget {
       },
     );
   }
+
+  /// Apartment + payment popup for card [i]. After a successful booking,
+  /// close the offer screens and return to Home.
+  Future<void> _openBooking(int i) async {
+    final card = _offerCards[i];
+    final booked = await showOfferBookingSheet(
+      context,
+      image: card.image,
+      title: card.title,
+      serviceKey: card.serviceKey,
+      fallbackPrice: card.price,
+    );
+    if (booked && mounted) _close();
+  }
+
+  /// Staggered entry for carousel item [i] (0..1) as the stage opens.
+  static double _cardEntry(double s, int i) {
+    final start = 0.25 + 0.12 * i;
+    return ((s - start) / 0.45).clamp(0.0, 1.0);
+  }
+
+  Widget _carouselCard(int i, double s, double w, double h) {
+    return AnimatedBuilder(
+      animation: _pages,
+      builder: (context, _) {
+        // How far this card is from the centre (0 = in front).
+        double page = _current.toDouble();
+        if (_pages.positions.length == 1 && _pages.position.haveDimensions) {
+          page = _pages.page ?? page;
+        }
+        final diff = (i - page).clamp(-1.5, 1.5);
+        final away = diff.abs().clamp(0.0, 1.0);
+
+        final entry = Curves.easeOutBack.transform(_cardEntry(s, i));
+
+        final transform = Matrix4.identity()
+          ..setEntry(3, 2, 0.0014) // perspective
+          // Side cards slide in towards the middle so part of the next
+          // (and previous) card is always visible.
+          ..translate(-diff * w * 0.10, (1 - entry) * 90) // 0.10 = small gap; lower = more gap
+          ..rotateY(-diff * 0.55)
+          ..scale(1 - 0.14 * away);
+
+        return Center(
+          child: Opacity(
+            opacity: (_cardEntry(s, i)).clamp(0.0, 1.0),
+            child: Transform(
+              alignment: Alignment.center,
+              transform: transform,
+              child: GestureDetector(
+                // Front card → booking popup. Side card → slide it to front.
+                onTap: () => i == _current ? _openBooking(i) : _pages.animateToPage(
+                  i,
+                  duration: const Duration(milliseconds: 420),
+                  curve: Curves.easeOutCubic,
+                ),
+                child: Container(
+                  width: w,
+                  height: h,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.45 - 0.2 * away),
+                        blurRadius: 34,
+                        offset: const Offset(0, 18),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.asset(
+                          _offerCards[i].image,
+                          fit: BoxFit.cover,
+                          filterQuality: FilterQuality.high,
+                          // Image not added yet: show a tidy placeholder.
+                          errorBuilder: (_, __, ___) => DecoratedBox(
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [Color(0xFF8FCBFB), Color(0xFFFFFFFF)],
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                _offerCards[i].title,
+                                style: GoogleFonts.manrope(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF0E2257),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Side cards sit a little in shadow.
+                        IgnorePointer(
+                          child: ColoredBox(
+                            color: Colors.black.withOpacity(0.35 * away),
+                          ),
+                        ),
+                        // Thin glass edge.
+                        IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.35),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _CloseButton extends StatelessWidget {
-  const _CloseButton({required this.onTap});
+  const _CloseButton({
+    required this.onTap,
+    this.icon = Icons.keyboard_arrow_down_rounded,
+    this.size = 40,
+  });
 
   final VoidCallback onTap;
+  final IconData icon;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -440,22 +867,44 @@ class _CloseButton extends StatelessWidget {
           child: BackdropFilter(
             filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: Container(
-              width: 40,
-              height: 40,
+              width: size,
+              height: size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.white.withOpacity(0.28),
                 border: Border.all(color: Colors.white.withOpacity(0.35)),
               ),
-              child: const Icon(
-                Icons.keyboard_arrow_down_rounded,
-                size: 28,
-                color: Colors.white,
-              ),
+              child: Icon(icon, size: size * 0.66, color: Colors.white),
             ),
           ),
         ),
       ),
     );
   }
+}
+
+/// A small glowing four-point star.
+class _SparklePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.width / 2;
+    final path = Path()
+      ..moveTo(c.dx, c.dy - r)
+      ..quadraticBezierTo(c.dx, c.dy, c.dx + r, c.dy)
+      ..quadraticBezierTo(c.dx, c.dy, c.dx, c.dy + r)
+      ..quadraticBezierTo(c.dx, c.dy, c.dx - r, c.dy)
+      ..quadraticBezierTo(c.dx, c.dy, c.dx, c.dy - r)
+      ..close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFFFFE9A8).withOpacity(0.6)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
+    );
+    canvas.drawPath(path, Paint()..color = const Color(0xFFFFF8E1));
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

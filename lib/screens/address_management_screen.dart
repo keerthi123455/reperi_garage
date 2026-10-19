@@ -10,6 +10,7 @@ import 'package:reperi_garage/services/address_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/error_display.dart';
+import '../widgets/guest_sheets.dart';
 
 // Brand gold — a fixed accent, not a themed surface, so it stays literal
 // across light and dark mode like it does on the other package screens.
@@ -473,7 +474,20 @@ class _AddressManagementScreenState extends State<AddressManagementScreen> {
     }
   }
 
-  void _showAddAddressSheet() {
+  /// Guests sign up first (in place), then the add-address sheet opens.
+  Future<void> _showAddAddressSheet() async {
+    if (!await requireAccount(
+      context,
+      title: 'Sign up to save addresses',
+      subtitle: "We'll email you a code — then add your address right here.",
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    _showAddAddressSheetNow();
+  }
+
+  void _showAddAddressSheetNow() {
     final nameController = TextEditingController();
     final addressController = TextEditingController();
     final detailsController = TextEditingController();

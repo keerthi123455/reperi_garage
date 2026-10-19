@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/banner.dart';
 import '../models/vehicle.dart';
 import '../services/address_service.dart';
+import '../services/guest_mode.dart';
 import '../services/ai_chat_session.dart';
 import '../services/push_notification_service.dart';
 import '../services/vehicle_change_bus.dart';
@@ -28,13 +29,16 @@ import '../widgets/bottom_nav_bar.dart';
 import '../widgets/dot_indicator_row.dart';
 import '../widgets/emergency_status_banner.dart';
 import '../widgets/error_display.dart';
+import '../widgets/guest_sheets.dart';
 import '../widgets/location_row.dart';
 import '../widgets/notification_permission_dialog.dart';
+import '../widgets/offer_bookings_list.dart';
 import '../widgets/offer_hub_button.dart';
 import '../widgets/web_notification_permission.dart';
 import '../widgets/packages_side_heading.dart';
 import '../widgets/promo_banner.dart';
 import '../widgets/quick_action_row.dart';
+import '../widgets/reperi_resolve_card.dart';
 import '../widgets/service_banner_row.dart';
 import '../widgets/services_grid.dart';
 import '../widgets/toast_banner.dart';
@@ -57,6 +61,7 @@ import 'paint_care_package_screen.dart';
 import 'paint_care_screen.dart';
 import 'pollution_screen.dart';
 import 'profile_screen.dart';
+import 'reperi_resolve_screen.dart';
 import 'roadside_assistance_screen.dart';
 import 'services_screen.dart';
 import 'servicing_package_screen.dart';
@@ -83,6 +88,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // A guest who signs up from a booking sheet comes back here signed in —
+  // reload their vehicles/name and swap the drawer's button.
+  StreamSubscription<AuthState>? _authSub;
   int _selectedBanner = 0;
   // A ValueNotifier (not plain state + setState) — the coverflow reports its
   // continuous drag/settle position every frame, and routing that through
@@ -181,6 +189,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadProfile();
     _loadServiceAddress();
     _maybeShowNotificationPrimer();
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (!mounted) return;
+      if (data.event == AuthChangeEvent.signedIn || data.event == AuthChangeEvent.signedOut) {
+        _loadVehicles();
+        _loadProfile();
+        setState(() {});
+      }
+    });
   }
 
   /// Shows the notification "soft ask" on Home, not at cold launch, so
@@ -287,6 +303,28 @@ class _HomeScreenState extends State<HomeScreen> {
             .order('created_at', ascending: true),
       );
 
+      // Apartment offer washes still to be done → "OFFER WASH ACTIVE" on
+      // the tile. One booked without a car counts for every car.
+      final offerVehicleIds = <String>{};
+      var offerWithoutVehicle = false;
+      try {
+        final offers = await supabase
+            .from('offer_bookings')
+            .select('vehicle_id, booking_status')
+            .eq('user_id', user.id)
+            .limit(50);
+        for (final o in List<Map<String, dynamic>>.from(offers)) {
+          final st = (o['booking_status'] ?? '').toString().toLowerCase();
+          if (st == 'completed' || st == 'delivered' || st.startsWith('cancel')) continue;
+          final vid = o['vehicle_id']?.toString();
+          if (vid == null || vid.isEmpty) {
+            offerWithoutVehicle = true;
+          } else {
+            offerVehicleIds.add(vid);
+          }
+        }
+      } catch (_) {}
+
       final vehicles = await Future.wait(vehicleRows.map((row) async {
         final id = row['id'].toString();
         return Vehicle(
@@ -299,6 +337,7 @@ class _HomeScreenState extends State<HomeScreen> {
           hasActiveSubscription: await _fetchHasActiveSubscription(id),
           hasUpdate: await VehicleUpdateTracker.hasUpdate(id),
           vehicleType: (row['vehicle_type'] as String?) ?? 'four_wheeler',
+          hasActiveOfferWash: offerWithoutVehicle || offerVehicleIds.contains(id),
         );
       }));
 
@@ -516,10 +555,28 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openMyBookingsFromDrawer() {
     final vehicle = _activeVehicle;
     if (vehicle == null) {
-      _flash('Add a vehicle first');
+      // Offer washes don't need a vehicle, so customers without one can
+      // still see those bookings.
+      Navigator.push(context, premiumPageRoute((_) => const OfferBookingsScreen()));
       return;
     }
     _openVehicleBookings(vehicle);
+  }
+
+  // ReperiResolve: send photos / video / a description of a problem (and
+  // a dealer quote if they have one) and get a fixed price back.
+  void _openReperiResolve() {
+    final v = _activeVehicle;
+    final label = v == null
+        ? null
+        : [
+            [v.brand, v.model].where((s) => s.trim().isNotEmpty).join(' '),
+            v.carNumber,
+          ].where((s) => s.trim().isNotEmpty).join(' · ');
+    Navigator.push(
+      context,
+      premiumPageRoute((_) => ReperiResolveScreen(vehicleId: v?.id, vehicleLabel: label)),
+    );
   }
 
   void _openRoadsideAssistance() {
@@ -653,6 +710,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _logout() async {
+    // Guest: the drawer button reads "LOGIN / SIGN UP" — sign up right here.
+    if (GuestMode.isGuest) {
+      await requireAccount(
+        context,
+        title: 'Welcome to Reperi',
+        subtitle: "Sign up or log in with your email — we'll send you a code.",
+      );
+      return;
+    }
+    await GuestMode.disable();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('fleet_logged_in');
     await prefs.remove('fleet_user_id');
@@ -781,6 +848,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _authSub?.cancel();
     themeController.removeListener(_onThemeChanged);
     vehicleChangeBus.removeListener(_loadVehicles);
     vehicleChangeBus.removeListener(_loadProfile);
@@ -798,6 +866,7 @@ class _HomeScreenState extends State<HomeScreen> {
       key: _scaffoldKey,
       backgroundColor: AppColors.ink,
       drawer: AppDrawer(
+        isGuest: GuestMode.isGuest,
         profileName: _profileName,
         activeVehicle: _activeVehicle,
         onMyVehicles: _openMyVehicles,
@@ -967,6 +1036,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           const SizedBox(height: 22),
+                          // ReperiResolve — fixed price for issues left after a
+                          // service. Animated card, drawn in code (no image).
+                          ReperiResolveCard(onTap: _openReperiResolve),
+                          const SizedBox(height: 8),
                           Padding(
                             padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
                             child: Text(
@@ -1317,6 +1390,8 @@ class _BatteryEnquirySheetState extends State<_BatteryEnquirySheet> {
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (!await requireAccount(context, title: 'Sign up to send your enquiry')) return;
+    if (!mounted) return;
 
     setState(() => _submitting = true);
 

@@ -74,7 +74,7 @@ class _VehicleCardState extends State<VehicleCard> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
-    final status = _statusFor(widget.vehicle.bookingStatus);
+    final status = _statusFor(widget.vehicle.bookingStatus, offerWash: widget.vehicle.hasActiveOfferWash);
 
     return ScaleTransition(
       scale: _scale,
@@ -580,8 +580,17 @@ class _StatusInfo {
 /// Maps the latest booking's `booking_status` to the tile's status row.
 /// `null`/empty means the vehicle has no bookings yet; any non-"delivered"
 /// status (pending, confirmed, in_progress, ...) reads as an active service.
-_StatusInfo _statusFor(String? bookingStatus) {
+_StatusInfo _statusFor(String? bookingStatus, {bool offerWash = false}) {
   final status = bookingStatus?.trim().toLowerCase();
+  // No service running right now, but an apartment offer wash is booked.
+  if (offerWash && (status == null || status.isEmpty || status == 'delivered' || status == 'completed')) {
+    return const _StatusInfo(
+      label: 'OFFER WASH ACTIVE',
+      dotColor: AppColors.accent,
+      pulsing: true,
+      showBadge: false,
+    );
+  }
   if (status == null || status.isEmpty) {
     return const _StatusInfo(
       label: 'NO ACTIVE SERVICE',

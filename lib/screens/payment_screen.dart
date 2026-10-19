@@ -14,6 +14,7 @@ import '../services/payment_service.dart';
 import '../models/catalog_item.dart' show formatRupees;
 import '/services/service_area.dart';
 import '../widgets/error_display.dart';
+import '../widgets/guest_sheets.dart';
 
 /// Fixed white/blue corporate palette for this screen — set explicitly
 /// rather than pulled from Theme.of(context), so checkout looks identical
@@ -197,13 +198,32 @@ class _PaymentScreenState extends State<PaymentScreen>
     // adding one — this is the one place that actually needs a real
     // vehicle, so it's the one place that checks. Deferred a frame since
     // showDialog needs the widget tree to have already been laid out.
-    if (widget.vehicleRequired && _vehicleId.isEmpty) {
+    // Guest ("Login as guest"): sign up right here first, then carry on
+    // with this same booking. Fleet checkout has its own login.
+    if (widget.fleetRequestId == null && Supabase.instance.client.auth.currentUser == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _signUpThenContinue());
+    } else if (widget.vehicleRequired && _vehicleId.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _resolveVehicleOrAsk());
     }
 
     // ── Initialize address service and load default address ──
     _addressService = AddressService();
     _loadDefaultAddress();
+  }
+
+  Future<void> _signUpThenContinue() async {
+    final ok = await requireAccount(
+      context,
+      title: 'Sign up to book',
+      subtitle: "Your booking is waiting — sign up with your email and you'll be right back here.",
+    );
+    if (!mounted) return;
+    if (!ok) {
+      Navigator.pop(context); // back to the package they were looking at
+      return;
+    }
+    _loadDefaultAddress();
+    if (widget.vehicleRequired && _vehicleId.isEmpty) _resolveVehicleOrAsk();
   }
 
   /// No vehicle was passed in. Package screens opened from Home before
@@ -565,6 +585,8 @@ class _PaymentScreenState extends State<PaymentScreen>
   /// PATH 1: Pay Online via Razorpay. The server creates the order for the
   /// amount IT calculates, then books the service after verifying payment.
   Future<void> placeOnlineOrder() async {
+    if (!_isFleet && !await requireAccount(context)) return;
+    if (!mounted) return;
     if (!_isFleet && !_isAddressValid()) {
       _showAddressErrorPopup();
       return;
@@ -731,6 +753,8 @@ class _PaymentScreenState extends State<PaymentScreen>
 
   /// PATH 2: Cash on Pickup — the server books it straight away.
   Future<void> placeCashOnPickupOrder() async {
+    if (!_isFleet && !await requireAccount(context)) return;
+    if (!mounted) return;
     if (!_isAddressValid()) {
       _showAddressErrorPopup();
       return;

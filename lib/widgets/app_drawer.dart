@@ -26,7 +26,11 @@ class AppDrawer extends StatelessWidget {
     required this.onTermsAndConditions,
     required this.onContactUs,
     required this.onLogout,
+    this.isGuest = false,
   });
+
+  /// Browsing as a guest: the bottom button becomes "LOGIN / SIGN UP".
+  final bool isGuest;
 
   final String? profileName;
   final Vehicle? activeVehicle;
@@ -115,7 +119,7 @@ class AppDrawer extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
-              child: _LogoutButton(onTap: () => _select(context, onLogout)),
+              child: _LogoutButton(isGuest: isGuest, onTap: () => _select(context, onLogout)),
             ),
           ],
         ),
@@ -267,9 +271,10 @@ class _DrawerTile extends StatelessWidget {
 }
 
 class _LogoutButton extends StatelessWidget {
-  const _LogoutButton({required this.onTap});
+  const _LogoutButton({required this.onTap, this.isGuest = false});
 
   final VoidCallback onTap;
+  final bool isGuest;
 
   @override
   Widget build(BuildContext context) {
@@ -277,7 +282,7 @@ class _LogoutButton extends StatelessWidget {
       width: double.infinity,
       height: 55,
       child: Material(
-        color: Colors.red.shade700,
+        color: isGuest ? const Color(0xFFFFD23F) : Colors.red.shade700,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
@@ -285,15 +290,16 @@ class _LogoutButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Symbols.logout, size: 19, color: Colors.white),
+              Icon(isGuest ? Symbols.login : Symbols.logout,
+                  size: 19, color: isGuest ? const Color(0xFF16213E) : Colors.white),
               const SizedBox(width: 10),
               Text(
-                'LOG OUT',
+                isGuest ? 'LOGIN / SIGN UP' : 'LOG OUT',
                 style: GoogleFonts.manrope(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.8,
-                  color: Colors.white,
+                  color: isGuest ? const Color(0xFF16213E) : Colors.white,
                 ),
               ),
             ],

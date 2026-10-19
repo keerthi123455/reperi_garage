@@ -444,6 +444,10 @@
                 <p>Washer ID: <strong id="washerId"></strong></p>
             </div>
 
+            <!-- Apartment offer washes (₹1 / ₹199 / ₹999). Only shows up for the
+                 washers in the 'washers_offer' pool — everyone else has none. -->
+            <div id="offerContent"></div>
+
             <div id="subscriptionsContent">
                 <div style="text-align: center; padding: 40px; color: #999;">
                     <div class="loading-spinner"></div>
@@ -514,7 +518,10 @@
                 console.log('✅ Washer found:', { id: currentWasherId, email });
                 oneSignalLogin('washer_' + currentWasherId);
 
-                await fetchSubscriptions(currentWasherId);
+                await Promise.all([
+                    fetchOfferBookings(currentWasherId),
+                    fetchSubscriptions(currentWasherId),
+                ]);
             } catch (err) {
                 console.error('Error:', err);
                 document.getElementById('subscriptionsContent').innerHTML = `
@@ -656,6 +663,183 @@
             html += '</div>';
             content.innerHTML = html;
         }
+
+        // ── Apartment offer washes ───────────────────────────────────────
+        // Rows in `offer_bookings` that booking-api assigned to this washer
+        // (it alternates between the washers in the 'washers_offer' pool).
+        async function fetchOfferBookings(washerId) {
+            const box = document.getElementById('offerContent');
+            try {
+                const { data, error } = await sbClient
+                    .from('offer_bookings')
+                    .select('*')
+                    .eq('washer_id', washerId)
+                    .order('created_at', { ascending: false })
+                    .limit(200);
+                if (error) throw error;
+                displayOfferBookings(data || []);
+            } catch (err) {
+                // Never break the rest of the dashboard over this section.
+                console.warn('⚠️ Could not load offer washes:', err.message || err);
+                box.innerHTML = '';
+            }
+        }
+
+        function isOfferDone(b) {
+            return /^(completed|delivered|cancell?ed)$/i.test(b.booking_status || '');
+        }
+
+        function displayOfferBookings(rows) {
+            const box = document.getElementById('offerContent');
+            if (!rows.length) { box.innerHTML = ''; return; }
+            // Open jobs first (oldest first, so the earliest booking is on
+            // top), then finished ones (newest first).
+            const open = rows.filter((b) => !isOfferDone(b))
+                .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            const done = rows.filter(isOfferDone);
+
+            let html = `<div class="subscriptions-title">Offer Washes (${open.length} to do)</div>
+                        <div class="subscriptions-list">`;
+            [...open, ...done].forEach((b) => {
+                const id = escapeHtml(b.id);
+                const finished = isOfferDone(b);
+                const apartment = b.pickup_address_name || b.pickup_address || 'Apartment';
+                const hasCoords = b.pickup_latitude != null && b.pickup_longitude != null;
+                const navigateHtml = hasCoords
+                    ? `<a class="navigate-btn" href="https://www.google.com/maps/dir/?api=1&destination=${b.pickup_latitude},${b.pickup_longitude}&travelmode=driving" target="_blank" rel="noopener">🧭 Navigate</a>`
+                    : '';
+                const phone = (b.customer_phone || '').toString();
+                const callHtml = phone
+                    ? `<a class="navigate-btn" href="tel:${escapeHtml(phone)}">📞 Call customer</a>`
+                    : '';
+                const when = b.created_at
+                    ? new Date(b.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+                    : '';
+                html += `
+                    <div class="subscription-card"${finished ? ' style="opacity:0.6"' : ''}>
+                        <div class="subscription-header">
+                            <div>
+                                <div class="subscription-vehicle">${escapeHtml(b.package_name || 'Offer wash')}</div>
+                                <div class="subscription-plate">🏢 ${escapeHtml(apartment)}</div>
+                                <div class="subscription-status">${escapeHtml(b.booking_status || 'Booked')}</div>
+                            </div>
+                        </div>
+                        <div class="subscription-details">
+                            <p><strong>Customer:</strong> ${escapeHtml(b.customer_name || '—')}</p>
+                            <p><strong>Phone:</strong> ${escapeHtml(phone || '—')}</p>
+                            <p><strong>Price:</strong> ₹${escapeHtml(b.package_price ?? '0')} (${escapeHtml(b.payment_status || 'paid')})</p>
+                            <p><strong>Booked:</strong> ${escapeHtml(when)}</p>
+                            ${b.pickup_address && b.pickup_address !== apartment ? `<p><strong>Address:</strong> ${escapeHtml(b.pickup_address)}</p>` : ''}
+                            ${callHtml} ${navigateHtml}
+                            ${offerPhotosHtml(b, finished)}
+                            ${finished ? '' : `
+                            <button class="upload-btn" style="margin-top:14px" id="offer-btn-${id}"
+                                    onclick="completeOfferBooking('${id}')">MARK WASH COMPLETED</button>
+                            <div class="upload-status" id="offer-status-${id}"></div>`}
+                        </div>
+                    </div>`;
+            });
+            html += '</div>';
+            box.innerHTML = html;
+        }
+
+        // ── Before / During / After photos ──────────────────────────────
+        // One slot per stage: tap to take/choose a photo, it uploads straight
+        // away and the customer sees it in the app.
+        const OFFER_STAGES = [['before', 'Before'], ['during', 'During wash'], ['after', 'After']];
+        let offerRows = {};
+
+        function offerPhotosHtml(b, finished) {
+            offerRows[String(b.id)] = b;
+            const id = escapeHtml(b.id);
+            const slots = OFFER_STAGES.map(([stage, label]) => {
+                const url = b[stage + '_photo_url'];
+                const inner = url
+                    ? `<img src="${escapeHtml(url)}" alt="${label}" style="width:100%;height:100%;object-fit:cover;border-radius:12px">
+                       ${finished ? '' : '<span style="position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.6);color:#fff;border-radius:8px;padding:2px 7px;font-size:11px">Change</span>'}`
+                    : `<span style="font-size:26px">📷</span><span style="font-size:12px;font-weight:700;margin-top:4px">Add</span>`;
+                const box = `<div style="position:relative;aspect-ratio:1;border-radius:12px;border:2px dashed ${url ? 'transparent' : '#D4A017'};background:${url ? '#000' : 'rgba(212,160,23,.08)'};display:flex;flex-direction:column;align-items:center;justify-content:center;color:#D4A017;overflow:hidden" id="offer-slot-${id}-${stage}">${inner}</div>`;
+                return `<div style="flex:1;min-width:0">
+                    ${finished
+                        ? (url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${box}</a>` : box)
+                        : `<label style="display:block;cursor:pointer">${box}<input type="file" accept="image/*" capture="environment" hidden onchange="uploadOfferPhoto('${id}','${stage}',this)"></label>`}
+                    <div style="text-align:center;font-size:12px;font-weight:700;margin-top:6px">${label}${url ? ' ✅' : ''}</div>
+                </div>`;
+            }).join('');
+            return `<div style="margin-top:16px">
+                <p><strong>Wash photos</strong> <span style="color:#999;font-size:12px">— the customer sees these in the app</span></p>
+                <div style="display:flex;gap:10px;margin-top:8px">${slots}</div>
+                <div class="upload-status" id="offer-photo-status-${id}"></div>
+            </div>`;
+        }
+
+        // Shrink big phone photos before uploading (max 1600px JPEG).
+        function shrinkImage(file, max = 1600) {
+            return new Promise((resolve, reject) => {
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = () => {
+                    const k = Math.min(1, max / Math.max(img.width, img.height));
+                    const c = document.createElement('canvas');
+                    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+                    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                    URL.revokeObjectURL(url);
+                    c.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Could not read photo')), 'image/jpeg', 0.82);
+                };
+                img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+                img.src = url;
+            });
+        }
+
+        async function uploadOfferPhoto(id, stage, input) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const statusDiv = document.getElementById('offer-photo-status-' + id);
+            const slot = document.getElementById(`offer-slot-${id}-${stage}`);
+            if (slot) slot.innerHTML = '<div class="loading-spinner" style="width:26px;height:26px"></div>';
+            try {
+                const blob = await shrinkImage(file);
+                const path = `offer-photos/${id}/${stage}-${Date.now()}.jpg`;
+                const { error: upErr } = await sbClient.storage
+                    .from('subscription-services')
+                    .upload(path, blob, { contentType: 'image/jpeg' });
+                if (upErr) throw upErr;
+                const { data } = sbClient.storage.from('subscription-services').getPublicUrl(path);
+                const { error } = await sbClient.rpc('set_offer_wash_photo', { p_id: String(id), p_stage: stage, p_url: data.publicUrl });
+                if (error) throw error;
+                await fetchOfferBookings(currentWasherId);
+                const again = document.getElementById('offer-photo-status-' + id);
+                if (again) showUploadStatus(again, 'success', '✅ Photo saved');
+            } catch (err) {
+                console.error('Offer photo upload failed:', err);
+                if (statusDiv) showUploadStatus(statusDiv, 'error', '❌ ' + (err.message || 'Upload failed'));
+                await fetchOfferBookings(currentWasherId);
+            }
+        }
+
+        async function completeOfferBooking(id) {
+            const row = offerRows[String(id)] || {};
+            const missing = OFFER_STAGES.filter(([stage]) => !row[stage + '_photo_url']).map(([, label]) => label);
+            if (missing.length && !confirm(`Missing photos: ${missing.join(', ')}.\n\nComplete the wash anyway?`)) return;
+            if (!confirm('Mark this wash as completed? The customer will be notified.')) return;
+            const btn = document.getElementById('offer-btn-' + id);
+            const statusDiv = document.getElementById('offer-status-' + id);
+            if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
+            try {
+                // Server-side check: only the washer this booking is assigned
+                // to can complete it (see offer_apartment_booking.sql).
+                const { error } = await sbClient.rpc('complete_offer_booking', { p_id: String(id) });
+                if (error) throw error;
+                await fetchOfferBookings(currentWasherId);
+            } catch (err) {
+                console.error('Error completing offer wash:', err);
+                if (btn) { btn.disabled = false; btn.textContent = 'MARK WASH COMPLETED'; }
+                if (statusDiv) showUploadStatus(statusDiv, 'error', '❌ ' + (err.message || 'Could not save'));
+            }
+        }
+
+        // New offer bookings show up without a manual refresh.
+        setInterval(() => { if (currentWasherId) fetchOfferBookings(currentWasherId); }, 60000);
 
         function toggleSubscription(subscriptionId) {
             const expanded = document.getElementById(`expanded-${subscriptionId}`);

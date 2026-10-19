@@ -11,7 +11,13 @@ class Vehicle {
     this.hasActiveSubscription = false,
     this.hasUpdate = false,
     this.vehicleType = 'four_wheeler',
+    this.hasActiveOfferWash = false,
   });
+
+  /// An apartment offer wash (₹1 / ₹199 / ₹999) is booked and not yet
+  /// completed — the home tile shows "OFFER WASH ACTIVE" instead of
+  /// "NO ACTIVE SERVICE".
+  final bool hasActiveOfferWash;
 
   final String id;
   final String brand;
@@ -54,6 +60,7 @@ class Vehicle {
       hasActiveSubscription: hasActiveSubscription,
       hasUpdate: hasUpdate,
       vehicleType: vehicleType,
+      hasActiveOfferWash: hasActiveOfferWash,
     );
   }
 
@@ -71,6 +78,7 @@ class Vehicle {
       hasActiveSubscription: hasActiveSubscription,
       hasUpdate: hasUpdate,
       vehicleType: vehicleType,
+      hasActiveOfferWash: hasActiveOfferWash,
     );
   }
 }

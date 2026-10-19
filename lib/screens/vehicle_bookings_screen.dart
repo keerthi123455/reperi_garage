@@ -17,6 +17,7 @@ import '../widgets/bottom_nav_actions.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/emergency_status_banner.dart';
 import '../widgets/error_display.dart';
+import '../widgets/offer_bookings_list.dart';
 import 'booking_tracking_screen.dart';
 
 // Same brand catalog as profile_screen.dart's "Add/Edit Vehicle" sheet —
@@ -2626,6 +2627,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                         ),
                       ),
                     ],
+
+                    // Apartment offer washes (₹1 / ₹199 / ₹999) — booked per
+                    // apartment, not per vehicle, so this loads by the user.
+                    // Shows nothing when they have none.
+                    const OfferBookingsSection(),
 
                     if (claims.isNotEmpty) ...[
                       const SizedBox(height: 24),
