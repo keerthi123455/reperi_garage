@@ -230,7 +230,7 @@ class _OfferBookingSheetState extends State<_OfferBookingSheet> {
         amountInPaise: created.amountPaise!,
         name: (user?.userMetadata?['full_name'] ?? user?.userMetadata?['name'] ?? 'Reperi').toString(),
         email: user?.email ?? '',
-        contact: (user?.phone ?? user?.userMetadata?['phone'] ?? '').toString(),
+        contact: ((user?.phone ?? '').isNotEmpty ? user!.phone! : (user?.userMetadata?['phone'] ?? '')).toString(),
       );
     } catch (_) {
       _failBack('Couldn\'t open the payment. Please try again.');

@@ -135,21 +135,47 @@ Future<bool> requireContactDetails(BuildContext context) async {
   return ok == true;
 }
 
-/// True when the signed-in account has both a name and a phone number.
-Future<bool> hasContactDetails() async {
-  final supabase = Supabase.instance.client;
-  final user = supabase.auth.currentUser;
-  if (user == null) return false;
+/// First non-empty value. (Supabase gives email-signup users
+/// `phone == ""`, not null — so `user.phone ?? meta['phone']` would always
+/// pick the empty string and the saved number was never found, which is
+/// why the "add your number" sheet kept coming back.)
+String _firstFilled(Iterable<Object?> values) {
+  for (final v in values) {
+    final s = (v ?? '').toString().trim();
+    if (s.isNotEmpty) return s;
+  }
+  return '';
+}
+
+/// The account's saved name and phone, from wherever they were stored
+/// (account metadata, the auth phone field, or the profiles table).
+Future<({String name, String phone})> _savedContact(User user) async {
   final meta = user.userMetadata ?? const {};
-  final phone = (user.phone ?? meta['phone'] ?? '').toString().trim();
-  var name = (meta['full_name'] ?? meta['name'] ?? '').toString().trim();
-  if (name.isEmpty) {
+  var name = _firstFilled([meta['full_name'], meta['name']]);
+  var phone = _firstFilled([meta['phone'], user.phone]);
+  if (name.isEmpty || phone.isEmpty) {
     try {
-      final p = await supabase.from('profiles').select('name').eq('id', user.id).maybeSingle();
-      name = (p?['name'] ?? '').toString().trim();
+      final p = await Supabase.instance.client.from('profiles').select().eq('id', user.id).maybeSingle();
+      if (name.isEmpty) name = _firstFilled([p?['name'], p?['full_name']]);
+      if (phone.isEmpty) phone = _firstFilled([p?['phone']]);
     } catch (_) {}
   }
-  return name.isNotEmpty && phone.isNotEmpty;
+  return (name: name, phone: phone);
+}
+
+/// 10-digit number for the phone field (drops +91 / spaces).
+String _tenDigits(String phone) {
+  var d = phone.replaceAll(RegExp(r'[^0-9]'), '');
+  if (d.length == 12 && d.startsWith('91')) d = d.substring(2);
+  return d;
+}
+
+/// True when the signed-in account has both a name and a phone number.
+Future<bool> hasContactDetails() async {
+  final user = Supabase.instance.client.auth.currentUser;
+  if (user == null) return false;
+  final c = await _savedContact(user);
+  return c.name.isNotEmpty && c.phone.isNotEmpty;
 }
 
 enum _Step { email, code, details, done }
@@ -184,19 +210,16 @@ class _AccountSheetState extends State<_AccountSheet> {
     if (widget.detailsOnly) {
       _step = _Step.details;
       final user = _auth.currentUser;
-      final meta = user?.userMetadata ?? const {};
-      _name.text = (meta['full_name'] ?? meta['name'] ?? '').toString();
-      _phone.text = (user?.phone ?? meta['phone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
-      if (_phone.text.length == 12 && _phone.text.startsWith('91')) _phone.text = _phone.text.substring(2);
-      if (_name.text.trim().isEmpty && user != null) _prefillName(user.id);
+      if (user != null) _prefill(user);
     }
   }
 
-  Future<void> _prefillName(String userId) async {
-    try {
-      final p = await Supabase.instance.client.from('profiles').select('name').eq('id', userId).maybeSingle();
-      if (mounted && _name.text.trim().isEmpty) _name.text = (p?['name'] ?? '').toString();
-    } catch (_) {}
+  /// Fills in whatever name / phone the account already has.
+  Future<void> _prefill(User user) async {
+    final c = await _savedContact(user);
+    if (!mounted) return;
+    if (_name.text.trim().isEmpty) _name.text = c.name;
+    if (_phone.text.trim().isEmpty) _phone.text = _tenDigits(c.phone);
   }
 
   @override
@@ -284,20 +307,13 @@ class _AccountSheetState extends State<_AccountSheet> {
       if (!mounted) return;
 
       // Ask for name + phone only if this account doesn't have them yet.
-      final user = _auth.currentUser!;
-      final meta = user.userMetadata ?? const {};
-      String name = (meta['full_name'] ?? meta['name'] ?? '').toString();
-      try {
-        final p = await Supabase.instance.client.from('profiles').select('name').eq('id', user.id).maybeSingle();
-        if ((p?['name'] ?? '').toString().trim().isNotEmpty) name = p!['name'].toString();
-      } catch (_) {}
-      final phone = (user.phone ?? meta['phone'] ?? '').toString();
+      final c = await _savedContact(_auth.currentUser!);
       if (!mounted) return;
-      if (name.trim().isNotEmpty && phone.trim().isNotEmpty) {
+      if (c.name.isNotEmpty && c.phone.isNotEmpty) {
         await _finish();
       } else {
-        _name.text = name;
-        _phone.text = phone.replaceAll(RegExp(r'[^0-9]'), '');
+        _name.text = c.name;
+        _phone.text = _tenDigits(c.phone);
         setState(() {
           _busy = false;
           _step = _Step.details;
@@ -332,16 +348,30 @@ class _AccountSheetState extends State<_AccountSheet> {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser!;
       await supabase.auth.updateUser(UserAttributes(data: {'phone': phone, 'full_name': name, 'name': name}));
+      // Also keep the profile row in step (name + phone), so every screen
+      // and the server find the number in one place.
       try {
         final existing = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle();
+        final row = {'name': name, 'phone': phone};
         if (existing == null) {
-          await supabase.from('profiles').insert({'id': user.id, 'name': name, 'email': user.email});
+          await supabase.from('profiles').insert({'id': user.id, 'email': user.email, ...row});
         } else {
-          await supabase.from('profiles').update({'name': name}).eq('id', user.id);
+          await supabase.from('profiles').update(row).eq('id', user.id);
         }
       } catch (e) {
-        debugPrint('Profile save failed (continuing): $e');
+        // Older profiles table without a phone column: save the name only.
+        debugPrint('Profile save with phone failed, retrying name only: $e');
+        try {
+          await supabase.from('profiles').upsert({'id': user.id, 'name': name, 'email': user.email});
+        } catch (e2) {
+          debugPrint('Profile save failed (continuing): $e2');
+        }
       }
+      // Make sure the cached user has the new details before anything
+      // checks them again.
+      try {
+        await supabase.auth.refreshSession();
+      } catch (_) {}
       await _finish();
     } catch (e) {
       if (!mounted) return;
