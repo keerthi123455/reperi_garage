@@ -772,6 +772,9 @@
             door: {
                 photoRpc: 'set_booking_wash_photo', completeRpc: 'complete_booking_wash',
                 folder: 'doorstep-photos', reload: () => fetchDoorstepBookings(),
+                // Also keep a copy where garage update photos live, so on
+                // "completed" it shows in the customer's service timeline.
+                timelineCopy: true,
             },
         };
 
@@ -832,7 +835,16 @@
                     .upload(path, blob, { contentType: 'image/jpeg' });
                 if (upErr) throw upErr;
                 const { data } = sbClient.storage.from('subscription-services').getPublicUrl(path);
-                const { error } = await sbClient.rpc(k.photoRpc, { p_id: String(id), p_stage: stage, p_url: data.publicUrl });
+                const params = { p_id: String(id), p_stage: stage, p_url: data.publicUrl };
+                if (k.timelineCopy) {
+                    const privatePath = `washer-photos/${id}/${stage}-${Date.now()}.jpg`;
+                    const { error: copyErr } = await sbClient.storage
+                        .from('booking-images')
+                        .upload(privatePath, blob, { contentType: 'image/jpeg' });
+                    if (copyErr) throw copyErr;
+                    params.p_path = privatePath;
+                }
+                const { error } = await sbClient.rpc(k.photoRpc, params);
                 if (error) throw error;
                 await k.reload();
                 const again = document.getElementById('offer-photo-status-' + id);
