@@ -1367,6 +1367,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       context,
                       premiumPageRoute((_) => OtherServicesScreen(vehicle: _activeVehicleMap)),
                     ),
+                    // SOS circle in the hub's pop-up → Roadside Assistance.
+                    onSos: _openRoadsideAssistance,
                   ),
                   const SizedBox(height: 14),
                   const OfferHubButton(),

@@ -39,6 +39,16 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   bool checkingPickupOtp = false;
   bool generatingPickupOtp = false;
 
+  /// Stage picked by hand from "Any stage" (null = use the suggested next
+  /// stage).
+  String? _stageOverride;
+
+  /// Updates already sent to the customer (newest first).
+  List<Map<String, dynamic>> _updates = const [];
+
+  /// Short-lived photo links, made once per photo (not on every rebuild).
+  final Map<String, Future<String?>> _photoLinks = {};
+
   /// This 'bookings' row has no delivery-partner trip — the customer comes
   /// to collect the vehicle in person, so MARK AS DONE below is what
   /// generates the return code (rather than a delivery partner doing it
@@ -73,6 +83,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   void initState() {
     super.initState();
     checkUnreadMessages();
+    _loadUpdates();
     if (widget.autoOpenChat) {
       WidgetsBinding.instance.addPostFrameCallback((_) => openChat());
     }
@@ -206,11 +217,18 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Update uploaded')),
-      );
+      // Stay here and move on to the next step.
+      setState(() {
+        widget.booking['booking_status'] = selectedStage;
+        selectedImageBytes = null;
+        descController.clear();
+        _stageOverride = null;
+      });
+      _loadUpdates();
 
-      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Update sent — customer notified ($selectedStage)')),
+      );
     } catch (e) {
       if (!mounted) return;
       ErrorDisplay.showPremiumError(
@@ -482,7 +500,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
 
     if (verified) {
       return Container(
-        height: 72,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
         decoration: BoxDecoration(
           color: Colors.green.withOpacity(0.12),
           borderRadius: BorderRadius.circular(28),
@@ -493,13 +511,16 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
           children: [
             Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
             SizedBox(width: 10),
-            Text(
-              'VEHICLE CHECKED IN',
-              style: TextStyle(
-                color: Colors.green,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.8,
-                fontSize: 15,
+            Flexible(
+              child: Text(
+                'VEHICLE CHECKED IN',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                  fontSize: 15,
+                ),
               ),
             ),
           ],
@@ -538,9 +559,13 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
                       )
-                    : const Text(
-                        'GENERATE DROP-OFF CODE',
-                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                    : const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'GENERATE DROP-OFF CODE',
+                          maxLines: 1,
+                          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                        ),
                       ),
               ),
             ),
@@ -663,9 +688,13 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
                         )
-                      : const Text(
-                          'PAYMENT RECEIVED',
-                          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                      : const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'PAYMENT RECEIVED',
+                            maxLines: 1,
+                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                          ),
                         ),
                 ),
               ),
@@ -675,7 +704,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       }
 
       return Container(
-        height: 72,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
         decoration: BoxDecoration(
           color: Colors.green.withOpacity(0.12),
           borderRadius: BorderRadius.circular(28),
@@ -686,13 +715,16 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
           children: [
             const Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
             const SizedBox(width: 10),
-            Text(
-              isCod ? 'PAYMENT RECEIVED — BOOKING COMPLETE' : 'CUSTOMER CONFIRMED PICKUP',
-              style: const TextStyle(
-                color: Colors.green,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.8,
-                fontSize: 15,
+            Flexible(
+              child: Text(
+                isCod ? 'PAYMENT RECEIVED — BOOKING COMPLETE' : 'CUSTOMER CONFIRMED PICKUP',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                  fontSize: 15,
+                ),
               ),
             ),
           ],
@@ -735,9 +767,13 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
                       )
-                    : const Text(
-                        'GENERATE RETURN CODE',
-                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                    : const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'GENERATE RETURN CODE',
+                          maxLines: 1,
+                          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                        ),
                       ),
               ),
             ),
@@ -800,536 +836,737 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     );
   }
 
+  // ════════════════════════════════════════════════════════════════════
+  //  Simple "one next step" layout
+  // ════════════════════════════════════════════════════════════════════
+
+  static const Color _gold = Color(0xFFD4A017);
+  static const Color _card = Color(0xFF1C1C1C);
+  static const Color _bg = Color(0xFF141414);
+  static const Color _green = Color(0xFF2FB36A);
+
+  String get _status => (widget.booking['booking_status'] ?? '').toString();
+  bool get _markedDone => widget.booking['marked_done_at'] != null;
+  bool get _delivered => _status == 'Delivered';
+  bool get _droppedOff => widget.booking['pickup_otp_verified_at'] != null;
+
+  /// Customer-friendly progress steps shown at the top.
+  static const List<String> _trackerSteps = ['Checked in', 'Inspected', 'Servicing', 'Billing', 'Ready'];
+
+  /// How many tracker steps are finished (0–5).
+  int get _doneSteps {
+    if (_delivered) return 5;
+    if (_markedDone || _status == 'Ready for Pickup') return 4;
+    switch (_status) {
+      case 'Billing Process':
+        return 3;
+      case 'Service In Progress':
+      case 'Inspection Completed':
+        return 2;
+      case 'Inspection In Progress':
+      case 'Car Picked Up':
+        return 1;
+    }
+    // Not started: a self drop-off counts as checked in once the code is confirmed.
+    return (!hasPickupDrop && _droppedOff) ? 1 : 0;
+  }
+
+  /// The stage the next update should move the booking to.
+  String? get _suggestedStage {
+    final i = stages.indexOf(_status);
+    if (i < 0) return 'Car Picked Up';
+    if (i + 1 >= stages.length - 1) return null; // after Billing → mark done
+    return stages[i + 1];
+  }
+
+  String get _statusPill {
+    if (_delivered) return 'COMPLETED';
+    if (_markedDone || _status == 'Ready for Pickup') return 'READY';
+    if (_status.isEmpty || _status.toLowerCase() == 'pending') {
+      return hasPickupDrop ? 'NEW' : (_droppedOff ? 'CHECKED IN' : 'WAITING FOR CAR');
+    }
+    return 'IN GARAGE';
+  }
+
+  Future<void> _loadUpdates() async {
+    try {
+      final rows = await Supabase.instance.client
+          .from('booking_updates')
+          .select('stage, description, image_url, created_at')
+          .eq('booking_id', widget.booking['id'])
+          .order('created_at', ascending: false);
+      if (!mounted) return;
+      setState(() => _updates = List<Map<String, dynamic>>.from(rows as List));
+    } catch (_) {
+      // Optional section — just stays empty.
+    }
+  }
+
+  Future<String?> _signedPhoto(String? stored) async {
+    if (stored == null || stored.isEmpty) return null;
+    final path = stored.contains('/booking-images/') ? stored.split('/booking-images/').last : stored;
+    try {
+      return await Supabase.instance.client.storage.from('booking-images').createSignedUrl(path, 3600);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _openInspection(String type) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => InspectionUploadScreen(booking: widget.booking, type: type)),
+    );
+  }
+
+  Future<void> _pickInspection() async {
+    final type = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _sheet(
+        title: 'Which inspection?',
+        children: [
+          _sheetOption(ctx, Icons.directions_car_rounded, 'Pickup inspection', 'When the car arrives', 'pickup'),
+          _sheetOption(ctx, Icons.local_shipping_rounded, 'Delivery inspection', 'Before the car goes back', 'delivery'),
+        ],
+      ),
+    );
+    if (type != null && mounted) _openInspection(type);
+  }
+
+  Future<void> _pickStage() async {
+    final stage = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _sheet(
+        title: 'Send an update for…',
+        children: [
+          for (final st in stages.where((x) => x != 'Delivered'))
+            _sheetOption(ctx, st == _status ? Icons.radio_button_checked : Icons.radio_button_unchecked, st,
+                st == _status ? 'Current stage' : null, st),
+        ],
+      ),
+    );
+    if (stage != null && mounted) setState(() => _stageOverride = stage);
+  }
+
+  Future<void> _confirmMarkDone() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _card,
+        title: const Text('Work finished?', style: TextStyle(color: _gold, fontWeight: FontWeight.w900)),
+        content: Text(
+          hasPickupDrop
+              ? 'The customer and the delivery partner will be told the car is ready.'
+              : "The customer will be told the car is ready, and you'll get a code to read them when they collect it.",
+          style: const TextStyle(color: Colors.white70, height: 1.4),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('NOT YET', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: _green),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('YES, WORK DONE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await _markAsDone();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF262626),
+      backgroundColor: _bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1C1C1C),
-        title: const Text(
-          'Update Booking',
-          style: TextStyle(color: Color(0xFFD4A017)),
-        ),
+        backgroundColor: _bg,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('Booking', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
       ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          child: RefreshIndicator(
+            color: _gold,
+            onRefresh: () async {
+              await _autoRefreshBooking();
+              await _loadUpdates();
+              await checkUnreadMessages();
+            },
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
-                // ── BOOKING CARD ──
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1C1C1C),
-                    borderRadius: BorderRadius.circular(28),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.booking['package_name']?.toString() ?? 'Service',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        widget.booking['package_price']?.toString() ?? '',
-                        style: const TextStyle(
-                          color: Color(0xFFD4A017),
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 28),
-                // ── LOCATION INFORMATION ──
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1C1C1C),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: const Color(0xFFD4A017).withOpacity(0.2),
+                _summaryCard(),
+                const SizedBox(height: 18),
+                _tracker(),
+                const SizedBox(height: 18),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  transitionBuilder: (child, a) => FadeTransition(
+                    opacity: a,
+                    child: SlideTransition(
+                      position: Tween(begin: const Offset(0, 0.04), end: Offset.zero).animate(a),
+                      child: child,
                     ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ── SECTION TITLE ──
-                      const Row(
-                        children: [
-                          Icon(
-                            Icons.location_on_rounded,
-                            color: Color(0xFFD4A017),
-                            size: 22,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            'Service Location',
-                            style: TextStyle(
-                              color: Color(0xFFD4A017),
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                      
-                      const SizedBox(height: 20),
-
-                      // Pickup/dropoff address and GPS coordinates are
-                      // deliberately not shown here — garage staff only get
-                      // customer chat, not the customer's home address or
-                      // phone number. A delivery partner (assigned
-                      // separately) handles the actual pickup/drop-off
-                      // logistics and sees that address on their own screen.
-
-                      // ── CUSTOMER CONTACT ──
-                      if (widget.booking['customer_name'] != null)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 18),
-                            const Divider(
-                              color: Colors.white12,
-                              height: 1,
-                            ),
-                            const SizedBox(height: 18),
-                            const Row(
-                              children: [
-                                Icon(
-                                  Icons.person_rounded,
-                                  color: Color(0xFFD4A017),
-                                  size: 18,
-                                ),
-                                SizedBox(width: 10),
-                                Text(
-                                  'Customer Details',
-                                  style: TextStyle(
-                                    color: Color(0xFFD4A017),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            if (widget.booking['customer_name'] != null)
-                              Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Name:',
-                                    style: TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    widget.booking['customer_name'] ?? '',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            // No phone number shown here — garage staff
-                            // reach the customer through in-app chat only.
-                          ],
-                        ),
-                      
-                      // ── SERVICE NOTES (if any) ──
-                      if (widget.booking['service_location_notes'] !=
-                          null)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 18),
-                            const Text(
-                              'Special Instructions:',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.03),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.1),
-                                ),
-                              ),
-                              child: Text(
-                                widget.booking['service_location_notes'] ??
-                                    '',
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w400,
-                                  height: 1.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
+                  child: KeyedSubtree(key: ValueKey('$_status|$_markedDone|$_droppedOff'), child: _nextStepCard()),
                 ),
-
-                const SizedBox(height: 28),
-
-                // ── DROP-OFF OTP (no pickup/drop trip only) ──
-                if (!hasPickupDrop) ...[
-                  _buildDropOffOtpBox(),
-                  const SizedBox(height: 28),
+                const SizedBox(height: 22),
+                _label('OTHER ACTIONS'),
+                const SizedBox(height: 10),
+                _actionsRow(),
+                if (_updates.isNotEmpty) ...[
+                  const SizedBox(height: 22),
+                  _label('UPDATES SENT TO CUSTOMER'),
+                  const SizedBox(height: 10),
+                  _updatesList(),
                 ],
-
-                // ── STAGE TITLE ──
-                const Text(
-                  'Update Stage',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-
-                const SizedBox(height: 18),
-
-                // ── DROPDOWN ──
-                DropdownButtonFormField(
-                  value: selectedStage,
-                  dropdownColor: const Color(0xFF1C1C1C),
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: const Color(0xFF1C1C1C),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                  items: stages.map((s) {
-                    return DropdownMenuItem(value: s, child: Text(s));
-                  }).toList(),
-                  onChanged: (v) => setState(() => selectedStage = v!),
-                ),
-
-                const SizedBox(height: 28),
-
-                // ── DESCRIPTION ──
-                TextField(
-                  controller: descController,
-                  maxLines: 4,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Add progress description',
-                    hintStyle: const TextStyle(color: Colors.white38),
-                    filled: true,
-                    fillColor: const Color(0xFF1C1C1C),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 28),
-
-                // ── IMAGE PICKER ──
-                GestureDetector(
-                  onTap: pickImage,
-                  child: Container(
-                    height: 220,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1C1C1C),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: selectedImageBytes == null
-                        ? const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.camera_alt,
-                                  color: Color(0xFFD4A017), size: 46),
-                              SizedBox(height: 16),
-                              Text(
-                                'Upload Service Photo',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ],
-                          )
-                        : ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: Image.memory(
-                              selectedImageBytes!,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                  ),
-                ),
-
-                const SizedBox(height: 28),
-
-                // ── PICKUP INSPECTION BUTTON ──
-                GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => InspectionUploadScreen(
-                          booking: widget.booking,
-                          type: 'pickup',
-                        ),
-                      ),
-                    ).then((_) {
-                      // Optionally refresh data after inspection upload
-                    });
-                  },
-                  child: Container(
-                    height: 68,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1C1C1C),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                        color: const Color(0xFFD4A017).withOpacity(0.5),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.directions_car_rounded,
-                            color: Color(0xFFD4A017), size: 22),
-                        const SizedBox(width: 10),
-                        Text(
-                          'PICKUP INSPECTION',
-                          style: TextStyle(
-                            color: const Color(0xFFD4A017),
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1,
-                            fontSize: selectedStage == 'Car Picked Up' ? 15 : 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 18),
-
-                // ── DELIVERY INSPECTION BUTTON ──
-                GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => InspectionUploadScreen(
-                          booking: widget.booking,
-                          type: 'delivery',
-                        ),
-                      ),
-                    ).then((_) {
-                      // Optionally refresh data after inspection upload
-                    });
-                  },
-                  child: Container(
-                    height: 68,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1C1C1C),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                        color: const Color(0xFFD4A017).withOpacity(0.5),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.local_shipping_rounded,
-                            color: Color(0xFFD4A017), size: 22),
-                        const SizedBox(width: 10),
-                        Text(
-                          'DELIVERY INSPECTION',
-                          style: TextStyle(
-                            color: const Color(0xFFD4A017),
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1,
-                            fontSize: selectedStage == 'Delivered' ? 15 : 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 18),
-
-                // ── UPLOAD BUTTON ──
-                GestureDetector(
-                  onTap: loading ? null : uploadUpdate,
-                  child: Container(
-                    height: 72,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFD4A017), Color(0xFFF5C842)],
-                      ),
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    child: Center(
-                      child: loading
-                          ? const CircularProgressIndicator(
-                              color: Colors.black)
-                          : const Text(
-                              'UPLOAD UPDATE',
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 18),
-
-                // ── MARK AS DONE BUTTON ──
-                // Notifies the customer either way; also notifies the
-                // assigned delivery partner, but only when this booking
-                // actually has a pickup/drop trip for them to make.
-                if (widget.booking['marked_done_at'] != null)
-                  (!hasPickupDrop
-                      ? _buildReturnOtpBox()
-                      : Container(
-                          height: 72,
-                          decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(28),
-                            border:
-                                Border.all(color: Colors.green.withOpacity(0.4)),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.check_circle_rounded,
-                                  color: Colors.green, size: 22),
-                              SizedBox(width: 10),
-                              Text(
-                                'MARKED DONE',
-                                style: TextStyle(
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ))
-                else
-                  GestureDetector(
-                    onTap: markingDone ? null : _markAsDone,
-                    child: Container(
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade600.withOpacity(markingDone ? 0.6 : 1),
-                        borderRadius: BorderRadius.circular(28),
-                      ),
-                      child: Center(
-                        child: markingDone
-                            ? const CircularProgressIndicator(color: Colors.white)
-                            : const Text(
-                                'MARK AS DONE',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                      ),
-                    ),
-                  ),
-
-                const SizedBox(height: 18),
-
-                // ── CHAT BUTTON ──
-                GestureDetector(
-                  onTap: openChat,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Container(
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1C1C1C),
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(
-                            color: const Color(0xFFD4A017).withOpacity(0.3),
-                          ),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.chat_bubble_outline_rounded,
-                                color: Color(0xFFD4A017), size: 22),
-                            SizedBox(width: 10),
-                            Text(
-                              'CHAT WITH CLIENT',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (hasUnreadMessages)
-                        Positioned(
-                          top: -6,
-                          right: -6,
-                          child: Container(
-                            width: 18,
-                            height: 18,
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.red.withOpacity(0.6),
-                                  blurRadius: 8,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 40),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _label(String t) => Text(t,
+      style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2));
+
+  // ── 1. Summary ──────────────────────────────────────────────────────
+  Widget _summaryCard() {
+    final b = widget.booking;
+    final name = (b['customer_name'] ?? '').toString();
+    final price = (b['package_price'] ?? '').toString();
+    final cod = isCod;
+    final slotDate = (b['slot_date'] ?? '').toString();
+    final slotTime = (b['slot_time'] ?? '').toString();
+    final notes = (b['service_location_notes'] ?? '').toString();
+
+    Widget chip(IconData icon, String text, {Color color = Colors.white70}) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(10)),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(text,
+                    style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2),
+              ),
+            ],
+          ),
+        );
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text((b['package_name'] ?? 'Service').toString(),
+                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.2)),
+                    if (price.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(price, style: const TextStyle(color: _gold, fontSize: 16, fontWeight: FontWeight.w800)),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: (_delivered ? _green : _gold).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(_statusPill,
+                    style: TextStyle(
+                        color: _delivered ? _green : _gold, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.6)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (name.isNotEmpty) chip(Icons.person_rounded, name),
+              if (slotDate.isNotEmpty) chip(Icons.schedule_rounded, slotTime.isEmpty ? slotDate : '$slotDate · $slotTime'),
+              chip(hasPickupDrop ? Icons.local_shipping_rounded : Icons.storefront_rounded,
+                  hasPickupDrop ? 'Pickup & drop' : 'Customer drops at garage'),
+              chip(cod ? Icons.payments_rounded : Icons.verified_rounded, cod ? 'Collect cash' : 'Paid online',
+                  color: cod ? Colors.orange : _green),
+            ],
+          ),
+          if (notes.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(10)),
+              child: Text('📝 $notes', style: const TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.4)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── 2. Progress tracker ─────────────────────────────────────────────
+  Widget _tracker() {
+    final done = _doneSteps;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < _trackerSteps.length; i++)
+          Expanded(
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: Container(height: 2, color: i == 0 ? Colors.transparent : (i <= done ? _green : Colors.white12))),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i < done ? _green : (i == done ? _gold : const Color(0xFF2A2A2A)),
+                        boxShadow: i == done && done < 5 ? [BoxShadow(color: _gold.withOpacity(0.35), blurRadius: 10)] : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: i < done
+                          ? const Icon(Icons.check_rounded, size: 15, color: Colors.white)
+                          : Text('${i + 1}',
+                              style: TextStyle(
+                                  color: i == done ? Colors.black : Colors.white54, fontSize: 12, fontWeight: FontWeight.w900)),
+                    ),
+                    Expanded(
+                        child: Container(
+                            height: 2,
+                            color: i == _trackerSteps.length - 1 ? Colors.transparent : (i < done ? _green : Colors.white12))),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(_trackerSteps[i],
+                        maxLines: 1,
+                        style: TextStyle(
+                            color: i < done ? _green : (i == done ? _gold : Colors.white38),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── 3. Next step ────────────────────────────────────────────────────
+  Widget _nextStepCard() {
+    // Finished.
+    if (_delivered) {
+      return _stepShell(
+        color: _green,
+        eyebrow: 'ALL DONE',
+        title: 'Booking complete',
+        body: 'The car is back with the customer. Nothing more to do here.',
+        child: const SizedBox.shrink(),
+      );
+    }
+
+    // Work marked done.
+    if (_markedDone) {
+      if (!hasPickupDrop) {
+        return _stepShell(
+          eyebrow: 'NEXT STEP',
+          title: 'Hand over the car',
+          body: 'When the customer comes to collect it, read them this code.',
+          child: _buildReturnOtpBox(),
+        );
+      }
+      return _stepShell(
+        color: _green,
+        eyebrow: 'WORK DONE',
+        title: 'Waiting for the delivery partner',
+        body: 'The customer has been told. The delivery partner will take the car back.',
+        child: const SizedBox.shrink(),
+      );
+    }
+
+    // Customer is driving in themselves and hasn't checked in yet.
+    final notStarted = _status.isEmpty || _status.toLowerCase() == 'pending';
+    if (!hasPickupDrop && !_droppedOff && notStarted && _stageOverride == null) {
+      return _stepShell(
+        eyebrow: 'NEXT STEP',
+        title: 'Check in the car',
+        body: 'When the customer arrives, give them this code to confirm the drop-off.',
+        child: _buildDropOffOtpBox(),
+      );
+    }
+
+    final suggested = _suggestedStage;
+    // After billing → work done.
+    if (suggested == null && _stageOverride == null) {
+      return _stepShell(
+        eyebrow: 'NEXT STEP',
+        title: 'Mark the work as done',
+        body: 'Finished servicing and billing? Let the customer know the car is ready.',
+        child: _bigButton(
+          label: 'WORK DONE — NOTIFY CUSTOMER',
+          color: _green,
+          fg: Colors.white,
+          busy: markingDone,
+          onTap: _confirmMarkDone,
+        ),
+      );
+    }
+
+    // Send a stage update with a photo.
+    final stage = _stageOverride ?? suggested!;
+    if (selectedStage != stage) selectedStage = stage;
+    return _stepShell(
+      eyebrow: _stageOverride != null ? 'SEND UPDATE' : 'NEXT STEP',
+      title: stage,
+      body: 'Take a photo and send it. The customer sees it in their app right away.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GestureDetector(
+            onTap: pickImage,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              height: selectedImageBytes == null ? 110 : 190,
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.25),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: _gold.withOpacity(0.5), width: 1.5),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: selectedImageBytes == null
+                  ? const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.photo_camera_rounded, color: _gold, size: 32),
+                        SizedBox(height: 6),
+                        Text('Tap to take photo', style: TextStyle(color: _gold, fontWeight: FontWeight.w800)),
+                      ],
+                    )
+                  : Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.memory(selectedImageBytes!, fit: BoxFit.cover),
+                        Positioned(
+                          right: 8,
+                          bottom: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
+                            child: const Text('Retake', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: descController,
+            maxLines: 2,
+            minLines: 1,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Short note for the customer (optional)',
+              hintStyle: const TextStyle(color: Colors.white38),
+              filled: true,
+              fillColor: Colors.black.withOpacity(0.25),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _bigButton(label: 'SEND UPDATE', busy: loading, onTap: uploadUpdate),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: TextButton(
+                  onPressed: _pickStage,
+                  child: const Text('Different stage?', style: TextStyle(color: Colors.white60, fontWeight: FontWeight.w700)),
+                ),
+              ),
+              if (_stageOverride != null)
+                Flexible(
+                  child: TextButton(
+                    onPressed: () => setState(() => _stageOverride = null),
+                    child: const Text('Back to suggested', style: TextStyle(color: _gold, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepShell({
+    Color color = _gold,
+    required String eyebrow,
+    required String title,
+    required String body,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [color.withOpacity(0.16), _card],
+        ),
+        border: Border.all(color: color.withOpacity(0.55), width: 1.5),
+        boxShadow: [BoxShadow(color: color.withOpacity(0.10), blurRadius: 24, offset: const Offset(0, 10))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(eyebrow, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.4)),
+          const SizedBox(height: 6),
+          Text(title, style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w900, height: 1.2)),
+          const SizedBox(height: 6),
+          Text(body, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _bigButton({
+    required String label,
+    required bool busy,
+    required VoidCallback onTap,
+    Color color = _gold,
+    Color fg = Colors.black,
+  }) {
+    return SizedBox(
+      height: 54,
+      child: ElevatedButton(
+        onPressed: busy ? null : onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          disabledBackgroundColor: color.withOpacity(0.5),
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        child: busy
+            ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.4, color: fg))
+            : FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(label,
+                    maxLines: 1, style: TextStyle(color: fg, fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 0.5)),
+              ),
+      ),
+    );
+  }
+
+  // ── 4. Other actions ────────────────────────────────────────────────
+  Widget _actionsRow() {
+    final tiles = <Widget>[
+      _actionTile(Icons.chat_bubble_rounded, 'Chat', openChat, badge: hasUnreadMessages),
+      _actionTile(Icons.fact_check_rounded, 'Inspection', _pickInspection),
+      if (!_markedDone && !_delivered) _actionTile(Icons.swap_vert_rounded, 'Any stage', _pickStage),
+      if (!_markedDone && !_delivered) _actionTile(Icons.check_circle_rounded, 'Work done', _confirmMarkDone),
+    ];
+    return Row(
+      children: [
+        for (var i = 0; i < tiles.length; i++) ...[
+          if (i > 0) const SizedBox(width: 10),
+          Expanded(child: tiles[i]),
+        ],
+      ],
+    );
+  }
+
+  Widget _actionTile(IconData icon, String label, VoidCallback onTap, {bool badge = false}) {
+    return Material(
+      color: _card,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, color: _gold, size: 22),
+                  const SizedBox(height: 6),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(label,
+                        maxLines: 1, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ),
+              if (badge)
+                Positioned(
+                  top: -4,
+                  right: 6,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── 5. Updates sent ─────────────────────────────────────────────────
+  Widget _updatesList() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < _updates.length; i++) ...[
+            if (i > 0) const Divider(height: 1, color: Colors.white10),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SizedBox(
+                      width: 46,
+                      height: 46,
+                      child: FutureBuilder<String?>(
+                        future: _photoLinks.putIfAbsent(
+                            '${_updates[i]['image_url']}', () => _signedPhoto(_updates[i]['image_url']?.toString())),
+                        builder: (context, snap) => snap.data == null
+                            ? Container(color: Colors.white10, child: const Icon(Icons.image_rounded, color: Colors.white24))
+                            : Image.network(snap.data!, fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(color: Colors.white10)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text((_updates[i]['stage'] ?? '').toString(),
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                        if ((_updates[i]['description'] ?? '').toString().isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(_updates[i]['description'].toString(),
+                              style: const TextStyle(color: Colors.white60, fontSize: 12.5, height: 1.3)),
+                        ],
+                        const SizedBox(height: 2),
+                        Text(_when(_updates[i]['created_at']), style: const TextStyle(color: Colors.white38, fontSize: 11.5)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _when(dynamic iso) {
+    final d = DateTime.tryParse('${iso ?? ''}')?.toLocal();
+    if (d == null) return '';
+    const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    return '${d.day} ${m[d.month - 1]}, $h:${d.minute.toString().padLeft(2, '0')} ${d.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  // ── Bottom-sheet helpers ────────────────────────────────────────────
+  Widget _sheet({required String title, required List<Widget> children}) {
+    return Container(
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.8),
+      decoration: const BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 10),
+              ...children,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sheetOption(BuildContext ctx, IconData icon, String title, String? sub, String value) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+      leading: Icon(icon, color: _gold),
+      title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+      subtitle: sub == null ? null : Text(sub, style: const TextStyle(color: Colors.white54)),
+      onTap: () => Navigator.pop(ctx, value),
     );
   }
 }

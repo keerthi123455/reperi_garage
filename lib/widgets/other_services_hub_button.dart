@@ -2,20 +2,37 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-/// Round yellow "Other Reperi Services" hub button (Home, bottom-left).
+import '../screens/roadside_assistance_screen.dart';
+
+/// Round yellow hub button on Home (the spanner that hops and shines).
 ///
-/// A yellow circle with the navy spanner that hops, wiggles, sends out a
-/// ripple and gets a light sweep every few seconds, with little sparkles
-/// around it. Tapped, it grows into the 16:9 banner
-/// (`assets/images/other_reperi_services_banner_16x9.jpeg`) while the screen
-/// behind blurs. Tapping the banner calls [onOpen] (opens the Other
-/// Services screen). Tap outside, the close button, or Back shrinks it back.
+/// Tapped, it opens a speed-dial: the screen blurs, the spanner turns into
+/// a ✕ and three circles spring out around it —
+///   • SOS (red)            → [onSos] (Roadside Assistance)
+///   • Call (green)         → calls the Reperi line
+///   • Other services (blue with the yellow spanner) → grows into the 16:9
+///     banner (`assets/images/other_reperi_services_banner_16x9.jpeg`);
+///     tapping the banner calls [onOpen] (the Other Services screen).
+/// Tap ✕, outside, or Back to close.
 class OtherServicesHubButton extends StatefulWidget {
-  const OtherServicesHubButton({super.key, required this.onOpen});
+  const OtherServicesHubButton({
+    super.key,
+    required this.onOpen,
+    this.onSos,
+    this.phone = '9353094672',
+  });
 
   /// Called after the banner closes itself, when the banner was tapped.
   final VoidCallback onOpen;
+
+  /// SOS circle — open Roadside Assistance.
+  final VoidCallback? onSos;
+
+  /// Number the Call circle dials.
+  final String phone;
 
   static const String imagePath = 'assets/images/other_reperi_services_banner_16x9.jpeg';
   static const double bannerAspect = 16 / 9;
@@ -54,7 +71,8 @@ class _OtherServicesHubButtonState extends State<OtherServicesHubButton> with Ti
     super.dispose();
   }
 
-  Future<void> _openBanner() async {
+  /// Tap on the hub: open the speed-dial, then do what was picked.
+  Future<void> _openMenu() async {
     final box = context.findRenderObject() as RenderBox?;
     final navigator = Navigator.of(context, rootNavigator: true);
     final overlayBox = navigator.overlay?.context.findRenderObject() as RenderBox?;
@@ -63,11 +81,41 @@ class _OtherServicesHubButtonState extends State<OtherServicesHubButton> with Ti
     // The circle itself (the box is a bit taller for the bounce room).
     final origin = Rect.fromLTWH(topLeft.dx, topLeft.dy + box.size.height - _size, _size, _size);
 
+    HapticFeedback.lightImpact();
     setState(() => _open = true);
-    final go = await navigator.push<bool>(_BannerRoute(origin: origin));
+    final pick = await navigator.push<_HubPick>(_HubMenuRoute(origin: origin, hubSize: _size));
     if (!mounted) return;
-    setState(() => _open = false);
-    if (go == true) widget.onOpen();
+
+    switch (pick?.action) {
+      case _HubAction.services:
+        // The banner grows out of the blue circle that was tapped.
+        final go = await navigator.push<bool>(_BannerRoute(origin: pick!.from));
+        if (!mounted) return;
+        setState(() => _open = false);
+        if (go == true) widget.onOpen();
+        return;
+      case _HubAction.sos:
+        setState(() => _open = false);
+        if (widget.onSos != null) {
+          widget.onSos!();
+        } else {
+          // Works even if the screen didn't pass onSos.
+          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RoadsideAssistanceScreen()));
+        }
+        return;
+      case _HubAction.call:
+        setState(() => _open = false);
+        try {
+          await launchUrl(Uri(scheme: 'tel', path: widget.phone));
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('Call us on ${widget.phone}')));
+          }
+        }
+        return;
+      case null:
+        setState(() => _open = false);
+    }
   }
 
   @override
@@ -79,7 +127,7 @@ class _OtherServicesHubButtonState extends State<OtherServicesHubButton> with Ti
         button: true,
         label: 'Other Reperi Services',
         child: GestureDetector(
-          onTap: _openBanner,
+          onTap: _openMenu,
           child: SizedBox(
             width: _size,
             height: _size + 12, // room for the hop
@@ -262,17 +310,25 @@ class _OtherServicesHubButtonState extends State<OtherServicesHubButton> with Ti
   }
 }
 
-/// The navy spanner from the banner, drawn in code.
+/// The spanner from the banner, drawn in code (navy on yellow by default).
 class _Spanner extends StatelessWidget {
-  const _Spanner({required this.size});
+  const _Spanner({required this.size, this.color = _navy, this.background = _yellow});
   final double size;
+  final Color color;
+
+  /// Colour behind the spanner — used for the jaw cut-out.
+  final Color background;
 
   @override
   Widget build(BuildContext context) =>
-      CustomPaint(size: Size.square(size), painter: _SpannerPainter());
+      CustomPaint(size: Size.square(size), painter: _SpannerPainter(color, background));
 }
 
 class _SpannerPainter extends CustomPainter {
+  const _SpannerPainter(this.color, this.background);
+  final Color color;
+  final Color background;
+
   @override
   void paint(Canvas canvas, Size size) {
     // Same shape as the banner's SVG (100×100 box, rotated 45°).
@@ -282,7 +338,7 @@ class _SpannerPainter extends CustomPainter {
     canvas.translate(50, 50);
     canvas.rotate(math.pi / 4);
     canvas.translate(-50, -50);
-    final navy = Paint()..color = _navy;
+    final navy = Paint()..color = color;
     canvas.drawCircle(const Offset(50, 22), 17, navy);
     canvas.drawPath(
       Path()
@@ -303,13 +359,13 @@ class _SpannerPainter extends CustomPainter {
         ..quadraticBezierTo(56.5, 25, 50, 25)
         ..quadraticBezierTo(43.5, 25, 43.5, 19)
         ..close(),
-      Paint()..color = _yellow,
+      Paint()..color = background,
     );
     canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _SpannerPainter old) => old.color != color || old.background != background;
 }
 
 class _SparklePainter extends CustomPainter {
@@ -496,5 +552,311 @@ class _BannerViewState extends State<_BannerView> {
         },
       );
     });
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Speed-dial (opened by tapping the hub)
+// ═══════════════════════════════════════════════════════════════════════
+
+enum _HubAction { sos, call, services }
+
+class _HubPick {
+  const _HubPick(this.action, this.from);
+  final _HubAction action;
+
+  /// Where the tapped circle was (the banner grows out of it).
+  final Rect from;
+}
+
+const Color _sosRed = Color(0xFFE5262B);
+const Color _callGreen = Color(0xFF1FAA59);
+const Color _servicesBlue = Color(0xFF1D5FD6);
+
+class _HubMenuRoute extends PageRouteBuilder<_HubPick> {
+  _HubMenuRoute({required Rect origin, required double hubSize})
+      : super(
+          opaque: false,
+          barrierDismissible: false,
+          transitionDuration: const Duration(milliseconds: 520),
+          reverseTransitionDuration: const Duration(milliseconds: 300),
+          pageBuilder: (context, animation, _) =>
+              _HubMenuView(animation: animation, origin: origin, hubSize: hubSize),
+        );
+}
+
+class _HubMenuItem {
+  const _HubMenuItem(this.action, this.label, this.angleDeg);
+  final _HubAction action;
+  final String label;
+
+  /// Direction from the hub (0° = right, 90° = down, 180° = left, 270° = up).
+  final double angleDeg;
+}
+
+/// Fanned out to the left / up of the hub (it sits at the right edge).
+const List<_HubMenuItem> _kHubItems = [
+  _HubMenuItem(_HubAction.sos, 'SOS', 270),
+  _HubMenuItem(_HubAction.call, 'Call us', 225),
+  _HubMenuItem(_HubAction.services, "Not sure what's wrong\nwith your vehicle?", 180),
+];
+
+class _HubMenuView extends StatefulWidget {
+  const _HubMenuView({required this.animation, required this.origin, required this.hubSize});
+  final Animation<double> animation;
+  final Rect origin;
+  final double hubSize;
+
+  @override
+  State<_HubMenuView> createState() => _HubMenuViewState();
+}
+
+class _HubMenuViewState extends State<_HubMenuView> with SingleTickerProviderStateMixin {
+  static const double _item = 58; // circle size
+  static const double _radius = 130; // distance from the hub centre (room for labels)
+
+  late final AnimationController _pulse =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  void _close() => Navigator.of(context).maybePop();
+
+  void _pick(_HubAction a, Rect rect) {
+    HapticFeedback.mediumImpact();
+    Navigator.of(context).pop(_HubPick(a, rect));
+  }
+
+  /// Item i's progress (0 → 1), staggered so they spring out one by one.
+  double _itemT(double t, int i) {
+    final start = 0.08 * i;
+    final x = ((t - start) / (1 - start)).clamp(0.0, 1.0);
+    return x;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final screen = MediaQuery.sizeOf(context);
+    final pad = MediaQuery.paddingOf(context);
+    final center = widget.origin.center;
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([widget.animation, _pulse]),
+      builder: (context, _) {
+        final raw = widget.animation.value;
+        final forward = widget.animation.status != AnimationStatus.reverse;
+        final t = reduceMotion ? (raw > 0 ? 1.0 : 0.0) : raw;
+
+        final children = <Widget>[
+          // Dim + blur; tap anywhere to close.
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _close,
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 10 * t, sigmaY: 10 * t),
+                child: ColoredBox(color: Colors.black.withOpacity(0.5 * t)),
+              ),
+            ),
+          ),
+        ];
+
+        for (var i = 0; i < _kHubItems.length; i++) {
+          final it = _kHubItems[i];
+          final p = _itemT(t, i);
+          final curved = forward ? Curves.easeOutBack.transform(p) : Curves.easeInCubic.transform(p);
+          final a = it.angleDeg * math.pi / 180;
+          var target = center + Offset(math.cos(a), math.sin(a)) * _radius;
+          // Keep every circle (and its label) fully on screen.
+          target = Offset(
+            target.dx.clamp(pad.left + _item / 2 + 8, screen.width - pad.right - _item / 2 - 8).toDouble(),
+            target.dy.clamp(pad.top + _item / 2 + 8, screen.height - pad.bottom - _item / 2 - 28).toDouble(),
+          );
+          final pos = Offset.lerp(center, target, curved)!;
+          final rect = Rect.fromCenter(center: pos, width: _item, height: _item);
+          final opacity = p.clamp(0.0, 1.0);
+          final scale = 0.4 + 0.6 * curved.clamp(0.0, 1.2);
+
+          // Wide enough for a two-line label, centred under the circle.
+          const labelW = 150.0;
+          children.add(Positioned(
+            left: rect.center.dx - labelW / 2,
+            top: rect.top,
+            width: labelW,
+            child: Opacity(
+              opacity: opacity,
+              child: Transform.scale(
+                scale: scale,
+                alignment: Alignment.topCenter,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _Pressable(
+                      onTap: t > 0.9 ? () => _pick(it.action, rect) : null,
+                      child: _circleFor(it.action),
+                    ),
+                    const SizedBox(height: 6),
+                    // Label — shrinks to fit, never overflows.
+                    Container(
+                      constraints: const BoxConstraints(maxWidth: labelW - 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.55),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          it.label,
+                          maxLines: 2,
+                          softWrap: false,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 11.5, height: 1.25, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ));
+        }
+
+        // The hub itself, turning from spanner into ✕.
+        final hubTurn = Curves.easeOutCubic.transform(t);
+        children.add(Positioned.fromRect(
+          rect: widget.origin,
+          child: GestureDetector(
+            onTap: _close,
+            child: Transform.rotate(
+              angle: hubTurn * math.pi / 2,
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _yellow,
+                  border: Border.all(color: Colors.white.withOpacity(0.7), width: 2),
+                  boxShadow: [
+                    BoxShadow(color: _yellow.withOpacity(0.45), blurRadius: 22, spreadRadius: 2),
+                    BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6)),
+                  ],
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Opacity(opacity: (1 - hubTurn * 1.6).clamp(0.0, 1.0), child: const _Spanner(size: 34)),
+                    Opacity(
+                      opacity: ((hubTurn - 0.35) / 0.65).clamp(0.0, 1.0),
+                      child: Transform.rotate(
+                        angle: -math.pi / 4,
+                        child: const Icon(Icons.close_rounded, color: _navy, size: 32),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ));
+
+        return Material(type: MaterialType.transparency, child: Stack(children: children));
+      },
+    );
+  }
+
+  Widget _circleFor(_HubAction a) {
+    switch (a) {
+      case _HubAction.sos:
+        final p = _pulse.value;
+        return Container(
+          width: _item,
+          height: _item,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const RadialGradient(
+              center: Alignment(-0.3, -0.4),
+              colors: [Color(0xFFFF6B6B), _sosRed, Color(0xFFB3141A)],
+              stops: [0, 0.6, 1],
+            ),
+            border: Border.all(color: Colors.white, width: 2.5),
+            boxShadow: [
+              BoxShadow(color: _sosRed.withOpacity(0.18 + 0.18 * p), spreadRadius: 3 + 5 * p),
+              BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6)),
+            ],
+          ),
+          alignment: Alignment.center,
+          child: const Padding(
+            padding: EdgeInsets.all(8),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text('SOS',
+                  maxLines: 1,
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1)),
+            ),
+          ),
+        );
+      case _HubAction.call:
+        return _plainCircle(
+          color: _callGreen,
+          child: const Icon(Icons.phone_in_talk_rounded, color: Colors.white, size: 26),
+        );
+      case _HubAction.services:
+        return _plainCircle(
+          color: _servicesBlue,
+          child: const _Spanner(size: 32, color: _yellow, background: _servicesBlue),
+        );
+    }
+  }
+
+  Widget _plainCircle({required Color color, required Widget child}) {
+    return Container(
+      width: _item,
+      height: _item,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        border: Border.all(color: Colors.white, width: 2.5),
+        boxShadow: [
+          BoxShadow(color: color.withOpacity(0.45), blurRadius: 16, offset: const Offset(0, 6)),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: child,
+    );
+  }
+}
+
+/// Shrinks a little while pressed — premium tap feel.
+class _Pressable extends StatefulWidget {
+  const _Pressable({required this.child, required this.onTap});
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  State<_Pressable> createState() => _PressableState();
+}
+
+class _PressableState extends State<_Pressable> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: widget.onTap == null ? null : (_) => setState(() => _down = true),
+      onTapCancel: () => setState(() => _down = false),
+      onTapUp: (_) => setState(() => _down = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _down ? 0.88 : 1,
+        duration: const Duration(milliseconds: 110),
+        child: widget.child,
+      ),
+    );
   }
 }

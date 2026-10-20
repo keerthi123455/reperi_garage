@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/geocoding_bridge.dart';
 import '../widgets/web_location_permission.dart';
@@ -23,7 +24,23 @@ class RoadsideAssistanceScreen extends StatefulWidget {
 }
 
 class _RoadsideAssistanceScreenState
-    extends State<RoadsideAssistanceScreen> {
+    extends State<RoadsideAssistanceScreen> with TickerProviderStateMixin {
+
+  // ── Look ──
+  static const Color _red = Color(0xFFE5484D);
+  static const Color _redDeep = Color(0xFFB3141A);
+
+  /// The issue the customer tapped (null = not picked yet → "General
+  /// Assistance" is booked).
+  _Issue? _selected;
+
+  /// Slow beacon pulse in the header.
+  late final AnimationController _beacon =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat();
+
+  /// One-time entrance (tiles fade/slide in one by one).
+  late final AnimationController _intro =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..forward();
 
   String address = "Detecting location...";
 
@@ -48,13 +65,20 @@ class _RoadsideAssistanceScreenState
   @override
   void dispose() {
     themeController.removeListener(_onThemeChanged);
+    _beacon.dispose();
+    _intro.dispose();
     super.dispose();
   }
+
+  bool get _isDetecting => address == "Detecting location...";
 
   bool get _isLocationDetected =>
       address != "Detecting location..." && address != "Location unavailable";
 
   Future<void> _getLocation() async {
+    if (mounted && address != "Detecting location...") {
+      setState(() => address = "Detecting location...");
+    }
     try {
       // Web (especially Safari) doesn't reliably support the Permissions
       // API that checkPermission()/requestPermission() depend on, so the
@@ -231,369 +255,499 @@ class _RoadsideAssistanceScreenState
     );
   }
 
+  // ════════════════════════════════════════════════════════════════════
+  //  UI
+  // ════════════════════════════════════════════════════════════════════
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.ink,
-
-      appBar: AppBar(
-        backgroundColor: AppColors.ink,
-        elevation: 0,
-        title: Text(
-          'Roadside Assistance',
-          style: TextStyle(color: AppColors.txt),
-        ),
-      ),
-
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-
-            /// LOCATION
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 12,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceRaised,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-
-                  const Icon(
-                    Icons.location_on,
-                    color: Color(0xFFD4A017),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  Expanded(
-  child: Column(
-    crossAxisAlignment:
-        CrossAxisAlignment.start,
-    children: [
-
-      Text(
-        "Current Location",
-        style: TextStyle(
-          color: AppColors.mut,
-          fontSize: 11,
-        ),
-      ),
-
-      Text(
-        address,
-        style: TextStyle(
-          color: AppColors.txt,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    ],
-  ),
-),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            Text(
-              "What do you need help with?",
-              style: TextStyle(
-                color: AppColors.txt,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 18),
-
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.1,
-              children: [
-
-                _serviceCard(
-                  "Flat Tyre",
-                  Icons.tire_repair,
-                ),
-
-                _serviceCard(
-                  "Dead Battery",
-                  Icons.battery_alert,
-                ),
-
-                _serviceCard(
-                  "Out Of Fuel",
-                  Icons.local_gas_station,
-                ),
-
-                _serviceCard(
-                  "Towing",
-                  Icons.local_shipping,
-                ),
-
-                _serviceCard(
-                  "Breakdown",
-                  Icons.build,
-                ),
-
-                _serviceCard(
-                  "Accident",
-                  Icons.warning_amber,
-                ),
-              ],
-            ),
-
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceRaised,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                children: [
-
-                  Text(
-                    "Can't find what you need?",
-                    style: TextStyle(
-                      color: AppColors.txt,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  Text(
-                    "If none of the above fits your issue, call our experts directly.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: AppColors.txt.withOpacity(0.7),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            /// GENERAL BOOK NOW BUTTON — same flow as a service-card
-            /// booking, just with a generic "General Assistance" label
-            /// instead of a specific issue.
-            SizedBox(
-              width: double.infinity,
-              height: 58,
-              child: ElevatedButton(
-                onPressed: () => _handleBookNow('General Assistance'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD4A017),
-                  foregroundColor: AppColors.onAccentDark,
-                ),
-                child: const Text(
-                  "BOOK NOW",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(child: _hero()),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    _reveal(0, _locationCard()),
+                    const SizedBox(height: 24),
+                    _reveal(1, _sectionTitle('What happened?', 'Tap the closest match — our technician comes prepared.')),
+                    const SizedBox(height: 14),
+                    _issueGrid(),
+                    const SizedBox(height: 26),
+                    _reveal(8, _sectionTitle('How it works', null)),
+                    const SizedBox(height: 12),
+                    _reveal(9, _howItWorks()),
+                    const SizedBox(height: 18),
+                    _reveal(10, _fareNote()),
+                  ]),
                 ),
               ),
-            ),
-
-            const SizedBox(height: 12),
-
-            SizedBox(
-              width: double.infinity,
-              height: 58,
-              child: ElevatedButton.icon(
-                onPressed: _callSupport,
-                icon: const Icon(Icons.call),
-                label: const Text(
-                  "CALL US",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD4A017),
-                  foregroundColor: AppColors.onAccentDark,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 30),
-              ],
-            ),
+            ],
           ),
         ),
       ),
+      bottomNavigationBar: _bottomBar(),
     );
   }
 
-  Widget _serviceCard(
-  String title,
-  IconData icon,
-) {
-    return GestureDetector(
-  onTap: () {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      // Lets the sheet size itself to content instead of a fixed height,
-      // and lets it scroll on small screens instead of overflowing.
-      isScrollControlled: true,
-      builder: (_) => Container(
-        decoration: BoxDecoration(
-          color: AppColors.surfaceRaised,
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(30),
-          ),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-
-                  Center(
-                    child: Container(
-                      width: 60,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: AppColors.line,
-                        borderRadius:
-                            BorderRadius.circular(20),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 25),
-
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: AppColors.txt,
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  const Text(
-                    "Features",
-                    style: TextStyle(
-                      color: Color(0xFFD4A017),
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 15),
-
-                  Text(
-                    "• Fast technician dispatch\n"
-                    "• Live location tracking\n"
-                    "• Professional assistance\n"
-                    "• Emergency support",
-                    style: TextStyle(
-                      color: AppColors.txt.withOpacity(0.7),
-                      height: 1.8,
-                    ),
-                  ),
-
-                  const SizedBox(height: 28),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context); // close the bottom sheet first
-                        _handleBookNow(title);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            const Color(0xFFD4A017),
-                      ),
-                      child: Text(
-                        "BOOK NOW",
-                        style: TextStyle(
-                          color: AppColors.onAccentDark,
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: OutlinedButton.icon(
-                      onPressed: _callSupport,
-                      icon: const Icon(Icons.call),
-                      label: const Text(
-                        "CALL US",
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+  /// Staggered fade + slide-up entrance.
+  Widget _reveal(int i, Widget child) {
+    return AnimatedBuilder(
+      animation: _intro,
+      builder: (context, c) {
+        final start = (i * 0.06).clamp(0.0, 0.7);
+        final t = Curves.easeOutCubic.transform(((_intro.value - start) / 0.3).clamp(0.0, 1.0));
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(offset: Offset(0, 18 * (1 - t)), child: c),
+        );
+      },
+      child: child,
     );
-  },
-  child: Container(
-      decoration: BoxDecoration(
-        color: AppColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(20),
+  }
+
+  // ── Header ──────────────────────────────────────────────────────────
+  Widget _hero() {
+    final top = MediaQuery.paddingOf(context).top;
+    return Container(
+      padding: EdgeInsets.fromLTRB(8, top + 6, 18, 26),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF3A0B0E), Color(0xFF1A0607)],
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
-          Icon(
-            icon,
-            color: const Color(0xFFD4A017),
-            size: 34,
+          IconButton(
+            tooltip: 'Back',
+            onPressed: () => Navigator.maybePop(context),
+            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
           ),
-
-          const SizedBox(height: 10),
-
-          Flexible(
-            child: Text(
-              title,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: AppColors.txt,
-                fontWeight: FontWeight.bold,
-              ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _red.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: _red.withOpacity(0.5)),
+                        ),
+                        child: const Text('ROADSIDE ASSISTANCE · 24×7',
+                            style: TextStyle(
+                                color: Color(0xFFFF8A8E), fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('Stuck on the road?',
+                          style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, height: 1.1)),
+                      const SizedBox(height: 8),
+                      Text("Tell us what happened — a technician comes to you and fixes it on the spot.",
+                          style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 14, height: 1.4)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _beaconIcon(),
+              ],
             ),
           ),
         ],
       ),
-    ));
+    );
+  }
+
+  /// Pulsing red beacon.
+  Widget _beaconIcon() {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    return SizedBox(
+      width: 84,
+      height: 84,
+      child: AnimatedBuilder(
+        animation: _beacon,
+        builder: (context, _) {
+          final v = reduceMotion ? 0.0 : _beacon.value;
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              for (final d in const [0.0, 0.5])
+                Builder(builder: (_) {
+                  final p = (v + d) % 1.0;
+                  return Container(
+                    width: 44 + 40 * p,
+                    height: 44 + 40 * p,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: _red.withOpacity(0.55 * (1 - p)), width: 2),
+                    ),
+                  );
+                }),
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const RadialGradient(colors: [Color(0xFFFF7A7E), _red, _redDeep], stops: [0, 0.6, 1]),
+                  boxShadow: [BoxShadow(color: _red.withOpacity(0.5), blurRadius: 18)],
+                ),
+                child: const Icon(Icons.car_crash_rounded, color: Colors.white, size: 26),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // ── Location ────────────────────────────────────────────────────────
+  Widget _locationCard() {
+    final ok = _isLocationDetected;
+    final detecting = _isDetecting;
+    final statusColor = ok ? const Color(0xFF2FB36A) : (detecting ? AppColors.accent : _red);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 10, 14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: ok ? statusColor.withOpacity(0.4) : AppColors.line),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(color: statusColor.withOpacity(0.14), shape: BoxShape.circle),
+            child: detecting
+                ? Padding(
+                    padding: const EdgeInsets.all(11),
+                    child: CircularProgressIndicator(strokeWidth: 2.4, color: statusColor),
+                  )
+                : Icon(ok ? Icons.my_location_rounded : Icons.location_off_rounded, color: statusColor, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  ok ? 'Help will come here' : (detecting ? 'Finding you…' : "We couldn't find your location"),
+                  style: TextStyle(color: AppColors.mut, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  ok ? address : (detecting ? 'Getting your location' : 'Turn on location and tap Retry'),
+                  style: TextStyle(color: AppColors.txt, fontSize: 15, fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+          ),
+          if (!detecting)
+            TextButton(
+              onPressed: _getLocation,
+              child: Text(ok ? 'Refresh' : 'Retry',
+                  style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w800)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String title, String? sub) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: TextStyle(color: AppColors.txt, fontSize: 20, fontWeight: FontWeight.w900)),
+        if (sub != null) ...[
+          const SizedBox(height: 4),
+          Text(sub, style: TextStyle(color: AppColors.mut, fontSize: 13, height: 1.35)),
+        ],
+      ],
+    );
+  }
+
+  // ── Issues ──────────────────────────────────────────────────────────
+  Widget _issueGrid() {
+    return LayoutBuilder(builder: (context, c) {
+      // Two per row; one per row on very narrow screens / very large text.
+      final scale = MediaQuery.textScalerOf(context).scale(1);
+      final cols = (c.maxWidth / scale) < 330 ? 1 : 2;
+      const gap = 12.0;
+      // Rows of [cols] tiles; tiles in a row share the tallest one's height.
+      final rows = <Widget>[];
+      for (var start = 0; start < _kIssues.length; start += cols) {
+        final cells = <Widget>[];
+        for (var k = 0; k < cols; k++) {
+          final i = start + k;
+          if (k > 0) cells.add(const SizedBox(width: gap));
+          cells.add(Expanded(
+            child: i < _kIssues.length ? _reveal(2 + i, _issueTile(_kIssues[i])) : const SizedBox(),
+          ));
+        }
+        if (rows.isNotEmpty) rows.add(const SizedBox(height: gap));
+        rows.add(IntrinsicHeight(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: cells),
+        ));
+      }
+      return Column(children: rows);
+    });
+  }
+
+  Widget _issueTile(_Issue issue) {
+    final on = _selected == issue;
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        setState(() => _selected = on ? null : issue);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: on ? _red.withOpacity(0.10) : AppColors.surfaceRaised,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: on ? _red : AppColors.line, width: on ? 1.8 : 1),
+          boxShadow: on ? [BoxShadow(color: _red.withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 6))] : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(color: issue.color.withOpacity(0.16), borderRadius: BorderRadius.circular(14)),
+                  child: Icon(issue.icon, color: issue.color, size: 24),
+                ),
+                const Spacer(),
+                AnimatedScale(
+                  scale: on ? 1 : 0,
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutBack,
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: const BoxDecoration(color: _red, shape: BoxShape.circle),
+                    child: const Icon(Icons.check_rounded, color: Colors.white, size: 15),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(issue.title, style: TextStyle(color: AppColors.txt, fontSize: 15, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 3),
+            Text(issue.hint, style: TextStyle(color: AppColors.mut, fontSize: 12, height: 1.3)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── How it works ────────────────────────────────────────────────────
+  Widget _howItWorks() {
+    const steps = [
+      (Icons.touch_app_rounded, 'Book', 'Pick the problem and confirm'),
+      (Icons.engineering_rounded, 'We dispatch', 'Nearest technician heads to you'),
+      (Icons.verified_rounded, 'Back on the road', 'Fixed on the spot, or towed'),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < steps.length; i++) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(color: AppColors.accent.withOpacity(0.15), shape: BoxShape.circle),
+                      child: Icon(steps[i].$1, color: AppColors.accent, size: 18),
+                    ),
+                    if (i < steps.length - 1)
+                      Container(width: 2, height: 18, margin: const EdgeInsets.symmetric(vertical: 3), color: AppColors.line),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(steps[i].$2,
+                            style: TextStyle(color: AppColors.txt, fontSize: 14, fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 2),
+                        Text(steps[i].$3, style: TextStyle(color: AppColors.mut, fontSize: 12.5, height: 1.3)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _fareNote() {
+    final price = CatalogService.byKey('roadside_assistance')?.priceText ?? '';
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.accent.withOpacity(0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded, color: AppColors.accent, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              price.isEmpty
+                  ? 'You pay a base fare to book. Extra charges depend on distance and the work needed — our technician tells you before starting.'
+                  : 'Base fare $price to book. Extra charges depend on distance and the work needed — our technician tells you before starting.',
+              style: TextStyle(color: AppColors.txt, fontSize: 13, height: 1.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Bottom bar ──────────────────────────────────────────────────────
+  Widget _bottomBar() {
+    final label = _selected == null ? 'Get help now' : 'Get help · ${_selected!.title}';
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        border: Border(top: BorderSide(color: AppColors.line)),
+        boxShadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 20, offset: Offset(0, -6))],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Row(
+            children: [
+              // Call
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: _callSupport,
+                  child: Container(
+                    height: 56,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.line),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.call_rounded, color: Color(0xFF2FB36A), size: 22),
+                        const SizedBox(width: 6),
+                        Text('Call', style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w800)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              // Get help
+              Expanded(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      _handleBookNow(_selected?.title ?? 'General Assistance');
+                    },
+                    child: Ink(
+                      height: 56,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        gradient: const LinearGradient(colors: [Color(0xFFFF5A5F), _red, _redDeep]),
+                        boxShadow: [BoxShadow(color: _red.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 6))],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Flexible(
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 200),
+                                child: Text(
+                                  label,
+                                  key: ValueKey(label),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
+
+/// One "What happened?" option. [title] is what gets saved on the booking.
+class _Issue {
+  const _Issue(this.title, this.hint, this.icon, this.color);
+  final String title;
+  final String hint;
+  final IconData icon;
+  final Color color;
+}
+
+const List<_Issue> _kIssues = [
+  _Issue('Flat Tyre', 'Puncture or burst — we fix or fit the spare', Icons.tire_repair_rounded, Color(0xFF4FA3E3)),
+  _Issue('Dead Battery', "Won't start — jump-start or battery help", Icons.battery_alert_rounded, Color(0xFF2FB36A)),
+  _Issue('Out Of Fuel', 'We bring enough fuel to reach a pump', Icons.local_gas_station_rounded, Color(0xFFF0A020)),
+  _Issue('Towing', 'Vehicle moved safely to a garage', Icons.local_shipping_rounded, Color(0xFF9B7BFF)),
+  _Issue('Breakdown', 'Engine trouble or any other fault', Icons.build_rounded, Color(0xFFE3B23C)),
+  _Issue('Accident', 'Minor damage? We help you get moving', Icons.warning_amber_rounded, Color(0xFFE5484D)),
+];
