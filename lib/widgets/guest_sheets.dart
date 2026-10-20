@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -668,8 +669,11 @@ Future<T?> _showYellowSheet<T>(
     pageBuilder: (ctx, _, __) => Align(
       alignment: Alignment.bottomCenter,
       child: Padding(
-        // Lift above the keyboard.
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        // Lift above the keyboard — in the app only. On the website (iPhone
+        // Safari especially) the browser already slides the page up so the
+        // typing box stays visible; lifting it here too moved the sheet up
+        // twice and pushed the email box off the top of the screen.
+        padding: EdgeInsets.only(bottom: kIsWeb ? 0 : MediaQuery.viewInsetsOf(ctx).bottom),
         child: Material(type: MaterialType.transparency, child: builder(ctx)),
       ),
     ),

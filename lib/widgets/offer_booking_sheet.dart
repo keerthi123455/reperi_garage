@@ -11,7 +11,6 @@ import '../services/payment_service_factory.dart';
 import '../theme/app_colors.dart';
 import '../services/vehicle_change_bus.dart';
 import 'requirements.dart';
-import 'slot_picker.dart';
 
 const _gold = Color(0xFFD4A017);
 
@@ -91,7 +90,6 @@ class _OfferBookingSheetState extends State<_OfferBookingSheet> {
   List<_Apartment>? _apartments; // null = still loading
   String? _loadError;
   _Apartment? _selected;
-  BookingSlot? _slot; // when the washer should come (9 AM – 7 PM)
 
   String? _vehicleId; // the customer's active vehicle, if they have one
   String? _totalDisplay; // server price, e.g. "₹199"
@@ -153,13 +151,7 @@ class _OfferBookingSheetState extends State<_OfferBookingSheet> {
   // ── Step 1 → 2: Book Now (gets the server's price) ─────────────────────
   Future<void> _bookNow() async {
     if (_selected == null) return;
-    if (_slot == null || !_slot!.isStillValid) {
-      setState(() {
-        _slot = null;
-        _error = 'Pick a wash time — same-day slots open 3 hours from now.';
-      });
-      return;
-    }
+
     // Guest: quick sign-up in place, then straight on to the price.
     if (!await ensureReady(context, contact: true)) return;
     if (!mounted) return;
@@ -202,11 +194,7 @@ class _OfferBookingSheetState extends State<_OfferBookingSheet> {
         items: [widget.serviceKey],
         cash: false,
         vehicleId: _vehicleId ?? '',
-        options: {
-          'apartment_id': apt.id,
-          'label': apt.name,
-          if (_slot != null) 'slot': _slot!.toJson(),
-        },
+        options: {'apartment_id': apt.id, 'label': apt.name},
       );
     } catch (e) {
       _failBack(e is BookingApiException
@@ -455,28 +443,6 @@ class _OfferBookingSheetState extends State<_OfferBookingSheet> {
           _note('No apartments are available yet. Please check back soon.')
         else
           _apartmentDropdown(apartments),
-        if (_selected != null) ...[
-          const SizedBox(height: 20),
-          _label('Pick a wash time'),
-          const SizedBox(height: 10),
-          SlotPicker(
-            mode: SlotMode.doorstep,
-            value: _slot,
-            onChanged: (s) => setState(() {
-              _slot = s;
-              _error = null;
-            }),
-            style: SlotPickerStyle(
-              accent: _gold,
-              onAccent: AppColors.onAccentDark,
-              surface: AppColors.surfaceSunken,
-              border: AppColors.line,
-              text: AppColors.txt,
-              muted: AppColors.mut,
-              tint: _gold.withOpacity(0.14),
-            ),
-          ),
-        ],
         if (_error != null) ...[
           const SizedBox(height: 12),
           _inlineError(_error!),
@@ -485,7 +451,7 @@ class _OfferBookingSheetState extends State<_OfferBookingSheet> {
         _primaryButton(
           label: 'Book Now',
           busy: _busy,
-          onTap: _selected == null || _slot == null || _busy ? null : _bookNow,
+          onTap: _selected == null || _busy ? null : _bookNow,
         ),
       ],
     );
@@ -574,10 +540,6 @@ class _OfferBookingSheetState extends State<_OfferBookingSheet> {
               _summaryRow('Service', widget.title),
               const SizedBox(height: 10),
               _summaryRow('Apartment', _selected?.name ?? ''),
-              if (_slot != null) ...[
-                const SizedBox(height: 10),
-                _summaryRow('Time', _slot!.fullLabel),
-              ],
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Divider(height: 1, color: AppColors.line),
