@@ -695,7 +695,28 @@ function buildModel(d) {
   }));
   const cancellations = (d.cancellations || []).map((c) => ({ ...c, test: testUsers.has(String(c.user_id)) }));
 
-  return { jobs, washLog, intents, cancellations, admins, delivery, washers, customers, vehicles, reviewAdminIds, raw: d };
+  // Add-ons garages asked for on a booking (own tab — not counted as bookings).
+  const addons = (d.addons || []).map((a) => {
+    const cust = customers.get(String(a.user_id || ''));
+    const veh = vehicles.get(String(a.vehicle_id || ''));
+    const parent = jobs.find((j) => j.table === 'bookings' && String(j.id) === String(a.booking_id));
+    return {
+      ...a,
+      customer: a.customer_name || cust?.name || '—',
+      phone: a.customer_phone || cust?.phone || '',
+      email: cust?.email || '',
+      vehicle: veh ? [veh.car_brand, veh.car_model].filter(Boolean).join(' ') + (veh.car_number ? ' · ' + veh.car_number : '') : '',
+      garage: admins.get(String(a.assigned_to_admin_id || ''))?.username || '',
+      parent,
+      open: a.status === 'Requested' || a.status === 'Approved',
+      test: testUsers.has(String(a.user_id)) || (cust?.email && testEmails.has(cust.email.toLowerCase())) || !!parent?.test,
+      inRange: inRange(a.created_at),
+    };
+  });
+
+  for (const a of addons) if (a.parent) (a.parent.addons = a.parent.addons || []).push(a);
+
+  return { jobs, washLog, intents, cancellations, addons, admins, delivery, washers, customers, vehicles, reviewAdminIds, raw: d };
 }
 
 function boardBucket(j) {
@@ -755,7 +776,7 @@ const TABS = [
   ['overview', 'Overview'], ['live', 'Live ops'], ['bookings', 'All bookings'], ['deliveries', 'Deliveries'],
   ['washes', 'Washes'], ['claims', 'Claims'], ['fleet', 'Fleet'], ['customers', 'Customers'],
   ['partners', 'Partners'], ['payments', 'Payments'], ['cancellations', 'Cancellations'],
-  ['resolve', 'After service issue'],
+  ['resolve', 'After service issue'], ['addons', 'Add-ons'],
 ];
 function buildChrome() {
   document.querySelectorAll('#rangeSeg button').forEach((b) => {
@@ -786,6 +807,7 @@ function renderNav() {
     deliveries: open.filter((j) => ON_ROAD.has(j.stage)).length,
     overview: att,
     resolve: vis(m.jobs).filter((j) => j.table === 'resolve_requests' && j.raw.status === 'Submitted').length,
+    addons: vis(m.addons || []).filter((a) => a.open).length,
   };
   $('nav').innerHTML = TABS.map(([k, label]) => {
     const c = counts[k];
@@ -810,7 +832,7 @@ function render() {
   $('pageTitle').textContent = label;
   const errs = Object.keys(state.data.errors || {});
   const banner = errs.length ? `<div class="banner">Some data couldn't be loaded (${esc(errs.join(', '))}). Everything else is accurate.</div>` : '';
-  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve }[state.tab] || overview;
+  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons }[state.tab] || overview;
   $('content').innerHTML = banner + view();
   bindRows();
   afterRender.splice(0).forEach((fn) => fn());
@@ -998,7 +1020,7 @@ function jobTable(list, { compact = false, limit = 300 } = {}) {
   if (!list.length) return '<div class="card empty">Nothing here for this period.</div>';
   const rows = list.slice(0, limit).map((j) => `<tr data-job="${j.table}:${esc(j.id)}">
     <td style="white-space:nowrap"><div class="primary">${fmtDT(j.created)}</div><div class="secondary">${ago(j.created)}</div></td>
-    <td><div class="primary">${esc(j.title)}</div><div class="secondary">${pill(j.type, TYPE_TONE[j.type])} ${j.test ? pill('TEST', 'test') : ''} <span class="mono">#${esc(j.id)}</span></div>${j.slot ? `<div class="secondary" style="margin-top:3px">🕒 ${esc(j.slot)}${j.slotMode ? ' · ' + esc(j.slotMode) : ''}</div>` : ''}</td>
+    <td><div class="primary">${esc(j.title)}</div><div class="secondary">${pill(j.type, TYPE_TONE[j.type])} ${j.test ? pill('TEST', 'test') : ''} <span class="mono">#${esc(j.id)}</span></div>${j.slot ? `<div class="secondary" style="margin-top:3px">🕒 ${esc(j.slot)}${j.slotMode ? ' · ' + esc(j.slotMode) : ''}</div>` : ''}${addonHint(j)}</td>
     <td><div class="primary">${esc(j.customer)}</div><div class="secondary">${esc(j.phone || j.email || '')}</div></td>
     ${compact ? '' : `<td><div>${esc(j.vehicle || '—')}</div></td>`}
     ${compact ? '' : `<td><div class="secondary">${esc(j.garage || '—')}</div><div class="secondary">${esc([j.deliveryName, j.washerName].filter(Boolean).join(' · ') || '')}</div></td>`}
@@ -1395,6 +1417,90 @@ function payments() {
     ${table(inRange)}`;
 }
 
+// ── Add-ons ──
+// Extra work a garage asked for on a booking: photo + description + price.
+// The customer approves & pays in the app, or rejects with a reason.
+const ADDON_TONE = { Requested: 'amber', Approved: 'blue', Paid: 'green', Rejected: 'red', Cancelled: '' };
+const ADDON_LABEL = { Requested: 'Waiting for customer', Approved: 'Approved — paying', Paid: 'Paid', Rejected: 'Rejected', Cancelled: 'Cancelled' };
+function addonHint(j) {
+  if (!j.addons?.length) return '';
+  const paid = j.addons.filter((a) => a.status === 'Paid');
+  const waiting = j.addons.filter((a) => a.open).length;
+  const parts = [`${j.addons.length} add-on${j.addons.length > 1 ? 's' : ''}`];
+  if (paid.length) parts.push(inr(paid.reduce((s, a) => s + Number(a.price || 0), 0)) + ' paid');
+  if (waiting) parts.push(`${waiting} waiting`);
+  return `<div class="secondary" style="margin-top:3px;color:var(--blue)">➕ ${parts.join(' · ')}</div>`;
+}
+function addonPill(a) { return pill(ADDON_LABEL[a.status] || a.status, ADDON_TONE[a.status] || ''); }
+function addons() {
+  const all = vis(state.model.addons || []);
+  const inR = all.filter((a) => a.inRange);
+  const list = all.filter((a) => a.inRange || a.open).sort((a, b) =>
+    (b.open - a.open) || new Date(b.created_at) - new Date(a.created_at));
+  const paid = inR.filter((a) => a.status === 'Paid');
+  const rejected = inR.filter((a) => a.status === 'Rejected');
+  const waiting = all.filter((a) => a.open);
+  const decided = paid.length + rejected.length;
+  const paidValue = paid.reduce((s, a) => s + Number(a.price || 0), 0);
+  const waitingValue = waiting.reduce((s, a) => s + Number(a.price || 0), 0);
+
+  // Per garage
+  const byGarage = {};
+  for (const a of inR) {
+    const g = a.garage || '—';
+    byGarage[g] = byGarage[g] || { n: 0, paid: 0, v: 0, rej: 0 };
+    byGarage[g].n++;
+    if (a.status === 'Paid') { byGarage[g].paid++; byGarage[g].v += Number(a.price || 0); }
+    if (a.status === 'Rejected') byGarage[g].rej++;
+  }
+
+  const row = (a) => {
+    const digits = (a.phone || '').replace(/\D/g, '');
+    const wa = digits ? `https://wa.me/${digits.length === 10 ? '91' + digits : digits}` : '';
+    return `<tr>
+      <td style="white-space:nowrap"><div class="primary">${fmtDT(a.created_at)}</div><div class="secondary">${ago(a.created_at)}</div></td>
+      <td class="primary" style="min-width:180px;max-width:300px">${esc(a.package_name || 'Add-on')}${a.test ? ' ' + pill('TEST', 'test') : ''}
+        ${a.description ? `<div class="secondary" style="white-space:normal">${esc(a.description)}</div>` : ''}</td>
+      <td style="min-width:150px">${a.parent ? `<button class="btn-link" style="color:var(--blue);text-align:left" data-job="bookings:${esc(a.booking_id)}">${esc(a.parent.title)}</button>` : esc('Booking')}
+        <div class="secondary mono">#${esc(a.booking_id)}</div></td>
+      <td style="min-width:140px">${esc(a.customer)}<div class="secondary">${a.phone ? `<a href="tel:${esc(a.phone)}">${esc(a.phone)}</a>${wa ? ` · <a href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ''}` : ''}</div>${a.vehicle ? `<div class="secondary">${esc(a.vehicle)}</div>` : ''}</td>
+      <td>${esc(a.garage || '—')}</td>
+      <td style="min-width:150px">${addonPill(a)}${a.status === 'Rejected' && a.reject_reason ? `<div class="secondary" style="white-space:normal;max-width:240px">“${esc(a.reject_reason)}”</div>` : ''}
+        ${(a.paid_at || a.rejected_at || a.approved_at) ? `<div class="secondary">${fmtDT(a.paid_at || a.rejected_at || a.approved_at)}</div>` : ''}</td>
+      <td>${a.image_path ? `<button class="btn-link" style="color:var(--blue)" data-doc="${esc(a.image_path)}" data-bucket="booking-images">Photo</button>` : '—'}</td>
+      <td class="mono">${esc(a.razorpay_payment_id || '—')}${a.razorpay_order_id ? `<div class="secondary">${esc(a.razorpay_order_id)}</div>` : ''}</td>
+      <td class="num"><b>${inr(Number(a.price || 0))}</b></td>
+    </tr>`;
+  };
+  afterRender.push(() => { const b = $('addonCsv'); if (b) b.onclick = () => exportAddonsCsv(list); });
+  return `<div class="grid kpis">
+      ${kpi('Waiting for customer', num(waiting.length), inr(waitingValue) + ' asked, any date', waiting.length ? 'amber' : '')}
+      ${kpi('Approved & paid', inr(paidValue), `${paid.length} add-on${paid.length === 1 ? '' : 's'}`, 'green')}
+      ${kpi('Rejected', num(rejected.length), 'by customers', rejected.length ? 'red' : '')}
+      ${kpi('Approval rate', decided ? Math.round(paid.length / decided * 100) + '%' : '—', `${decided} decided`, 'blue')}
+    </div>
+    <div class="section-title"><h3>All add-ons</h3><span class="hint">${rangeBounds().label} · plus every one still waiting</span>
+      <button class="btn" id="addonCsv" style="margin-left:auto">Export CSV</button></div>
+    <div class="card table-wrap">${list.length ? `<table><thead><tr><th>When</th><th>Add-on</th><th>Booking</th><th>Customer</th><th>Garage</th><th>Status</th><th>Photo</th><th>Razorpay</th><th class="num">Amount</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>` : '<div class="empty">No add-ons in this period.</div>'}</div>
+    <div class="section-title"><h3>By garage</h3><span class="hint">${rangeBounds().label}</span></div>
+    <div class="card table-wrap">${Object.keys(byGarage).length ? `<table><thead><tr><th>Garage</th><th class="num">Asked</th><th class="num">Paid</th><th class="num">Rejected</th><th class="num">Paid value</th></tr></thead><tbody>
+      ${Object.entries(byGarage).sort((a, b) => b[1].v - a[1].v).map(([g, x]) => `<tr><td class="primary">${esc(g)}</td><td class="num">${num(x.n)}</td><td class="num">${num(x.paid)}</td><td class="num">${num(x.rej)}</td><td class="num"><b>${inr(x.v)}</b></td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">Nothing yet.</div>'}</div>`;
+}
+function exportAddonsCsv(list) {
+  const cols = [['id', 'id'], ['booking_id', 'booking_id'], ['created_at', 'created'], ['package_name', 'add_on'], ['description', 'description'],
+    ['customer', 'customer'], ['phone', 'phone'], ['vehicle', 'vehicle'], ['garage', 'garage'], ['status', 'status'], ['reject_reason', 'reject_reason'],
+    ['price', 'amount'], ['razorpay_order_id', 'razorpay_order_id'], ['razorpay_payment_id', 'razorpay_payment_id'],
+    ['approved_at', 'approved_at'], ['paid_at', 'paid_at'], ['rejected_at', 'rejected_at'], ['test', 'test']];
+  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const csv = [cols.map((c) => c[1]).join(',')].concat(list.map((a) => cols.map(([k]) => q(/_at$/.test(k) && a[k] ? fmtDT(a[k]) : a[k])).join(','))).join('\n');
+  const el = document.createElement('a');
+  el.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' }));
+  el.download = `reperi-addons-${todayIST()}.csv`;
+  el.click();
+  setTimeout(() => URL.revokeObjectURL(el.href), 1000);
+}
+
 // ── Cancellations ──
 function cancellations() {
   const list = vis(state.model.cancellations);
@@ -1483,6 +1589,10 @@ function detailHtml(j, d) {
   const times = STAGE_TIMES.filter(([k]) => r[k]).map(([k, l]) => ({ k, l, t: r[k] })).sort((a, b) => new Date(a.t) - new Date(b.t));
   if (times.length > 1) html += `<h4>Timeline</h4><ul class="timeline">${times.map((x) => `<li><div><b>${x.l}</b></div><div class="when">${fmtDT(x.t)}</div></li>`).join('')}</ul>`;
   if (d.updates?.length) html += `<h4>Garage updates</h4><ul class="timeline">${d.updates.map((u) => `<li><div><b>${esc(u.stage || 'Update')}</b></div>${u.description ? `<div>${esc(u.description)}</div>` : ''}<div class="when">${fmtDT(u.created_at)}${u.image_url || u.photo_url ? ` · <button class="btn-link" style="color:var(--blue)" data-doc="${esc(u.image_url || u.photo_url)}" data-bucket="booking-images">Photo</button>` : ''}</div></li>`).join('')}</ul>`;
+  if (d.addons?.length) {
+    const paidSum = d.addons.filter((a) => a.status === 'Paid').reduce((s, a) => s + Number(a.price || 0), 0);
+    html += `<h4>Add-ons (${d.addons.length})${paidSum ? ` · ${inr(paidSum)} paid` : ''}</h4><ul class="timeline">${d.addons.map((a) => `<li><div><b>${esc(a.package_name || 'Add-on')}</b> · <b>${inr(Number(a.price || 0))}</b> ${addonPill(a)}</div>${a.description ? `<div>${esc(a.description)}</div>` : ''}${a.status === 'Rejected' && a.reject_reason ? `<div style="color:var(--red)">Customer: “${esc(a.reject_reason)}”</div>` : ''}<div class="when">${fmtDT(a.created_at)}${a.razorpay_payment_id ? ` · <span class="mono">${esc(a.razorpay_payment_id)}</span>` : ''}${a.image_path ? ` · <button class="btn-link" style="color:var(--blue)" data-doc="${esc(a.image_path)}" data-bucket="booking-images">Photo</button>` : ''}</div></li>`).join('')}</ul>`;
+  }
   if (d.washes?.length) html += `<h4>Washes (${d.washes.length})</h4><ul class="timeline">${d.washes.map((w) => `<li><div><b>Wash completed</b></div><div class="when">${fmtDT(w.created_at)} · ${photoLinks([w.before_photo_url, w.after_photo_url], 'subscription-services', ['Before', 'After'])}</div></li>`).join('')}</ul>`;
   const docs = DOC_FIELDS.filter((k) => r[k]);
   if (docs.length) html += `<h4>Documents</h4><div style="display:flex;flex-wrap:wrap;gap:8px">${docs.map((k) => `<button class="btn" data-doc="${esc(r[k])}" data-bucket="insurance-documents">${titleCase(k.replace(/_url$/, '').replace('owner_', ''))}</button>`).join('')}</div>`;

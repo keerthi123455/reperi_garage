@@ -144,6 +144,7 @@ async function snapshot(client: SupabaseClient, body: Row) {
     reviewOverrides, chatReports, unreadChats,
     offerR, offerOpen,
     resolveR, resolveOpen,
+    addonsR, addonsOpen,
   ] = await Promise.all([
     inRange("bookings"),
     safe(errors, "bookings_open", () =>
@@ -195,6 +196,11 @@ async function snapshot(client: SupabaseClient, body: Row) {
     safe(errors, "resolve_requests_open", () =>
       client.from("resolve_requests").select("*").gte("created_at", openSince)
         .in("status", ["Submitted", "Quoted", "Accepted"]).limit(MAX_ROWS)),
+    // Add-ons garages asked for on a booking (customer approves & pays / rejects).
+    inRange("addon_services"),
+    safe(errors, "addon_services_open", () =>
+      client.from("addon_services").select("*").gte("created_at", openSince)
+        .in("status", ["Requested", "Approved"]).limit(MAX_ROWS)),
   ]);
 
   const bookings = mergeById(bookingsR, bookingsOpen);
@@ -206,11 +212,12 @@ async function snapshot(client: SupabaseClient, body: Row) {
   const intents = mergeById(intentsR, intentsStuck);
   const offer = mergeById(offerR, offerOpen);
   const resolve = mergeById(resolveR, resolveOpen);
+  const addons = mergeById(addonsR, addonsOpen);
 
   // Customers and vehicles referenced by any row.
   const userIds = new Set<string>();
   const vehicleIds = new Set<string>();
-  for (const list of [bookings, pollution, inspection, claims, monthly, detailing, cancellations, intents, offer, resolve]) {
+  for (const list of [bookings, pollution, inspection, claims, monthly, detailing, cancellations, intents, offer, resolve, addons]) {
     for (const r of list) {
       if (r.user_id) userIds.add(String(r.user_id));
       if (r.vehicle_id) vehicleIds.add(String(r.vehicle_id));
@@ -270,6 +277,7 @@ async function snapshot(client: SupabaseClient, body: Row) {
     bookings,
     offer,
     resolve,
+    addons,
     pollution,
     inspection,
     claims,
@@ -293,6 +301,7 @@ async function snapshot(client: SupabaseClient, body: Row) {
 const DETAIL_TABLES = new Set([
   "bookings", "pollution_booking", "inspection_booking", "claim_table",
   "fleet_pickup_requests", "monthlywash_table", "detailing_bookings", "offer_bookings", "resolve_requests",
+  "addon_services",
 ]);
 
 async function detail(client: SupabaseClient, body: Row) {
@@ -305,11 +314,13 @@ async function detail(client: SupabaseClient, body: Row) {
 
   const extra: Record<string, Row[]> = {};
   if (table === "bookings") {
-    [extra.updates, extra.chats] = await Promise.all([
+    [extra.updates, extra.chats, extra.addons] = await Promise.all([
       safe(errors, "booking_updates", () =>
         client.from("booking_updates").select("*").eq("booking_id", id).order("created_at")),
       safe(errors, "booking_chats", () =>
         client.from("booking_chats").select("id,message,sender,created_at").eq("booking_id", id).order("created_at")),
+      safe(errors, "addon_services", () =>
+        client.from("addon_services").select("*").eq("booking_id", id).order("created_at")),
     ]);
   } else if (table === "claim_table") {
     extra.updates = await safe(errors, "claim_table_updates", () =>

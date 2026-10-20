@@ -8,6 +8,8 @@
 //   → cod:    the booking, created immediately
 // POST { action: "confirm", razorpay_order_id, razorpay_payment_id, razorpay_signature }
 //   → verifies the payment and creates the booking (idempotent — safe to retry)
+// POST { action: "addon_create", addon_id }
+//   → approves a garage add-on and returns a Razorpay order for its price
 // POST { action: "status",  intent_id }
 //   → current state of a checkout (for "finishing your booking…" retries)
 
@@ -17,6 +19,7 @@ import {
   ApiError,
   buildQuote,
   corsHeaders,
+  createAddonIntent,
   createIntent,
   createRazorpayOrder,
   errorResponse,
@@ -70,6 +73,24 @@ Deno.serve(async (req: Request) => {
           amount_paise: intent.amount * 100,
           currency: "INR",
           quote: publicQuote(quote),
+        });
+      }
+
+      case "addon_create": {
+        const user = await getUser(req, db);
+        const intent = await createAddonIntent(db, user, body.addon_id);
+        const order = await createRazorpayOrder(intent);
+        const { error } = await db
+          .from("payment_intents")
+          .update({ razorpay_order_id: order.orderId })
+          .eq("id", intent.id);
+        if (error) throw error;
+        return json({
+          intent_id: intent.id,
+          order_id: order.orderId,
+          key_id: order.keyId,
+          amount_paise: intent.amount * 100,
+          currency: "INR",
         });
       }
 

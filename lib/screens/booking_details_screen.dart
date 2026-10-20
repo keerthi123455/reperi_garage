@@ -5,11 +5,13 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'booking_tracking_screen.dart'; // imports ChatSheet
 import 'inspection_upload_screen.dart';
 import '../utils/secure_storage_path.dart';
 import '../widgets/error_display.dart';
+import '../widgets/garage_addons.dart';
 
 class BookingDetailsScreen extends StatefulWidget {
   final Map booking;
@@ -998,9 +1000,14 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
             },
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              // Extra room at the bottom so the last buttons sit clear of
+              // the gesture bar / screen edge.
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 96 + MediaQuery.viewPaddingOf(context).bottom),
               children: [
                 _summaryCard(),
+                const SizedBox(height: 14),
+                // Blue "ADD-ON SERVICE" button + add-ons sent (not for roadside).
+                GarageAddonsSection(booking: widget.booking),
                 const SizedBox(height: 18),
                 _tracker(),
                 const SizedBox(height: 18),
@@ -1396,20 +1403,46 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     );
   }
 
+  /// Reperi support line for garages.
+  static const String _garageSupportPhone = '7022149521';
+
+  Future<void> _callSupport() async {
+    final uri = Uri.parse('tel:$_garageSupportPhone');
+    try {
+      if (!await launchUrl(uri)) throw 'no dialer';
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Call Reperi on $_garageSupportPhone')),
+      );
+    }
+  }
+
   // ── 4. Other actions ────────────────────────────────────────────────
   Widget _actionsRow() {
     final tiles = <Widget>[
+      _actionTile(Icons.call_rounded, 'Call Reperi', _callSupport),
       _actionTile(Icons.chat_bubble_rounded, 'Chat', openChat, badge: hasUnreadMessages),
       _actionTile(Icons.fact_check_rounded, 'Inspection', _pickInspection),
       if (!_markedDone && !_delivered) _actionTile(Icons.swap_vert_rounded, 'Any stage', _pickStage),
       if (!_markedDone && !_delivered) _actionTile(Icons.check_circle_rounded, 'Work done', _confirmMarkDone),
     ];
-    return Row(
+    // Up to 3 per row, so labels stay readable on small phones.
+    Widget row(List<Widget> items) => Row(
+          children: [
+            for (var i = 0; i < items.length; i++) ...[
+              if (i > 0) const SizedBox(width: 10),
+              Expanded(child: items[i]),
+            ],
+          ],
+        );
+    if (tiles.length <= 3) return row(tiles);
+    final split = (tiles.length + 1) ~/ 2;
+    return Column(
       children: [
-        for (var i = 0; i < tiles.length; i++) ...[
-          if (i > 0) const SizedBox(width: 10),
-          Expanded(child: tiles[i]),
-        ],
+        row(tiles.sublist(0, split)),
+        const SizedBox(height: 10),
+        row(tiles.sublist(split)),
       ],
     );
   }

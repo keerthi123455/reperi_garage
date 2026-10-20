@@ -89,6 +89,13 @@ class BookingApi {
     return BookingResult.fromJson(data);
   }
 
+  /// Approves a garage add-on and returns the Razorpay order for the price
+  /// the garage set (the server reads it from `addon_services`).
+  static Future<CreateResult> addonCreate(String addonId) async {
+    final data = await _call({'action': 'addon_create', 'addon_id': addonId});
+    return CreateResult.fromJson(data);
+  }
+
   /// Where a checkout stands (and retries a failed save server-side).
   static Future<BookingResult> status(String intentId) async {
     final data = await _call({'action': 'status', 'intent_id': intentId});

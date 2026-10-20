@@ -607,7 +607,7 @@ export interface CreateInput extends QuoteInput {
 
 export interface Intent {
   id: string;
-  kind: "service" | "fleet";
+  kind: "service" | "fleet" | "addon";
   user_id: string | null;
   customer_email: string | null;
   vehicle_id: string | null;
@@ -731,6 +731,60 @@ export async function createIntent(
   const { data, error } = await db.from("payment_intents").insert(row).select("*").single();
   if (error) throw error;
   return { intent: data as Intent, quote };
+}
+
+// ── Add-on services ────────────────────────────────────────────────────
+// The garage asks for extra work on a booking (addon_services row,
+// status Requested). The customer approves → this makes a checkout for the
+// price the garage set (from the DB, never from the app).
+
+export async function createAddonIntent(
+  db: SupabaseClient,
+  user: User | null,
+  rawAddonId: unknown,
+): Promise<Intent> {
+  if (!user) throw new ApiError("sign_in_required", "Please sign in again to pay.", 401);
+  const addonId = typeof rawAddonId === "string" ? rawAddonId.trim() : "";
+  if (!UUID_RE.test(addonId)) throw new ApiError("invalid_request", "That add-on couldn't be found.");
+
+  const { data: addon, error } = await db
+    .from("addon_services")
+    .select("*")
+    .eq("id", addonId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!addon) throw new ApiError("not_found", "That add-on couldn't be found.", 404);
+  if (addon.status === "Paid") throw new ApiError("addon_paid", "This add-on is already paid.");
+  if (addon.status !== "Requested" && addon.status !== "Approved") {
+    throw new ApiError("addon_closed", "This add-on is no longer open.");
+  }
+  const price = Number(addon.price);
+  if (!Number.isInteger(price) || price <= 0) throw new ApiError("addon_closed", "This add-on has no valid price.");
+
+  const { error: upErr } = await db
+    .from("addon_services")
+    .update({ status: "Approved", approved_at: addon.approved_at ?? new Date().toISOString() })
+    .eq("id", addonId);
+  if (upErr) throw upErr;
+
+  const row = {
+    kind: "addon",
+    user_id: user.id,
+    customer_email: user.email?.trim().toLowerCase() ?? null,
+    vehicle_id: addon.vehicle_id ?? null,
+    items: [{ key: "addon", name: addon.package_name as string, price }],
+    options: { addon_id: addonId, booking_id: String(addon.booking_id), booking_name: addon.package_name },
+    pickup_drop: false,
+    pickup_fee: 0,
+    subtotal: price,
+    amount: price,
+    payment_method: "online",
+    booking_table: "addon_services",
+  };
+  const { data, error: insErr } = await db.from("payment_intents").insert(row).select("*").single();
+  if (insErr) throw insErr;
+  return data as Intent;
 }
 
 // ── Razorpay ───────────────────────────────────────────────────────────
@@ -934,6 +988,23 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
   const online = intent.payment_method === "online";
   const paymentId = intent.razorpay_payment_id;
   if (online && !paymentId) throw new Error("Missing payment id for an online intent");
+
+  // ── Add-on approved & paid ──
+  if (intent.kind === "addon") {
+    const addonId = String(intent.options["addon_id"]);
+    const { error } = await db
+      .from("addon_services")
+      .update({
+        status: "Paid",
+        payment_status: "paid",
+        razorpay_order_id: intent.razorpay_order_id,
+        razorpay_payment_id: paymentId,
+        paid_at: new Date().toISOString(),
+      })
+      .eq("id", addonId);
+    if (error) throw error;
+    return addonId;
+  }
 
   // ── Fleet "Pay Now" ──
   if (intent.kind === "fleet") {

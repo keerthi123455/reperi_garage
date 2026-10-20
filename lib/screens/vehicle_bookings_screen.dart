@@ -13,6 +13,7 @@ import '../services/vehicle_update_tracker.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/ask_ai_button.dart';
+import '../widgets/booking_addons.dart';
 import '../widgets/bottom_nav_actions.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/emergency_status_banner.dart';
@@ -2364,6 +2365,10 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                 style: TextStyle(color: AppColors.mut, fontSize: 13),
                               ),
                               BookingSlotBadge(record: booking),
+
+                              // Add-ons the garage asked for (approve & pay /
+                              // reject), and paid ones as sub-orders.
+                              BookingAddons(booking: booking),
 
                               const SizedBox(height: 20),
 

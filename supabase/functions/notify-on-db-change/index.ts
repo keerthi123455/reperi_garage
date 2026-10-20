@@ -1,6 +1,7 @@
 // Fires on Supabase Database Webhooks for:
 //   bookings            (INSERT, UPDATE — wash completed)
 //   booking_updates     (INSERT)
+//   addon_services      (INSERT, UPDATE — add-on requested / rejected / paid)
 //   booking_chats       (INSERT)
 //   fleet_pickup_requests (INSERT, UPDATE)
 //   fleet_chat_messages (INSERT)
@@ -181,6 +182,44 @@ Deno.serve(async (req) => {
               `customer_${record.user_id}`,
               "Wash complete!",
               `Your ${packageName} at ${apartment} is done. Thanks for choosing Reperi!`,
+              data,
+            );
+          }
+        }
+        break;
+      }
+
+      // ── Add-on services ──
+      // Garage asks for extra work → customer. Customer rejects / pays → garage.
+      case "addon_services": {
+        const title = String(record.package_name ?? "Add-on");
+        const price = String(record.package_price ?? (record.price ? `₹${record.price}` : ""));
+        const data = { type: "addon", addonId: record.id, bookingId: record.booking_id };
+        const status = String(record.status ?? "");
+        const was = String(old_record?.status ?? "");
+
+        if (type === "INSERT" && record.user_id) {
+          await sendPush(
+            `customer_${record.user_id}`,
+            "Add-on requested",
+            `Your garage suggests: ${title}${price ? ` (${price})` : ""}. Open your vehicle dashboard to approve or reject.`,
+            data,
+          );
+        } else if (type === "UPDATE" && status !== was) {
+          const who = String(record.customer_name ?? "The customer");
+          if (status === "Rejected") {
+            const reason = String(record.reject_reason ?? "").trim();
+            await sendPush(
+              "admin",
+              "Add-on rejected",
+              `${who} rejected "${title}"${reason ? `: ${reason}` : "."}`,
+              data,
+            );
+          } else if (status === "Paid") {
+            await sendPush(
+              "admin",
+              "Add-on approved & paid",
+              `${who} approved and paid ${price || "for"} "${title}". Go ahead with the work.`,
               data,
             );
           }
