@@ -1,5 +1,5 @@
 // Fires on Supabase Database Webhooks for:
-//   bookings            (INSERT)
+//   bookings            (INSERT, UPDATE — wash completed)
 //   booking_updates     (INSERT)
 //   booking_chats       (INSERT)
 //   fleet_pickup_requests (INSERT, UPDATE)
@@ -120,6 +120,20 @@ Deno.serve(async (req) => {
                 )
               : Promise.resolve(),
           ]);
+        } else if (type === "UPDATE") {
+          // Doorstep wash marked done from the washer dashboard.
+          const nowDone =
+            record.washer_id &&
+            String(record.booking_status ?? "") === "Completed" &&
+            String(old_record?.booking_status ?? "") !== "Completed";
+          if (nowDone && record.user_id) {
+            await sendPush(
+              `customer_${record.user_id}`,
+              "Wash complete!",
+              `Your ${String(record.package_name ?? "wash")} is done. Thanks for choosing Reperi!`,
+              { type: "booking", bookingId: record.id },
+            );
+          }
         }
         break;
       }

@@ -448,6 +448,9 @@
                  washers in the 'washers_offer' pool — everyone else has none. -->
             <div id="offerContent"></div>
 
+            <!-- One-time doorstep washes (car & bike) from the bookings table. -->
+            <div id="doorstepContent"></div>
+
             <div id="subscriptionsContent">
                 <div style="text-align: center; padding: 40px; color: #999;">
                     <div class="loading-spinner"></div>
@@ -520,6 +523,7 @@
 
                 await Promise.all([
                     fetchOfferBookings(currentWasherId),
+                    fetchDoorstepBookings(),
                     fetchSubscriptions(currentWasherId),
                 ]);
             } catch (err) {
@@ -758,8 +762,21 @@
         const OFFER_STAGES = [['before', 'Before'], ['during', 'During wash'], ['after', 'After']];
         let offerRows = {};
 
-        function offerPhotosHtml(b, finished) {
-            offerRows[String(b.id)] = b;
+        // Offer washes (offer_bookings) and doorstep washes (bookings) share
+        // the photo + complete code; only the server functions differ.
+        const WASH_KINDS = {
+            offer: {
+                photoRpc: 'set_offer_wash_photo', completeRpc: 'complete_offer_booking',
+                folder: 'offer-photos', reload: () => fetchOfferBookings(currentWasherId),
+            },
+            door: {
+                photoRpc: 'set_booking_wash_photo', completeRpc: 'complete_booking_wash',
+                folder: 'doorstep-photos', reload: () => fetchDoorstepBookings(),
+            },
+        };
+
+        function offerPhotosHtml(b, finished, kind = 'offer') {
+            offerRows[kind + ':' + String(b.id)] = b;
             const id = escapeHtml(b.id);
             const slots = OFFER_STAGES.map(([stage, label]) => {
                 const url = b[stage + '_photo_url'];
@@ -771,7 +788,7 @@
                 return `<div style="flex:1;min-width:0">
                     ${finished
                         ? (url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${box}</a>` : box)
-                        : `<label style="display:block;cursor:pointer">${box}<input type="file" accept="image/*" capture="environment" hidden onchange="uploadOfferPhoto('${id}','${stage}',this)"></label>`}
+                        : `<label style="display:block;cursor:pointer">${box}<input type="file" accept="image/*" capture="environment" hidden onchange="uploadOfferPhoto('${id}','${stage}',this,'${kind}')"></label>`}
                     <div style="text-align:center;font-size:12px;font-weight:700;margin-top:6px">${label}${url ? ' ✅' : ''}</div>
                 </div>`;
             }).join('');
@@ -800,7 +817,8 @@
             });
         }
 
-        async function uploadOfferPhoto(id, stage, input) {
+        async function uploadOfferPhoto(id, stage, input, kind = 'offer') {
+            const k = WASH_KINDS[kind];
             const file = input.files && input.files[0];
             if (!file) return;
             const statusDiv = document.getElementById('offer-photo-status-' + id);
@@ -808,26 +826,27 @@
             if (slot) slot.innerHTML = '<div class="loading-spinner" style="width:26px;height:26px"></div>';
             try {
                 const blob = await shrinkImage(file);
-                const path = `offer-photos/${id}/${stage}-${Date.now()}.jpg`;
+                const path = `${k.folder}/${id}/${stage}-${Date.now()}.jpg`;
                 const { error: upErr } = await sbClient.storage
                     .from('subscription-services')
                     .upload(path, blob, { contentType: 'image/jpeg' });
                 if (upErr) throw upErr;
                 const { data } = sbClient.storage.from('subscription-services').getPublicUrl(path);
-                const { error } = await sbClient.rpc('set_offer_wash_photo', { p_id: String(id), p_stage: stage, p_url: data.publicUrl });
+                const { error } = await sbClient.rpc(k.photoRpc, { p_id: String(id), p_stage: stage, p_url: data.publicUrl });
                 if (error) throw error;
-                await fetchOfferBookings(currentWasherId);
+                await k.reload();
                 const again = document.getElementById('offer-photo-status-' + id);
                 if (again) showUploadStatus(again, 'success', '✅ Photo saved');
             } catch (err) {
                 console.error('Offer photo upload failed:', err);
                 if (statusDiv) showUploadStatus(statusDiv, 'error', '❌ ' + (err.message || 'Upload failed'));
-                await fetchOfferBookings(currentWasherId);
+                await k.reload();
             }
         }
 
-        async function completeOfferBooking(id) {
-            const row = offerRows[String(id)] || {};
+        async function completeOfferBooking(id, kind = 'offer') {
+            const k = WASH_KINDS[kind];
+            const row = offerRows[kind + ':' + String(id)] || {};
             const missing = OFFER_STAGES.filter(([stage]) => !row[stage + '_photo_url']).map(([, label]) => label);
             if (missing.length && !confirm(`Missing photos: ${missing.join(', ')}.\n\nComplete the wash anyway?`)) return;
             if (!confirm('Mark this wash as completed? The customer will be notified.')) return;
@@ -837,9 +856,9 @@
             try {
                 // Server-side check: only the washer this booking is assigned
                 // to can complete it (see offer_apartment_booking.sql).
-                const { error } = await sbClient.rpc('complete_offer_booking', { p_id: String(id) });
+                const { error } = await sbClient.rpc(k.completeRpc, { p_id: String(id) });
                 if (error) throw error;
-                await fetchOfferBookings(currentWasherId);
+                await k.reload();
             } catch (err) {
                 console.error('Error completing offer wash:', err);
                 if (btn) { btn.disabled = false; btn.textContent = 'MARK WASH COMPLETED'; }
@@ -847,8 +866,93 @@
             }
         }
 
-        // New offer bookings show up without a manual refresh.
-        setInterval(() => { if (currentWasherId) fetchOfferBookings(currentWasherId); }, 60000);
+        // New offer / doorstep bookings show up without a manual refresh.
+        setInterval(() => {
+            if (!currentWasherId) return;
+            fetchOfferBookings(currentWasherId);
+            fetchDoorstepBookings();
+        }, 60000);
+
+        // ── Doorstep washes (one-time car & bike washes) ────────────────
+        // From the `bookings` table via washer_doorstep_bookings() — see
+        // supabase/doorstep_washes.sql. Only this washer's own bookings.
+        async function fetchDoorstepBookings() {
+            const box = document.getElementById('doorstepContent');
+            try {
+                const { data, error } = await sbClient.rpc('washer_doorstep_bookings');
+                if (error) throw error;
+                displayDoorstepBookings(data || []);
+            } catch (err) {
+                // Never break the rest of the dashboard over this section.
+                console.warn('⚠️ Could not load doorstep washes:', err.message || err);
+                box.innerHTML = '';
+            }
+        }
+
+        function slotText(b) {
+            if (!b.slot_date) return '';
+            const d = new Date(String(b.slot_date).slice(0, 10) + 'T00:00:00Z');
+            const day = isNaN(d) ? String(b.slot_date)
+                : d.toLocaleDateString('en-IN', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
+            return day + (b.slot_time ? ', ' + b.slot_time : '');
+        }
+
+        function displayDoorstepBookings(rows) {
+            const box = document.getElementById('doorstepContent');
+            if (!rows.length) { box.innerHTML = ''; return; }
+            const key = (b) => new Date(b.slot_start || b.created_at).getTime();
+            const open = rows.filter((b) => !isOfferDone(b)).sort((a, b) => key(a) - key(b));
+            const done = rows.filter(isOfferDone);
+
+            let html = `<div class="subscriptions-title">Doorstep Washes (${open.length} to do)</div>
+                        <div class="subscriptions-list">`;
+            [...open, ...done].forEach((b) => {
+                const id = escapeHtml(b.id);
+                const finished = isOfferDone(b);
+                const bike = b.vehicle_type === 'two_wheeler';
+                const vehicle = [b.vehicle_brand, b.vehicle_model].filter(Boolean).join(' ');
+                const plate = b.vehicle_number || '';
+                const address = [b.pickup_address_name, b.pickup_address].filter(Boolean)
+                    .filter((x, i, a) => a.indexOf(x) === i).join(' · ');
+                const hasCoords = b.pickup_latitude != null && b.pickup_longitude != null;
+                const navigateHtml = hasCoords
+                    ? `<a class="navigate-btn" href="https://www.google.com/maps/dir/?api=1&destination=${b.pickup_latitude},${b.pickup_longitude}&travelmode=driving" target="_blank" rel="noopener">🧭 Navigate</a>`
+                    : '';
+                const phone = (b.customer_phone || '').toString();
+                const callHtml = phone ? `<a class="navigate-btn" href="tel:${escapeHtml(phone)}">📞 Call customer</a>` : '';
+                const when = b.created_at
+                    ? new Date(b.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+                    : '';
+                const slot = slotText(b);
+                const cash = String(b.payment_status || '').toLowerCase() === 'cod';
+                html += `
+                    <div class="subscription-card"${finished ? ' style="opacity:0.6"' : ''}>
+                        <div class="subscription-header">
+                            <div>
+                                <div class="subscription-vehicle">${escapeHtml(b.package_name || 'Doorstep wash')}</div>
+                                <div class="subscription-plate">${bike ? '🏍️' : '🚗'} ${escapeHtml(vehicle || (bike ? 'Bike' : 'Car'))}${plate ? ' · ' + escapeHtml(plate) : ''}</div>
+                                <div class="subscription-status">${escapeHtml(b.booking_status || 'Booked')}</div>
+                            </div>
+                        </div>
+                        <div class="subscription-details">
+                            ${slot ? `<p style="font-size:15px"><strong>🕒 Wash time:</strong> <b>${escapeHtml(slot)}</b></p>` : ''}
+                            <p><strong>Customer:</strong> ${escapeHtml(b.customer_name || '—')}</p>
+                            <p><strong>Phone:</strong> ${escapeHtml(phone || '—')}</p>
+                            <p><strong>Address:</strong> ${escapeHtml(address || 'Not specified')}</p>
+                            <p><strong>Price:</strong> ${escapeHtml(b.package_price ?? '—')} ${cash ? '<b style="color:#ffb74d">(💰 collect cash)</b>' : '(paid online)'}</p>
+                            <p><strong>Booked:</strong> ${escapeHtml(when)}</p>
+                            ${callHtml} ${navigateHtml}
+                            ${offerPhotosHtml(b, finished, 'door')}
+                            ${finished ? '' : `
+                            <button class="upload-btn" style="margin-top:14px" id="offer-btn-${id}"
+                                    onclick="completeOfferBooking('${id}','door')">MARK WASH COMPLETED</button>
+                            <div class="upload-status" id="offer-status-${id}"></div>`}
+                        </div>
+                    </div>`;
+            });
+            html += '</div>';
+            box.innerHTML = html;
+        }
 
         function toggleSubscription(subscriptionId) {
             const expanded = document.getElementById(`expanded-${subscriptionId}`);
