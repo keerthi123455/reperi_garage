@@ -607,7 +607,7 @@ export interface CreateInput extends QuoteInput {
 
 export interface Intent {
   id: string;
-  kind: "service" | "fleet" | "addon";
+  kind: "service" | "fleet" | "addon" | "renewal";
   user_id: string | null;
   customer_email: string | null;
   vehicle_id: string | null;
@@ -781,6 +781,79 @@ export async function createAddonIntent(
     amount: price,
     payment_method: "online",
     booking_table: "addon_services",
+  };
+  const { data, error: insErr } = await db.from("payment_intents").insert(row).select("*").single();
+  if (insErr) throw insErr;
+  return data as Intent;
+}
+
+// ── Monthly wash renewal ───────────────────────────────────────────────
+// From 2 days before the plan's last day (IST) the customer can renew & pay
+// in the app. Price = today's catalog price for the same plan type (falls
+// back to what they paid last time). Paying adds a new plan row that starts
+// when the old one ends — see renew_monthly_wash_paid() in
+// supabase/monthly_wash_app_renewal.sql.
+
+const IST_OFFSET_MS = 330 * 60 * 1000;
+/** Whole days from today to [iso], both as IST calendar dates (0 = today). */
+export function istDaysUntil(iso: string): number {
+  const day = (t: number) => Math.floor((t + IST_OFFSET_MS) / 86_400_000);
+  return day(new Date(iso).getTime()) - day(Date.now());
+}
+export const RENEW_WINDOW_DAYS = 2;
+
+export async function createRenewalIntent(
+  db: SupabaseClient,
+  user: User | null,
+  rawId: unknown,
+): Promise<Intent> {
+  if (!user) throw new ApiError("sign_in_required", "Please sign in again to pay.", 401);
+  const subId = typeof rawId === "string" || typeof rawId === "number" ? String(rawId).trim() : "";
+  if (!subId || subId.length > 64) throw new ApiError("invalid_request", "That plan couldn't be found.");
+
+  const { data: sub, error } = await db
+    .from("monthlywash_table")
+    .select("*")
+    .eq("id", subId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!sub) throw new ApiError("not_found", "That plan couldn't be found.", 404);
+
+  const { data: already, error: aErr } = await db
+    .from("monthlywash_table").select("id").eq("renewed_from_id", String(sub.id)).limit(1);
+  if (aErr) throw aErr;
+  if (sub.status === "renewed" || (already ?? []).length) {
+    throw new ApiError("already_renewed", "This plan is already renewed.");
+  }
+  if (!sub.end_date) throw new ApiError("not_renewable", "This plan can't be renewed from the app.");
+  if (istDaysUntil(sub.end_date) > RENEW_WINDOW_DAYS) {
+    throw new ApiError("too_early", "You can renew from 2 days before your plan ends.");
+  }
+
+  // Today's price for the same plan type.
+  const { data: services, error: sErr } = await db
+    .from("services").select(SERVICE_COLUMNS)
+    .eq("booking_table", "monthlywash_table").eq("active", true);
+  if (sErr) throw sErr;
+  const svc = ((services ?? []) as ServiceRow[]).find((x) => x.details?.["plan_type"] === sub.plan_type);
+  const price = Math.round(Number(svc?.price ?? sub.price));
+  if (!Number.isFinite(price) || price <= 0) throw new ApiError("not_renewable", "This plan has no valid price.");
+  const name = svc?.booking_name ?? svc?.name ?? (sub.plan_title as string) ?? "Monthly Wash Plan";
+
+  const row = {
+    kind: "renewal",
+    user_id: user.id,
+    customer_email: user.email?.trim().toLowerCase() ?? null,
+    vehicle_id: sub.vehicle_id ? String(sub.vehicle_id) : null,
+    items: [{ key: svc?.key ?? "monthly_renewal", name: `${name} (renewal)`, price }],
+    options: { renew_of: String(sub.id), booking_name: name },
+    pickup_drop: false,
+    pickup_fee: 0,
+    subtotal: price,
+    amount: price,
+    payment_method: "online",
+    booking_table: "monthlywash_table",
   };
   const { data, error: insErr } = await db.from("payment_intents").insert(row).select("*").single();
   if (insErr) throw insErr;
@@ -1004,6 +1077,18 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
       .eq("id", addonId);
     if (error) throw error;
     return addonId;
+  }
+
+  // ── Monthly wash renewed & paid → new plan row ──
+  if (intent.kind === "renewal") {
+    const { data, error } = await db.rpc("renew_monthly_wash_paid", {
+      p_id: String(intent.options["renew_of"]),
+      p_price: intent.amount,
+      p_payment_id: paymentId,
+      p_order_id: intent.razorpay_order_id,
+    });
+    if (error) throw error;
+    return String(data);
   }
 
   // ── Fleet "Pay Now" ──

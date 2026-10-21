@@ -21,6 +21,7 @@ import '../widgets/error_display.dart';
 import '../widgets/offer_bookings_list.dart';
 import '../widgets/resolve_requests_list.dart';
 import '../widgets/slot_picker.dart';
+import '../widgets/subscription_renewal.dart';
 import 'booking_tracking_screen.dart';
 
 // Same brand catalog as profile_screen.dart's "Add/Edit Vehicle" sheet —
@@ -1075,15 +1076,24 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     try {
       final supabase = Supabase.instance.client;
 
+      // Newest plan for this car — a renewal adds a new row, so there can
+      // be several (the old ones are marked 'renewed').
       final response = await supabase
           .from('monthlywash_table')
           .select('*')
           .eq('vehicle_id', widget.vehicleId)
-          .single();
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
 
       if (mounted) {
+        final firstLoad = subscription.isEmpty;
         setState(() {
-          subscription = response;
+          subscription = response ?? {};
+          // Renewal due → open the drop-down so RENEW AND PAY is visible.
+          if (firstLoad && subscription.isNotEmpty && planRenewalDue(subscription)) {
+            _subscriptionExpanded = true;
+          }
         });
         if (subscription.isNotEmpty) _maybeScrollToHighlight('subscription');
       }
@@ -1096,18 +1106,18 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     try {
       final supabase = Supabase.instance.client;
 
-      final subResponse = await supabase
+      // History across the plan and its renewals, newest first.
+      final subRows = await supabase
           .from('monthlywash_table')
           .select('id')
-          .eq('vehicle_id', widget.vehicleId)
-          .single();
-
-      final subscriptionId = subResponse['id'];
+          .eq('vehicle_id', widget.vehicleId);
+      final subscriptionIds = (subRows as List).map((r) => r['id']).toList();
+      if (subscriptionIds.isEmpty) return;
 
       final response = await supabase
           .from('service_history')
           .select('*')
-          .eq('subscription_id', subscriptionId)
+          .inFilter('subscription_id', subscriptionIds)
           .order('created_at', ascending: false);
 
       if (mounted) {
@@ -1767,14 +1777,17 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Text(
-                                            '₹${subscription['price'] ?? '-'}/month',
-                                            style: TextStyle(
-                                              color: AppColors.txt,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w700,
+                                          Flexible(
+                                            child: Text(
+                                              '₹${subscription['price'] ?? '-'}/month',
+                                              style: TextStyle(
+                                                color: AppColors.txt,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w700,
+                                              ),
                                             ),
                                           ),
+                                          const SizedBox(width: 8),
                                           Container(
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 12,
@@ -1785,7 +1798,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                                               borderRadius: BorderRadius.circular(8),
                                             ),
                                             child: Text(
-                                              'Active',
+                                              planStatusLabel(subscription),
                                               style: TextStyle(
                                                 color: AppColors.onAccentDark,
                                                 fontWeight: FontWeight.w900,
@@ -1811,6 +1824,15 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                               const SizedBox(height: 20),
                               const Divider(color: Color(0xFFD4A017)),
                               const SizedBox(height: 16),
+                              // Last 2 days / last day: blue RENEW AND PAY.
+                              if (planRenewalDue(subscription))
+                                SubscriptionRenewButton(
+                                  subscription: subscription,
+                                  onRenewed: () {
+                                    fetchSubscription();
+                                    fetchWashHistory();
+                                  },
+                                ),
                               const Text(
                                 'Wash History',
                                 style: TextStyle(

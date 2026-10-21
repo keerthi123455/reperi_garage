@@ -96,6 +96,13 @@ class BookingApi {
     return CreateResult.fromJson(data);
   }
 
+  /// Renews a monthly wash plan (last 2 days / last day): returns the
+  /// Razorpay order for today's price of the same plan.
+  static Future<CreateResult> renewCreate(String subscriptionId) async {
+    final data = await _call({'action': 'renew_create', 'subscription_id': subscriptionId});
+    return CreateResult.fromJson(data);
+  }
+
   /// Where a checkout stands (and retries a failed save server-side).
   static Future<BookingResult> status(String intentId) async {
     final data = await _call({'action': 'status', 'intent_id': intentId});

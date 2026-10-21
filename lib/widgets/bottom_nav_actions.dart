@@ -6,6 +6,7 @@ import '../screens/services_screen.dart';
 import '../screens/vehicle_bookings_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'requirements.dart';
+import 'ai_consent.dart';
 
 /// Shared navigation for the four [BottomNavBar] destinations — Home (0),
 /// Bookings (1), Services (3), Profile (4); index 2 is the floating "Ask AI"
@@ -61,7 +62,10 @@ void handleBottomNavSelect(
 /// it only needs one at the point someone taps a recommended package to
 /// book it, which AiAdvisorSheet's own "add a vehicle" prompt covers, so
 /// opening the sheet itself is never blocked.
-void openAiAdvisor(BuildContext context, Map<String, dynamic>? activeVehicle) {
+Future<void> openAiAdvisor(BuildContext context, Map<String, dynamic>? activeVehicle) async {
+  // Explicit opt-in before anything goes to the third-party AI service.
+  if (!await ensureAiConsent(context)) return;
+  if (!context.mounted) return;
   showModalBottomSheet(
     context: context,
     backgroundColor: Colors.transparent,

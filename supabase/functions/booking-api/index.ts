@@ -10,6 +10,8 @@
 //   → verifies the payment and creates the booking (idempotent — safe to retry)
 // POST { action: "addon_create", addon_id }
 //   → approves a garage add-on and returns a Razorpay order for its price
+// POST { action: "renew_create", subscription_id }
+//   → Razorpay order to renew a monthly wash plan (last 2 days / last day)
 // POST { action: "status",  intent_id }
 //   → current state of a checkout (for "finishing your booking…" retries)
 
@@ -21,6 +23,7 @@ import {
   corsHeaders,
   createAddonIntent,
   createIntent,
+  createRenewalIntent,
   createRazorpayOrder,
   errorResponse,
   finalizeIntent,
@@ -79,6 +82,24 @@ Deno.serve(async (req: Request) => {
       case "addon_create": {
         const user = await getUser(req, db);
         const intent = await createAddonIntent(db, user, body.addon_id);
+        const order = await createRazorpayOrder(intent);
+        const { error } = await db
+          .from("payment_intents")
+          .update({ razorpay_order_id: order.orderId })
+          .eq("id", intent.id);
+        if (error) throw error;
+        return json({
+          intent_id: intent.id,
+          order_id: order.orderId,
+          key_id: order.keyId,
+          amount_paise: intent.amount * 100,
+          currency: "INR",
+        });
+      }
+
+      case "renew_create": {
+        const user = await getUser(req, db);
+        const intent = await createRenewalIntent(db, user, body.subscription_id);
         const order = await createRazorpayOrder(intent);
         const { error } = await db
           .from("payment_intents")

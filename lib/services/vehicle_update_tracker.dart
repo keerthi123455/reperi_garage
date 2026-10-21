@@ -65,6 +65,9 @@ class VehicleUpdateTracker {
           .from('monthlywash_table')
           .select('id')
           .eq('vehicle_id', vehicleId)
+          // Newest plan (a renewal adds a new row).
+          .order('created_at', ascending: false)
+          .limit(1)
           .maybeSingle();
       if (sub != null) {
         final subId = sub['id'].toString();

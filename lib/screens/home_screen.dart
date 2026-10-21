@@ -48,6 +48,7 @@ import '../widgets/vehicle_carousel.dart';
 import 'ac_package_screen.dart';
 import 'address_management_screen.dart';
 import 'ai_advisor_sheet.dart';
+import '../widgets/ai_consent.dart';
 import 'book_service_screen.dart';
 import 'car_spa_screen.dart';
 import 'denting_tinkering_screen.dart';
@@ -601,7 +602,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openAiAdvisor() {
+  Future<void> _openAiAdvisor() async {
+    // Explicit opt-in before anything goes to the third-party AI service.
+    if (!await ensureAiConsent(context)) return;
+    if (!mounted) return;
     // The advisor gives advice and shows package recommendations from
     // plain chat, independent of any vehicle — it only needs one at the
     // point someone taps a recommended package to book it, which
