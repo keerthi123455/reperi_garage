@@ -247,12 +247,47 @@ class _AddonSheetState extends State<_AddonSheet> {
   final _title = TextEditingController();
   final _desc = TextEditingController();
   final _price = TextEditingController();
+
+  // Website on phones: the browser's keyboard doesn't push this sheet up, so
+  // while a field is being typed in we add room below and scroll that field
+  // into view. (In the app, the sheet moves up with the keyboard itself.)
+  final _titleFocus = FocusNode();
+  final _descFocus = FocusNode();
+  final _priceFocus = FocusNode();
+  final _titleKey = GlobalKey();
+  final _descKey = GlobalKey();
+  final _priceKey = GlobalKey();
+  bool _typing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final (node, key) in [(_titleFocus, _titleKey), (_descFocus, _descKey), (_priceFocus, _priceKey)]) {
+      node.addListener(() => _onFocus(node, key));
+    }
+  }
+
+  void _onFocus(FocusNode node, GlobalKey key) {
+    final typing = _titleFocus.hasFocus || _descFocus.hasFocus || _priceFocus.hasFocus;
+    if (typing != _typing && mounted) setState(() => _typing = typing);
+    if (!node.hasFocus) return;
+    // Let the keyboard open, then bring the field near the top of the sheet.
+    Future.delayed(const Duration(milliseconds: 350), () {
+      final ctx = key.currentContext;
+      if (ctx != null && mounted) {
+        Scrollable.ensureVisible(ctx, alignment: 0.15, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+      }
+    });
+  }
   Uint8List? _photo;
   bool _sending = false;
   String? _error;
 
   @override
   void dispose() {
+    _titleFocus.dispose();
+    _descFocus.dispose();
+    _priceFocus.dispose();
     _title.dispose();
     _desc.dispose();
     _price.dispose();
@@ -343,6 +378,8 @@ class _AddonSheetState extends State<_AddonSheet> {
   @override
   Widget build(BuildContext context) {
     final keyboard = kIsWeb ? 0.0 : MediaQuery.viewInsetsOf(context).bottom;
+    // Web: room for the browser keyboard while typing, so fields can scroll above it.
+    final webKeyboardRoom = kIsWeb && _typing ? MediaQuery.sizeOf(context).height * 0.45 : 0.0;
     return Padding(
       padding: EdgeInsets.only(bottom: keyboard),
       child: Container(
@@ -354,7 +391,7 @@ class _AddonSheetState extends State<_AddonSheet> {
         child: SafeArea(
           top: false,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + webKeyboardRoom),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -378,6 +415,8 @@ class _AddonSheetState extends State<_AddonSheet> {
                 _photoBox(),
                 const SizedBox(height: 14),
                 TextField(
+                  key: _titleKey,
+                  focusNode: _titleFocus,
                   controller: _title,
                   enabled: !_sending,
                   maxLength: 120,
@@ -387,6 +426,8 @@ class _AddonSheetState extends State<_AddonSheet> {
                 ),
                 const SizedBox(height: 6),
                 TextField(
+                  key: _descKey,
+                  focusNode: _descFocus,
                   controller: _desc,
                   enabled: !_sending,
                   minLines: 2,
@@ -398,6 +439,8 @@ class _AddonSheetState extends State<_AddonSheet> {
                 ),
                 const SizedBox(height: 6),
                 TextField(
+                  key: _priceKey,
+                  focusNode: _priceFocus,
                   controller: _price,
                   enabled: !_sending,
                   keyboardType: TextInputType.number,
