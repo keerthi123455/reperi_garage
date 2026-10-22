@@ -367,6 +367,18 @@ Deno.serve(async (req) => {
               String(record.quote_image_path ?? "") !== String(old_record?.quote_image_path ?? ""));
           const accepted =
             record.status === "Accepted" && old_record?.status !== "Accepted";
+          // Handed to a garage from the CRM.
+          const assigned =
+            record.assigned_to_admin_id &&
+            String(record.assigned_to_admin_id) !== String(old_record?.assigned_to_admin_id ?? "");
+          if (assigned) {
+            await sendPush(
+              "admin",
+              "New ReperiResolve request",
+              `${car}: ${what}. Open it in the CLIENT tab, check the photos and send a price.`,
+              data,
+            );
+          }
           if (priced && record.user_id) {
             await sendPush(
               `customer_${record.user_id}`,

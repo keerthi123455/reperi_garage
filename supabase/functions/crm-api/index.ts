@@ -16,6 +16,7 @@
 // POST { action: "resolve_quote", id, price, note, image?: base64 JPEG, removeImage? }
 //   → sends a ReperiResolve price (text + amount + optional photo) to the
 //     customer. Shows in their app; the DB webhook sends the push.
+// POST { action: "resolve_assign", id, admin_id }   (admin_id null = unassign)
 // POST { action: "me" }
 //   → { email } — used by the page to confirm access after sign-in.
 
@@ -384,6 +385,26 @@ async function resolveQuote(client: SupabaseClient, body: Row, user: User) {
   return { row: updated };
 }
 
+// ReperiResolve: hand a request to a garage (it then shows in that garage's
+// app, where they can see the customer's photos and send a price).
+async function resolveAssign(client: SupabaseClient, body: Row) {
+  const id = String(body.id ?? "");
+  if (!id) throw new HttpError(400, "bad_request", "Missing request.");
+  const raw = body.admin_id === null || body.admin_id === undefined ? "" : String(body.admin_id).trim();
+  let adminId: string | null = null;
+  if (raw) {
+    const { data: admin, error } = await client.from("admin").select("id").eq("id", raw).maybeSingle();
+    if (error) throw error;
+    if (!admin) throw new HttpError(400, "bad_garage", "That garage doesn't exist.");
+    adminId = String(admin.id);
+  }
+  const { data, error } = await client.from("resolve_requests")
+    .update({ assigned_to_admin_id: adminId, assigned_at: adminId ? new Date().toISOString() : null })
+    .eq("id", id).select("*").single();
+  if (error) throw error;
+  return { row: data };
+}
+
 async function signedDoc(client: SupabaseClient, body: Row) {
   const path = String(body.path ?? "").replace(/^\/+/, "");
   if (!path || path.includes("..")) throw new HttpError(400, "bad_request", "Invalid document.");
@@ -415,6 +436,8 @@ Deno.serve(async (req: Request) => {
         return json(await signedDoc(client, body));
       case "resolve_quote":
         return json(await resolveQuote(client, body, user));
+      case "resolve_assign":
+        return json(await resolveAssign(client, body));
       default:
         throw new HttpError(400, "invalid_action", "Unknown action.");
     }

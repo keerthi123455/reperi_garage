@@ -622,7 +622,7 @@ function buildModel(d) {
       pay: 'enquiry', enquiry: true,
       status: st === 'Submitted' ? 'Needs a price' : st === 'Quoted' ? 'Price sent' : st === 'Accepted' ? 'Accepted — call to schedule' : st,
       stage: null, pickup: false, userId: r.user_id, vehicleId: r.vehicle_id, vehicle: r.vehicle_label || '',
-      customer: r.customer_name, phone: r.customer_phone, created: r.created_at,
+      customer: r.customer_name, phone: r.customer_phone, created: r.created_at, garageId: r.assigned_to_admin_id,
       done: st === 'Closed' || st === 'Cancelled', doneAt: r.accepted_at,
     });
   }
@@ -1192,6 +1192,7 @@ function resolve() {
   const st = (x) => all.filter((j) => j.raw.status === x).length;
   const vehById = new Map((state.model.raw.vehicles || []).map((v) => [String(v.id), v]));
   const row = (k, v) => v === null || v === undefined || v === '' ? '' : `<dt>${k}</dt><dd>${v}</dd>`;
+  const garages = [...(state.model.admins?.values?.() || [])].sort((a, b) => String(a.username || '').localeCompare(String(b.username || '')));
   const card = (j) => {
     const r = j.raw;
     const veh = vehById.get(String(r.vehicle_id || '')) || {};
@@ -1208,6 +1209,14 @@ function resolve() {
           <div class="secondary" style="margin-top:2px">${fmtDT(j.created)} · ${ago(j.created)} · <span class="mono">#${esc(r.id)}</span></div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">${pill(j.status, tone)}<button class="btn" data-job="resolve_requests:${esc(r.id)}">Open</button></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--blue-soft)">
+        <b>🔧 Garage</b>
+        <select class="select" data-resolve-assign="${esc(r.id)}" style="min-width:200px">
+          <option value="">— Not assigned —</option>
+          ${garages.map((g) => `<option value="${esc(g.id)}" ${String(g.id) === String(r.assigned_to_admin_id || '') ? 'selected' : ''}>${esc(g.username || g.id)}${g.vehicle ? ' · ' + esc(g.vehicle) : ''}</option>`).join('')}
+        </select>
+        <span class="secondary" data-assign-status>${r.assigned_to_admin_id ? `Assigned ${r.assigned_at ? ago(r.assigned_at) : ''} — the garage sees it in its app and can send photos + price` : 'Pick a garage to let them see the photos and send the price'}</span>
       </div>
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-top:14px">
         <div><h4 style="margin:0 0 6px">Customer</h4><dl class="kv">
@@ -1227,6 +1236,7 @@ function resolve() {
           ${row('Our price', r.quoted_price != null ? `<b style="color:var(--green)">${inr(r.quoted_price)}</b>` : '<span style="color:var(--amber)">Not sent yet</span>')}
           ${row('Note to customer', esc(r.quote_note || ''))}
           ${row('Photo sent', r.quote_image_path ? `<button class="btn-link" style="color:var(--blue)" data-doc="${esc(r.quote_image_path)}" data-bucket="resolve-media">View</button>` : '')}
+          ${row('Garage photos', Array.isArray(r.garage_photos) && r.garage_photos.length ? r.garage_photos.map((p, i) => `<button class="btn-link" style="color:var(--blue);margin-right:8px" data-doc="${esc(p)}" data-bucket="booking-images">Photo ${i + 1}</button>`).join('') : '')}
           ${row('Sent by', esc(r.quoted_by || ''))}
           ${row('Price sent', r.quoted_at ? fmtDT(r.quoted_at) : '')}
           ${row('Accepted', r.accepted_at ? fmtDT(r.accepted_at) : '')}
@@ -1284,6 +1294,20 @@ function imageToJpegBase64(file, max = 1600) {
   });
 }
 function bindResolveForms() {
+  document.querySelectorAll('[data-resolve-assign]').forEach((sel) => {
+    sel.onchange = async () => {
+      const note = sel.parentElement.querySelector('[data-assign-status]');
+      sel.disabled = true; note.style.color = ''; note.textContent = 'Saving…';
+      try {
+        await api('resolve_assign', { id: sel.dataset.resolveAssign, admin_id: sel.value || null });
+        note.style.color = 'var(--green)'; note.textContent = sel.value ? 'Assigned ✓ Garage notified' : 'Unassigned ✓';
+        await load(true);
+      } catch (e) {
+        note.style.color = 'var(--red)'; note.textContent = e.message || "Couldn't save";
+        sel.disabled = false;
+      }
+    };
+  });
   document.querySelectorAll('[data-resolve-form]').forEach((form) => {
     const fileInput = form.querySelector('input[name="image"]');
     fileInput.onchange = () => { form.querySelector('[data-file-name]').textContent = fileInput.files[0]?.name || ''; };
@@ -1606,7 +1630,8 @@ function detailHtml(j, d) {
     if (r.description) html += `<h4>Customer says</h4><div>${esc(r.description)}</div>`;
     if (r.dealer_quote_amount != null || r.dealer_quote_path) html += `<h4>Dealer quote</h4><div>${r.dealer_quote_amount != null ? `<b>${inr(r.dealer_quote_amount)}</b>` : ''} ${r.dealer_quote_path ? `<button class="btn" style="margin-left:8px" data-doc="${esc(r.dealer_quote_path)}" data-bucket="resolve-media">View quote</button>` : ''}</div>`;
     if (r.quoted_price != null) html += `<h4>Price sent</h4><div><b>${inr(r.quoted_price)}</b>${r.quote_note ? ` — ${esc(r.quote_note)}` : ''}${r.quote_image_path ? ` <button class="btn" style="margin-left:8px" data-doc="${esc(r.quote_image_path)}" data-bucket="resolve-media">View photo</button>` : ''}</div>`;
-    html += `<div style="color:var(--muted);margin-top:10px">Send or update the price from the <b>After service issue</b> tab.</div>`;
+    if (Array.isArray(r.garage_photos) && r.garage_photos.length) html += `<h4>Photos from the garage (${r.garage_photos.length})</h4><div style="display:flex;flex-wrap:wrap;gap:8px">${r.garage_photos.map((p, i) => `<button class="btn" data-doc="${esc(p)}" data-bucket="booking-images">Photo ${i + 1}</button>`).join('')}</div>`;
+    html += `<div style="color:var(--muted);margin-top:10px">Assign a garage, or send / update the price, from the <b>After service issue</b> tab.</div>`;
   }
   if (r.damage_description) html += `<h4>Damage description</h4><div>${esc(r.damage_description)}</div>`;
   if (Array.isArray(r.bill_items) && r.bill_items.length) html += `<h4>Bill</h4><dl class="kv">${r.bill_items.map((b) => `<dt>${esc(b.name)}</dt><dd>${inr(b.price)}</dd>`).join('')}</dl>`;

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../theme/app_colors.dart';
 import 'error_display.dart';
@@ -131,8 +132,19 @@ class _ResolveRequestCardState extends State<ResolveRequestCard> {
     }
   }
 
-  void _openImage() {
-    final url = _imageUrl;
+  /// Signed links for the customer's own files and the garage's photos,
+  /// made once per file.
+  final Map<String, Future<String?>> _links = {};
+  Future<String?> _link(String bucket, String path) => _links.putIfAbsent('$bucket/$path', () async {
+        try {
+          return await Supabase.instance.client.storage.from(bucket).createSignedUrl(path, 3600);
+        } catch (_) {
+          return null;
+        }
+      });
+
+  void _openImage([String? override]) {
+    final url = override ?? _imageUrl;
     if (url == null) return;
     showDialog(
       context: context,
@@ -190,6 +202,50 @@ class _ResolveRequestCardState extends State<ResolveRequestCard> {
     return '${d.day} ${m[d.month - 1]} ${d.year}';
   }
 
+  /// Small square thumbnails; tap a photo to zoom, a video to play it.
+  Widget _thumbs(List<(String, String, bool)> files) {
+    return GridView.count(
+      crossAxisCount: 4,
+      mainAxisSpacing: 6,
+      crossAxisSpacing: 6,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: [
+        for (final (bucket, path, isVideo) in files)
+          FutureBuilder<String?>(
+            future: _link(bucket, path),
+            builder: (context, snap) {
+              final url = snap.data;
+              return GestureDetector(
+                onTap: url == null
+                    ? null
+                    : () => isVideo
+                        ? launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication)
+                        : _openImage(url),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: isVideo || url == null
+                      ? Container(
+                          color: AppColors.chipBg,
+                          alignment: Alignment.center,
+                          child: isVideo
+                              ? Icon(Icons.play_circle_fill_rounded, color: AppColors.txt, size: 28)
+                              : (snap.connectionState == ConnectionState.done
+                                  ? Icon(Icons.broken_image_outlined, color: AppColors.mut)
+                                  : const SizedBox(
+                                      width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: _gold))),
+                        )
+                      : Image.network(url,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(color: AppColors.chipBg)),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final status = (r['status'] ?? 'Submitted').toString();
@@ -198,7 +254,9 @@ class _ResolveRequestCardState extends State<ResolveRequestCard> {
     final title = cats.isNotEmpty ? cats.join(' · ') : (desc.isNotEmpty ? desc : 'After-service issue');
     final price = r['quoted_price'];
     final note = (r['quote_note'] ?? '').toString();
-    final mediaCount = (r['media'] as List?)?.length ?? 0;
+    final media = ((r['media'] as List?) ?? const []).whereType<Map>().toList();
+    final mediaCount = media.length;
+    final garagePhotos = ((r['garage_photos'] as List?) ?? const []).map((e) => '$e').toList();
     final hasPrice = price != null && (status == 'Quoted' || status == 'Accepted' || status == 'Closed');
 
     final (String label, Color color) = switch (status) {
@@ -254,6 +312,13 @@ class _ResolveRequestCardState extends State<ResolveRequestCard> {
             ].join(' · '),
             style: TextStyle(color: AppColors.mut, fontSize: 12.5),
           ),
+          if (media.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('YOUR PHOTOS & VIDEOS',
+                style: TextStyle(color: AppColors.mut, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+            const SizedBox(height: 8),
+            _thumbs([for (final m in media) ('resolve-media', '${m['path']}', m['type'] == 'video')]),
+          ],
           if (!hasPrice && status == 'Submitted') ...[
             const SizedBox(height: 12),
             Text("We're checking your photos and will send a fixed price soon.",
@@ -298,6 +363,13 @@ class _ResolveRequestCardState extends State<ResolveRequestCard> {
                   if (note.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Text(note, style: TextStyle(color: AppColors.txt, fontSize: 14, height: 1.45)),
+                  ],
+                  if (garagePhotos.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Text('PHOTOS FROM THE GARAGE',
+                        style: TextStyle(color: AppColors.mut, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                    const SizedBox(height: 8),
+                    _thumbs([for (final p in garagePhotos) ('booking-images', p, false)]),
                   ],
                   if (_imageUrl != null) ...[
                     const SizedBox(height: 14),

@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'booking_details_screen.dart';
 import 'fleet_request_details_screen.dart';
 import 'claim_details_screen.dart';
+import 'garage_resolve_screen.dart';
 import 'login_screen.dart';
 import '../services/apple_review_assignment_override.dart';
 import '../services/push_notification_service.dart';
@@ -26,6 +27,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List bookings = [];
   List fleetRequests = [];
   List claims = [];
+  /// ReperiResolve requests assigned to this garage from the CRM.
+  List resolveRequests = [];
   Set<String> unreadBookingIds = {};
   String adminUsername = '';
 
@@ -51,6 +54,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Future<void> fetchBookings() async {
     final supabase = Supabase.instance.client;
 
+    // Separate, so a problem here never hides the normal bookings.
+    _fetchResolveRequests();
     try {
       await _fetchBookingsUnsafe(supabase);
     } catch (e) {
@@ -62,6 +67,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         error: e,
         customMessage: 'Could not load bookings. Please check your connection and try again.',
       );
+    }
+  }
+
+  Future<void> _fetchResolveRequests() async {
+    try {
+      final rows = await Supabase.instance.client
+          .rpc('garage_resolve_requests', params: {'p_admin_id': widget.adminId});
+      if (!mounted) return;
+      setState(() => resolveRequests = List.from(rows as List));
+    } catch (e) {
+      debugPrint('ReperiResolve requests not loaded: $e');
     }
   }
 
@@ -267,8 +283,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final emergencyBookings =
         bookings.where((b) => _isEmergencyBooking(b)).toList();
 
+    // ReperiResolve requests sit on top of the CLIENT tab — open ones first.
+    final filteredResolve = resolveRequests.where((r) {
+      final query = searchText.toLowerCase();
+      final s = (r['status'] ?? '').toString();
+      if (s == 'Closed') return false;
+      return (r['vehicle_label'] ?? '').toString().toLowerCase().contains(query) ||
+          ((r['categories'] as List?) ?? const []).join(' ').toLowerCase().contains(query) ||
+          s.toLowerCase().contains(query);
+    }).toList()
+      ..sort((a, b) {
+        int rank(Map r) => const {'Submitted': 0, 'Accepted': 1, 'Quoted': 2}[r['status']] ?? 3;
+        return rank(a).compareTo(rank(b));
+      });
+
     final activeList = selectedTab == 0
-        ? filteredBookings
+        ? [...filteredResolve, ...filteredBookings]
         : selectedTab == 1
             ? filteredFleet
             : selectedTab == 2
@@ -349,6 +379,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 itemCount: activeList.length,
                                 itemBuilder: (context, index) {
                                   if (selectedTab == 0) {
+                                    if (index < filteredResolve.length) {
+                                      return _buildResolveCard(activeList[index]);
+                                    }
                                     return _buildClientCard(activeList[index]);
                                   } else if (selectedTab == 1) {
                                     return _buildFleetCard(activeList[index]);
@@ -935,6 +968,75 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     }
+  }
+
+  /// A ReperiResolve request assigned to this garage from the CRM.
+  Widget _buildResolveCard(Map r) {
+    final status = (r['status'] ?? 'Submitted').toString();
+    final (String label, Color color) = switch (status) {
+      'Quoted' => ('PRICE SENT', const Color(0xFF4D8DFF)),
+      'Accepted' => ('ACCEPTED — CALL TO SCHEDULE', Colors.greenAccent),
+      'Cancelled' => ('CANCELLED', Colors.white54),
+      _ => ('NEEDS YOUR PRICE', const Color(0xFFD4A017)),
+    };
+    final cats = ((r['categories'] as List?) ?? const []).whereType<String>().toList();
+    final files = ((r['media'] as List?) ?? const []).length;
+    return _TappableScale(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => GarageResolveScreen(request: r, adminId: widget.adminId)),
+        ).then((_) => fetchBookings());
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1C1C1C),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: color.withOpacity(0.6), width: 1.4),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 8))],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(color: const Color(0xFF1E5EFF), borderRadius: BorderRadius.circular(20)),
+              child: const Text('REPERIRESOLVE',
+                  style: TextStyle(color: Color(0xFFFFD23F), fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1)),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              cats.isNotEmpty ? cats.join(' · ') : 'Problem reported',
+              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.2),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              [
+                (r['vehicle_label'] ?? 'Vehicle').toString(),
+                if (files > 0) '$files file${files == 1 ? '' : 's'} from customer',
+              ].join(' · '),
+              style: const TextStyle(color: Colors.white54, fontSize: 14, height: 1.3),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(14)),
+              child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+            ),
+            const SizedBox(height: 8),
+            const Row(
+              children: [
+                Text('Tap to see photos & send price', style: TextStyle(color: Colors.white38, fontSize: 13)),
+                SizedBox(width: 8),
+                Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white38),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildFleetCard(Map fleet) {
