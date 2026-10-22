@@ -1183,6 +1183,7 @@ function claims() {
 // ── After service issue (ReperiResolve) ──
 // Every request with every detail on one card: customer, phone, vehicle,
 // what's wrong, photos/videos, dealer quote and the price we sent.
+const RESOLVE_DISCLAIMER = 'The offered price is the best estimate our partner can provide by visual inspection of images, but prices may vary by 20%.';
 function resolve() {
   const all = vis(state.model.jobs).filter((j) => j.table === 'resolve_requests');
   const list = all.filter((j) => j.inRange || !j.done).sort((a, b) => {
@@ -1192,6 +1193,21 @@ function resolve() {
   const st = (x) => all.filter((j) => j.raw.status === x).length;
   const vehById = new Map((state.model.raw.vehicles || []).map((v) => [String(v.id), v]));
   const row = (k, v) => v === null || v === undefined || v === '' ? '' : `<dt>${k}</dt><dd>${v}</dd>`;
+  // Once the price is accepted and a garage is assigned, a normal booking is
+  // made for that garage — shown here as a sub-order.
+  const subOrder = (r) => {
+    if (!r.booking_id) {
+      return r.status === 'Accepted' && !r.assigned_to_admin_id
+        ? `<div class="banner" style="margin-top:10px">Price accepted — assign a garage to create the repair booking.</div>` : '';
+    }
+    const b = state.model.jobs.find((x) => x.table === 'bookings' && String(x.id) === String(r.booking_id));
+    return `<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2)">
+        <span style="font-size:18px">↳</span>
+        <div style="flex:1;min-width:180px"><b>Repair booking</b> <span class="mono">#${esc(r.booking_id)}</span>
+          <div class="secondary">${b ? `${esc(b.garage || '—')} · ` : ''}photos, stages &amp; OTPs happen here like a normal booking · paid at the garage</div></div>
+        ${b ? statusPill(b) + ` <button class="btn" data-job="bookings:${esc(b.id)}">Open booking</button>` : '<span class="secondary">Refresh to load it</span>'}
+      </div>`;
+  };
   const garages = [...(state.model.admins?.values?.() || [])].sort((a, b) => String(a.username || '').localeCompare(String(b.username || '')));
   const card = (j) => {
     const r = j.raw;
@@ -1216,8 +1232,9 @@ function resolve() {
           <option value="">— Not assigned —</option>
           ${garages.map((g) => `<option value="${esc(g.id)}" ${String(g.id) === String(r.assigned_to_admin_id || '') ? 'selected' : ''}>${esc(g.username || g.id)}${g.vehicle ? ' · ' + esc(g.vehicle) : ''}</option>`).join('')}
         </select>
-        <span class="secondary" data-assign-status>${r.assigned_to_admin_id ? `Assigned ${r.assigned_at ? ago(r.assigned_at) : ''} — the garage sees it in its app and can send photos + price` : 'Pick a garage to let them see the photos and send the price'}</span>
+        <span class="secondary" data-assign-status>${r.assigned_to_admin_id ? `Assigned ${r.assigned_at ? ago(r.assigned_at) : ''} — the garage gets the repair booking once the customer accepts your price` : 'Pick the garage that will do the repair (it only sees the job after the customer accepts)'}</span>
       </div>
+      ${subOrder(r)}
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-top:14px">
         <div><h4 style="margin:0 0 6px">Customer</h4><dl class="kv">
           ${row('Name', esc(j.customer || '—'))}
@@ -1234,6 +1251,7 @@ function resolve() {
         <div><h4 style="margin:0 0 6px">Price</h4><dl class="kv">
           ${row('Dealer quote', r.dealer_quote_amount != null ? `<b>${inr(r.dealer_quote_amount)}</b>` : '—')}
           ${row('Our price', r.quoted_price != null ? `<b style="color:var(--green)">${inr(r.quoted_price)}</b>` : '<span style="color:var(--amber)">Not sent yet</span>')}
+          ${row('Customer pays', r.quoted_price != null ? `<b>${inr(Number(r.quoted_price) + Number(r.pickup_fee ?? 100))}</b> <span class="secondary">incl. ${inr(r.pickup_fee ?? 100)} pickup &amp; drop</span>` : '')}
           ${row('Note to customer', esc(r.quote_note || ''))}
           ${row('Photo sent', r.quote_image_path ? `<button class="btn-link" style="color:var(--blue)" data-doc="${esc(r.quote_image_path)}" data-bucket="resolve-media">View</button>` : '')}
           ${row('Garage photos', Array.isArray(r.garage_photos) && r.garage_photos.length ? r.garage_photos.map((p, i) => `<button class="btn-link" style="color:var(--blue);margin-right:8px" data-doc="${esc(p)}" data-bucket="booking-images">Photo ${i + 1}</button>`).join('') : '')}
@@ -1251,8 +1269,9 @@ function resolve() {
       </div>
       ${j.done ? '' : `<h4>${r.quoted_price != null ? 'Update the price sent to the customer' : 'Send a price to the customer'}</h4>
       <form data-resolve-form="${esc(r.id)}" style="display:grid;gap:10px;grid-template-columns:minmax(140px,200px) 1fr;align-items:start">
-        <div><label class="field">Price (₹)</label><input class="input" name="price" type="number" min="1" step="1" required value="${r.quoted_price ?? ''}" placeholder="e.g. 1500"></div>
-        <div><label class="field">Message to customer</label><textarea class="input" name="note" rows="3" style="height:auto;padding:10px 14px;resize:vertical" placeholder="What we'll fix, parts included, time needed…">${esc(r.quote_note || '')}</textarea></div>
+        <div><label class="field">Price (₹) <span class="secondary">+ ₹100 pickup &amp; drop added automatically</span></label><input class="input" name="price" type="number" min="1" step="1" required value="${r.quoted_price ?? ''}" placeholder="e.g. 1500"></div>
+        <div><label class="field">Message to customer</label><textarea class="input" name="note" rows="3" style="height:auto;padding:10px 14px;resize:vertical" placeholder="What we'll fix, parts included, time needed…">${esc(String(r.quote_note || '').replace(RESOLVE_DISCLAIMER, '').trim())}</textarea>
+          <div class="secondary" style="margin-top:6px">Added automatically: “${RESOLVE_DISCLAIMER}”</div></div>
         <div style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
           <label class="btn" style="cursor:pointer">📷 ${r.quote_image_path ? 'Replace photo' : 'Add photo'}<input name="image" type="file" accept="image/*" hidden></label>
           <span class="secondary" data-file-name></span>
@@ -1271,7 +1290,7 @@ function resolve() {
       ${kpi('Price sent', num(st('Quoted')), 'waiting for customer', 'blue')}
       ${kpi('Accepted', num(st('Accepted')), 'call to schedule', 'green')}
     </div>
-    <div class="banner" style="background:var(--blue-soft);color:var(--text)">Type the price, a message and (optionally) a photo at the bottom of a request, then press <b>Send price to customer</b>. It shows up in their app straight away with a notification.</div>
+    <div class="banner" style="background:var(--blue-soft);color:var(--text)"><b>1.</b> Pick the garage · <b>2.</b> Type the price (₹100 pickup &amp; drop is added) and a message, press <b>Send price to customer</b> · <b>3.</b> When the customer accepts, a pickup &amp; drop repair booking is created for that garage automatically.</div>
     <div class="section-title"><h3>After service issues</h3><span class="hint">Needs a price first · then accepted · then price sent</span></div>
     ${list.length ? list.map(card).join('') : '<div class="card"><div class="empty">No after-service issues yet.</div></div>'}`;
 }
@@ -1300,7 +1319,7 @@ function bindResolveForms() {
       sel.disabled = true; note.style.color = ''; note.textContent = 'Saving…';
       try {
         await api('resolve_assign', { id: sel.dataset.resolveAssign, admin_id: sel.value || null });
-        note.style.color = 'var(--green)'; note.textContent = sel.value ? 'Assigned ✓ Garage notified' : 'Unassigned ✓';
+        note.style.color = 'var(--green)'; note.textContent = sel.value ? 'Assigned ✓' : 'Unassigned ✓';
         await load(true);
       } catch (e) {
         note.style.color = 'var(--red)'; note.textContent = e.message || "Couldn't save";

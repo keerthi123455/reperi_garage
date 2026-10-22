@@ -975,7 +975,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final status = (r['status'] ?? 'Submitted').toString();
     final (String label, Color color) = switch (status) {
       'Quoted' => ('PRICE SENT', const Color(0xFF4D8DFF)),
-      'Accepted' => ('ACCEPTED — CALL TO SCHEDULE', Colors.greenAccent),
+      'Accepted' => ('ACCEPTED — REPAIR BOOKING CREATED', Colors.greenAccent),
       'Cancelled' => ('CANCELLED', Colors.white54),
       _ => ('NEEDS YOUR PRICE', const Color(0xFFD4A017)),
     };
@@ -1028,7 +1028,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             const SizedBox(height: 8),
             const Row(
               children: [
-                Text('Tap to see photos & send price', style: TextStyle(color: Colors.white38, fontSize: 13)),
+                Text("Tap to see the customer's photos", style: TextStyle(color: Colors.white38, fontSize: 13)),
                 SizedBox(width: 8),
                 Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white38),
               ],

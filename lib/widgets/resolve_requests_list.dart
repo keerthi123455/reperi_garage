@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../screens/booking_tracking_screen.dart';
 import '../theme/app_colors.dart';
 import 'error_display.dart';
 
@@ -98,10 +99,96 @@ class _ResolveRequestCardState extends State<ResolveRequestCard> {
 
   Map<String, dynamic> get r => widget.request;
 
+  /// The repair booking made once the price is accepted and a garage is
+  /// assigned — shown as a sub-order that opens the normal tracking screen.
+  Map<String, dynamic>? _booking;
+
   @override
   void initState() {
     super.initState();
     _loadImage();
+    _loadBooking();
+  }
+
+  Future<void> _loadBooking() async {
+    final id = (r['booking_id'] ?? '').toString();
+    if (id.isEmpty) return;
+    try {
+      final row = await Supabase.instance.client.from('bookings').select('*').eq('id', id).maybeSingle();
+      if (mounted && row != null) setState(() => _booking = row);
+    } catch (e) {
+      debugPrint('Could not load repair booking: $e');
+    }
+  }
+
+  void _openBooking() {
+    final b = _booking;
+    if (b == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => BookingTrackingScreen(booking: b)),
+    ).then((_) => _loadBooking());
+  }
+
+  Widget _subOrder() {
+    final b = _booking!;
+    final status = (b['booking_status'] ?? 'Pending').toString();
+    final hasUpdate = b['has_unread_update'] == true;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: _openBooking,
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: _gold.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _gold.withOpacity(0.55)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.subdirectory_arrow_right_rounded, color: AppColors.mut, size: 20),
+              const SizedBox(width: 6),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: _gold.withOpacity(0.18), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.build_rounded, color: _gold, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Repair booking',
+                        style: TextStyle(color: AppColors.txt, fontSize: 15, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 2),
+                    Text(
+                      status == 'Pending' ? 'Garage assigned · tap to track' : '$status · tap to see photos & updates',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: AppColors.mut, fontSize: 12.5, height: 1.3),
+                    ),
+                  ],
+                ),
+              ),
+              if (hasUpdate) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.red.shade700, borderRadius: BorderRadius.circular(8)),
+                  child: const Text('NEW',
+                      style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
+                ),
+              ],
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right_rounded, color: _gold),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _loadImage() async {
@@ -252,7 +339,10 @@ class _ResolveRequestCardState extends State<ResolveRequestCard> {
     final cats = (r['categories'] as List?)?.whereType<String>().toList() ?? const <String>[];
     final desc = (r['description'] ?? '').toString();
     final title = cats.isNotEmpty ? cats.join(' · ') : (desc.isNotEmpty ? desc : 'After-service issue');
-    final price = r['quoted_price'];
+    // Customer pays the repair price + the pickup & drop fee (always included).
+    final base = num.tryParse('${r['quoted_price']}');
+    final fee = num.tryParse('${r['pickup_fee'] ?? ''}') ?? 0;
+    final price = r['quoted_price'] == null ? null : (base ?? 0) + fee;
     final note = (r['quote_note'] ?? '').toString();
     final media = ((r['media'] as List?) ?? const []).whereType<Map>().toList();
     final mediaCount = media.length;
@@ -341,8 +431,8 @@ class _ResolveRequestCardState extends State<ResolveRequestCard> {
                       style: TextStyle(
                           color: AppColors.mut, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
                   const SizedBox(height: 4),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.end,
                     children: [
                       Text('₹${_money(price)}',
                           style: const TextStyle(color: _gold, fontSize: 30, fontWeight: FontWeight.w900)),
@@ -360,6 +450,22 @@ class _ResolveRequestCardState extends State<ResolveRequestCard> {
                       ],
                     ],
                   ),
+                  if (fee > 0) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.local_shipping_rounded, size: 15, color: AppColors.mut),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Repair ₹${_money(base ?? 0)} + pickup & drop ₹${_money(fee)} — we collect and return your vehicle',
+                            style: TextStyle(color: AppColors.mut, fontSize: 12.5, height: 1.35),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   if (note.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Text(note, style: TextStyle(color: AppColors.txt, fontSize: 14, height: 1.45)),
@@ -426,10 +532,14 @@ class _ResolveRequestCardState extends State<ResolveRequestCard> {
               ),
             ),
           ],
-          if (status == 'Accepted') ...[
+          if (status == 'Accepted' && _booking == null) ...[
             const SizedBox(height: 12),
             Text("Thanks! Our team will call you to fix a time.",
                 style: TextStyle(color: AppColors.txt, fontSize: 13.5)),
+          ],
+          if (_booking != null) ...[
+            const SizedBox(height: 14),
+            _subOrder(),
           ],
         ],
       ),

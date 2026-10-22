@@ -1,18 +1,13 @@
-import 'dart:typed_data';
-
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../utils/secure_storage_path.dart';
+import 'booking_details_screen.dart';
 
-/// Garage app: one ReperiResolve request assigned to this garage from the
-/// CRM. Shows what the customer sent (photos, videos, dealer quote, text)
-/// and lets the garage send back photos + a price + a note. The customer
-/// is notified and can accept the price in their app.
+/// Garage app: a ReperiResolve request whose price (sent from the CRM) the
+/// customer has accepted. Shows what the customer sent (photos, videos,
+/// dealer quote, text) and the agreed price, and opens the repair booking —
+/// where the normal pickup, photos, stages and Work done happen.
 class GarageResolveScreen extends StatefulWidget {
   const GarageResolveScreen({super.key, required this.request, required this.adminId});
 
@@ -28,35 +23,13 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
   static const Color _card = Color(0xFF1C1C1C);
   static const Color _gold = Color(0xFFD4A017);
   static const Color _green = Color(0xFF2FB36A);
-  static const Color _red = Color(0xFFE5484D);
-  static const int _maxPhotos = 6;
 
   late Map r = Map.of(widget.request);
-  final _price = TextEditingController();
-  final _note = TextEditingController();
-  final List<Uint8List> _newPhotos = [];
-  bool _sending = false;
-  String? _error;
 
   /// Signed links, made once per file.
   final Map<String, Future<String?>> _links = {};
 
-  @override
-  void initState() {
-    super.initState();
-    if (r['quoted_price'] != null) _price.text = _plain(r['quoted_price']);
-    _note.text = (r['quote_note'] ?? '').toString();
-  }
-
-  @override
-  void dispose() {
-    _price.dispose();
-    _note.dispose();
-    super.dispose();
-  }
-
   String get _status => (r['status'] ?? 'Submitted').toString();
-  bool get _closed => _status == 'Closed' || _status == 'Cancelled';
 
   static String _plain(dynamic v) {
     final n = num.tryParse('$v');
@@ -81,81 +54,22 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
     } catch (_) {}
   }
 
-  Future<void> _pick(ImageSource source) async {
-    if (_newPhotos.length >= _maxPhotos) return;
+  /// The normal garage booking screen for the repair (photos, stages, OTPs).
+  Future<void> _openBooking() async {
+    final id = (r['booking_id'] ?? '').toString();
+    if (id.isEmpty) return;
     try {
-      final picker = ImagePicker();
-      if (source == ImageSource.gallery) {
-        final files = await picker.pickMultiImage(imageQuality: 70, maxWidth: 1600);
-        for (final f in files.take(_maxPhotos - _newPhotos.length)) {
-          _newPhotos.add(await f.readAsBytes());
-        }
-      } else {
-        final f = await picker.pickImage(source: source, imageQuality: 70, maxWidth: 1600);
-        if (f != null) _newPhotos.add(await f.readAsBytes());
-      }
-      if (mounted) setState(() {});
-    } catch (_) {
-      if (mounted) setState(() => _error = 'Couldn\'t open the camera / gallery.');
-    }
-  }
-
-  Future<void> _send() async {
-    final price = num.tryParse(_price.text.trim());
-    if (price == null || price <= 0) {
-      setState(() => _error = 'Enter the price in rupees.');
-      return;
-    }
-    final hasOldPhotos = (r['garage_photos'] as List?)?.isNotEmpty ?? false;
-    if (_newPhotos.isEmpty && !hasOldPhotos) {
-      setState(() => _error = 'Add at least one photo so the customer can see the problem.');
-      return;
-    }
-    FocusScope.of(context).unfocus();
-    setState(() {
-      _sending = true;
-      _error = null;
-    });
-    try {
-      final client = Supabase.instance.client;
-      final paths = <String>[];
-      for (var i = 0; i < _newPhotos.length; i++) {
-        final path = 'resolve-${DateTime.now().millisecondsSinceEpoch}-${secureStorageToken()}-$i';
-        await client.storage.from('booking-images').uploadBinary(
-              path,
-              _newPhotos[i],
-              fileOptions: const FileOptions(contentType: 'image/jpeg'),
-            );
-        paths.add(path);
-      }
-      await client.rpc('garage_quote_resolve', params: {
-        'p_id': '${r['id']}',
-        'p_admin_id': widget.adminId,
-        'p_price': price,
-        'p_note': _note.text.trim(),
-        'p_photos': paths,
-      });
-      _newPhotos.clear();
-      await _reload();
+      final b = await Supabase.instance.client.from('bookings').select('*').eq('id', id).maybeSingle();
       if (!mounted) return;
-      setState(() => _sending = false);
-      HapticFeedback.mediumImpact();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sent — the customer has been notified')),
-      );
-    } on PostgrestException catch (e) {
-      if (mounted) {
-        setState(() {
-          _sending = false;
-          _error = e.message;
-        });
+      if (b == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking not found — pull to refresh.')));
+        return;
       }
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => BookingDetailsScreen(booking: b)));
+      _reload();
     } catch (_) {
       if (mounted) {
-        setState(() {
-          _sending = false;
-          _error = 'Couldn\'t send. Please try again.';
-        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Couldn\'t open the booking.')));
       }
     }
   }
@@ -217,7 +131,6 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
             onRefresh: _reload,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: EdgeInsets.fromLTRB(16, 8, 16, 96 + bottom),
               children: [
                 // ── Summary ──
@@ -281,13 +194,17 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
 
                 // ── What was sent ──
                 if (r['quoted_price'] != null) ...[
-                  _label('SENT TO THE CUSTOMER'),
+                  _label('AGREED WITH THE CUSTOMER'),
                   _box(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('₹${_plain(r['quoted_price'])}',
                             style: const TextStyle(color: _gold, fontSize: 28, fontWeight: FontWeight.w900)),
+                        Text(
+                          'Customer pays ₹${_plain((num.tryParse('${r['quoted_price']}') ?? 0) + (num.tryParse('${r['pickup_fee'] ?? 100}') ?? 100))} incl. pickup & drop',
+                          style: const TextStyle(color: Colors.white54, fontSize: 12.5),
+                        ),
                         if ((r['quote_note'] ?? '').toString().isNotEmpty) ...[
                           const SizedBox(height: 6),
                           Text('${r['quote_note']}', style: const TextStyle(color: Colors.white70, height: 1.4)),
@@ -302,86 +219,42 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
                             width: double.infinity,
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(color: _green.withOpacity(0.14), borderRadius: BorderRadius.circular(12)),
-                            child: const Text('✅ Customer accepted this price — call them to fix a time.',
-                                style: TextStyle(color: _green, fontWeight: FontWeight.w800, height: 1.35)),
+                            child: Text(
+                              (r['booking_id'] ?? '').toString().isEmpty
+                                  ? '✅ Customer accepted this price — call them to fix a time.'
+                                  : '✅ Customer accepted — a pickup & drop repair booking is now in your CLIENT list. Our delivery partner brings the car; then photos, stages and Work done like any booking.',
+                              style: const TextStyle(color: _green, fontWeight: FontWeight.w800, height: 1.35),
+                            ),
                           ),
+                          if ((r['booking_id'] ?? '').toString().isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: 52,
+                              child: ElevatedButton.icon(
+                                onPressed: _openBooking,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _green,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                ),
+                                icon: const Icon(Icons.build_rounded, size: 20),
+                                label: const FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text('OPEN REPAIR BOOKING',
+                                      maxLines: 1, style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ],
                     ),
                   ),
                 ],
 
-                // ── Send photos + price ──
-                if (!_closed) ...[
-                  _label(r['quoted_price'] != null ? 'UPDATE PHOTOS & PRICE' : 'SEND PHOTOS & PRICE'),
-                  _box(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text('1. Add photos of the problem',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
-                        const SizedBox(height: 10),
-                        _newPhotoGrid(),
-                        if (garagePhotos.isNotEmpty && _newPhotos.isEmpty) ...[
-                          const SizedBox(height: 6),
-                          const Text('No new photos → the photos already sent stay.',
-                              style: TextStyle(color: Colors.white38, fontSize: 12)),
-                        ],
-                        const SizedBox(height: 16),
-                        const Text('2. Your price',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _price,
-                          enabled: !_sending,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(7)],
-                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
-                          decoration: _dec('Total price incl. parts & labour', prefix: '₹ '),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _note,
-                          enabled: !_sending,
-                          minLines: 2,
-                          maxLines: 5,
-                          maxLength: 1000,
-                          textCapitalization: TextCapitalization.sentences,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: _dec('Note: what you\'ll fix, parts, time needed'),
-                        ),
-                        if (_error != null) ...[
-                          Text(_error!, style: const TextStyle(color: _red, fontSize: 13, height: 1.35)),
-                          const SizedBox(height: 8),
-                        ],
-                        SizedBox(
-                          height: 54,
-                          child: ElevatedButton(
-                            onPressed: _sending ? null : _send,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _gold,
-                              disabledBackgroundColor: _gold.withOpacity(0.5),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            ),
-                            child: _sending
-                                ? const SizedBox(
-                                    width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.black))
-                                : FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Text(
-                                      r['quoted_price'] != null ? 'UPDATE & NOTIFY CUSTOMER' : 'SEND TO CUSTOMER',
-                                      maxLines: 1,
-                                      style: const TextStyle(
-                                          color: Colors.black, fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 0.5),
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                // Prices are sent from the CRM; the garage only sees this once the
+                // customer has accepted, and does the work on the repair booking.
               ],
             ),
           ),
@@ -507,81 +380,4 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
       },
     );
   }
-
-  Widget _newPhotoGrid() {
-    final tiles = <Widget>[
-      for (var i = 0; i < _newPhotos.length; i++)
-        Stack(
-          fit: StackFit.expand,
-          children: [
-            ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(_newPhotos[i], fit: BoxFit.cover)),
-            Positioned(
-              top: 4,
-              right: 4,
-              child: GestureDetector(
-                onTap: _sending ? null : () => setState(() => _newPhotos.removeAt(i)),
-                child: Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                  child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
-                ),
-              ),
-            ),
-          ],
-        ),
-      if (_newPhotos.length < _maxPhotos && !kIsWeb) _addTile(Icons.photo_camera_rounded, 'Camera', ImageSource.camera),
-      if (_newPhotos.length < _maxPhotos) _addTile(Icons.photo_library_rounded, 'Gallery', ImageSource.gallery),
-    ];
-    return GridView.count(
-      crossAxisCount: 3,
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: tiles,
-    );
-  }
-
-  Widget _addTile(IconData icon, String label, ImageSource src) => InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: _sending ? null : () => _pick(src),
-        child: Container(
-          decoration: BoxDecoration(
-            color: _gold.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _gold.withOpacity(0.5), width: 1.4),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: _gold, size: 26),
-              const SizedBox(height: 4),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(label,
-                    maxLines: 1, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12.5)),
-              ),
-            ],
-          ),
-        ),
-      );
-
-  InputDecoration _dec(String hint, {String? prefix}) => InputDecoration(
-        hintText: hint,
-        prefixText: prefix,
-        hintStyle: const TextStyle(color: Colors.white30, fontSize: 14),
-        prefixStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20),
-        filled: true,
-        fillColor: Colors.white.withOpacity(0.05),
-        counterStyle: const TextStyle(color: Colors.white38),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.12)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _gold),
-        ),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-      );
 }

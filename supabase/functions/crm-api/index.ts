@@ -346,7 +346,11 @@ async function detail(client: SupabaseClient, body: Row) {
 async function resolveQuote(client: SupabaseClient, body: Row, user: User) {
   const id = String(body.id ?? "");
   const price = Number(body.price);
-  const note = String(body.note ?? "").trim().slice(0, 2000);
+  // Always added to the customer's note when a price is sent from the CRM.
+  const DISCLAIMER =
+    "The offered price is the best estimate our partner can provide by visual inspection of images, but prices may vary by 20%.";
+  const typed = String(body.note ?? "").replace(DISCLAIMER, "").trim().slice(0, 1800);
+  const note = typed ? `${typed}\n\n${DISCLAIMER}` : DISCLAIMER;
   if (!id) throw new HttpError(400, "bad_request", "Missing request.");
   if (!Number.isFinite(price) || price <= 0 || price > 10_000_000) {
     throw new HttpError(400, "bad_price", "Enter a valid price.");
@@ -444,6 +448,8 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     if (err instanceof HttpError) return json({ error: err.code, message: err.message }, err.status);
     console.error("crm-api error:", err);
-    return json({ error: "unexpected", message: "Something went wrong. Please try again." }, 500);
+    // Staff-only tool: show the real reason so problems can be fixed quickly.
+    const detail = err && typeof err === "object" && "message" in err ? String((err as { message: unknown }).message) : String(err);
+    return json({ error: "unexpected", message: `Something went wrong: ${detail}`.slice(0, 300) }, 500);
   }
 });

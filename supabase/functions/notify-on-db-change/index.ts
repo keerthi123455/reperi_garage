@@ -367,23 +367,11 @@ Deno.serve(async (req) => {
               String(record.quote_image_path ?? "") !== String(old_record?.quote_image_path ?? ""));
           const accepted =
             record.status === "Accepted" && old_record?.status !== "Accepted";
-          // Handed to a garage from the CRM.
-          const assigned =
-            record.assigned_to_admin_id &&
-            String(record.assigned_to_admin_id) !== String(old_record?.assigned_to_admin_id ?? "");
-          if (assigned) {
-            await sendPush(
-              "admin",
-              "New ReperiResolve request",
-              `${car}: ${what}. Open it in the CLIENT tab, check the photos and send a price.`,
-              data,
-            );
-          }
           if (priced && record.user_id) {
             await sendPush(
               `customer_${record.user_id}`,
               "Your price is ready",
-              `₹${record.quoted_price} to fix ${what.toLowerCase()} on your ${car}. Tap to accept.`,
+              `₹${Number(record.quoted_price) + Number(record.pickup_fee ?? 0)} to fix ${what.toLowerCase()} on your ${car}, pickup & drop included. Tap to accept.`,
               data,
             );
           }
@@ -392,7 +380,7 @@ Deno.serve(async (req) => {
             await sendPush(
               "admin",
               "ReperiResolve price accepted",
-              `${who || "Customer"} accepted ₹${record.quoted_price} for ${car}. Call to schedule.`,
+              `${who || "Customer"} accepted ₹${Number(record.quoted_price) + Number(record.pickup_fee ?? 0)} for ${car}. Pickup is being arranged.`,
               data,
             );
           }
