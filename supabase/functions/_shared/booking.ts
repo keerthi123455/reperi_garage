@@ -1115,11 +1115,21 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
   const route = services.find((s) => !s.is_addon) ?? services[0];
   if (!route) throw new Error("Services for this booking no longer exist");
 
-  const adminRef = route.admin_pool ? await assign(db, "admin", route.admin_pool, intent, settings) : null;
-  const deliveryRef = intent.pickup_drop && route.delivery_pool
+  // Expert visits (Doorstep Car Inspection, Vehicle Health Check): nobody is
+  // assigned here — the CRM picks the expert (a delivery partner), and the
+  // booking starts at "Expert being assigned". See inspection_visits.sql.
+  const inspectionVisit = route.details?.["inspection_visit"] === true;
+  const visitCols = inspectionVisit ? { inspection_stage: "assigning" } : {};
+
+  const adminRef = route.admin_pool && !inspectionVisit
+    ? await assign(db, "admin", route.admin_pool, intent, settings)
+    : null;
+  const deliveryRef = intent.pickup_drop && route.delivery_pool && !inspectionVisit
     ? await assign(db, "delivery", route.delivery_pool, intent, settings)
     : null;
-  const washerRef = route.washer_pool ? await assign(db, "washer", route.washer_pool, intent, settings) : null;
+  const washerRef = route.washer_pool && !inspectionVisit
+    ? await assign(db, "washer", route.washer_pool, intent, settings)
+    : null;
 
   const addr = (intent.options["address"] ?? {}) as Address;
   const customer = (intent.options["customer"] ?? {}) as { name?: string; phone?: string | null };
@@ -1171,6 +1181,7 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
         ...slotCols(intent.options),
         ...couponCols,
         assigned_to_admin_id: adminRef,
+        ...visitCols,
       };
       break;
     }
@@ -1198,8 +1209,10 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
         ...rzpIdsOrCod,
         ...pickupDropAddress,
         delivery_partner_id: toInt(deliveryRef),
-        pickupdrop: "yes",
+        // An expert visit at the customer's location — no pickup.
+        pickupdrop: inspectionVisit ? "no" : "yes",
         status: "booked",
+        ...visitCols,
         vehicle_condition: insp.condition ?? null,
         vehicle_type: (route.details?.["vehicle_type_label"] as string) ?? null,
         package_price: price,

@@ -5,6 +5,7 @@
 //   booking_chats       (INSERT)
 //   fleet_pickup_requests (INSERT, UPDATE)
 //   fleet_chat_messages (INSERT)
+//   inspection_visit    (from the inspection_visit_notify DB trigger)
 //
 // Resolves who should be notified for each event and sends a push via
 // OneSignal's REST API, targeting the same external-id scheme used by
@@ -385,6 +386,46 @@ Deno.serve(async (req) => {
             );
           }
         }
+        break;
+      }
+
+      // ── Inspection visits (Doorstep Car Inspection / Vehicle Health Check) ──
+      // Sent by the inspection_visit_notify DB trigger (inspection_visits.sql)
+      // on every expert assignment and step change. Customer always; the
+      // newly assigned delivery partner too.
+      case "inspection_visit": {
+        const stage = String(record.inspection_stage ?? "");
+        const partner = record.delivery_partner_id == null ? "" : String(record.delivery_partner_id);
+        const oldPartner = old_record?.delivery_partner_id == null ? "" : String(old_record.delivery_partner_id);
+        const isHealthCheck = String((payload as unknown as Record<string, unknown>).source_table ?? "") === "inspection_booking";
+        const name = isHealthCheck
+          ? `Vehicle Health Check${record.vehicle_type ? ` (${record.vehicle_type})` : ""}`
+          : String(record.package_name ?? "Car inspection")
+            .toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+        const data = { type: "inspection", bookingId: record.id, table: isHealthCheck ? "inspection_booking" : "bookings" };
+
+        const customerMsg: Record<string, [string, string]> = {
+          assigning: ["Finding your expert", `We're assigning an expert for your ${name}. We'll tell you who's coming.`],
+          assigned: ["Expert assigned", `An expert has been assigned for your ${name}.`],
+          on_the_way: ["Expert on the way", `Your expert is on the way for your ${name}.`],
+          analyzing: ["Inspection started", "Your expert has started analyzing your car."],
+          completed: ["Inspection complete", `Your ${name} is done. Tap to see the photos from your expert.`],
+        };
+        const msg = customerMsg[stage];
+        const jobs: Promise<unknown>[] = [];
+        if (msg && record.user_id) {
+          jobs.push(sendPush(`customer_${record.user_id}`, msg[0], msg[1], data));
+        }
+        // New expert on this job → tell them.
+        if (partner && partner !== oldPartner) {
+          jobs.push(sendPush(
+            `delivery_${partner}`,
+            "New inspection visit",
+            `${name} — open your dashboard for the address and time.`,
+            data,
+          ));
+        }
+        await Promise.all(jobs);
         break;
       }
 

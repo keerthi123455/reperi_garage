@@ -1703,6 +1703,23 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     final items = <_FeedItem>[];
     for (var i = 0; i < bookings.length; i++) {
       final b = bookings[i] as Map;
+      if (_isVisit(b)) {
+        // Doorstep Car Inspection — expert visit card.
+        items.add(_FeedItem(
+          kind: 'puc',
+          past: b['inspection_stage'] == 'completed',
+          at: at(b),
+          build: () => KeyedSubtree(
+            key: _keyFor('b:${b['id']}'),
+            child: _buildVisitCard(
+              booking: b,
+              table: 'bookings',
+              highlightKey: (widget.highlightSection == 'bookings' && i == 0) ? _highlightKey : null,
+            ),
+          ),
+        ));
+        continue;
+      }
       final isWash = (b['package_name'] ?? '').toString().toLowerCase().contains('wash');
       items.add(_FeedItem(
         kind: isWash ? 'wash' : 'service',
@@ -1731,6 +1748,23 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     }
     for (var i = 0; i < inspectionBookings.length; i++) {
       final b = inspectionBookings[i] as Map;
+      if (_isVisit(b)) {
+        // Vehicle Health Check — expert visit card.
+        items.add(_FeedItem(
+          kind: 'puc',
+          past: b['inspection_stage'] == 'completed',
+          at: at(b),
+          build: () => KeyedSubtree(
+            key: _keyFor('i:${b['id']}'),
+            child: _buildVisitCard(
+              booking: b,
+              table: 'inspection_booking',
+              highlightKey: (widget.highlightSection == 'inspection' && i == 0) ? _highlightKey : null,
+            ),
+          ),
+        ));
+        continue;
+      }
       items.add(_FeedItem(
         kind: 'puc',
         past: _isFinished(b['status']),
@@ -1764,6 +1798,73 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     }
     items.sort((a, b) => b.at.compareTo(a.at));
     return items;
+  }
+
+  // ── Inspection visits ────────────────────────────────────────────────
+  // Doorstep Car Inspection ('bookings') and Vehicle Health Check
+  // ('inspection_booking'): an expert visits the customer. The CRM assigns
+  // the expert; the expert moves it along and adds photos from the
+  // delivery dashboard (see supabase/inspection_visits.sql).
+  static bool _isVisit(Map b) => (b['inspection_stage'] ?? '').toString().isNotEmpty;
+
+  static String _visitStatus(String stage) => switch (stage) {
+        'assigning' => 'Finding your expert',
+        'assigned' => 'Expert assigned — heading out soon',
+        'on_the_way' => 'Your expert is on the way',
+        'analyzing' => 'Your expert is checking your car',
+        'completed' => 'Inspection completed',
+        _ => 'Booked',
+      };
+
+  Widget _buildVisitCard({required Map booking, required String table, Key? highlightKey}) {
+    final stage = (booking['inspection_stage'] ?? 'assigning').toString();
+    final finished = stage == 'completed';
+    final isHealthCheck = table == 'inspection_booking';
+    final vehicleType = (booking['vehicle_type'] ?? '').toString();
+    final title = isHealthCheck
+        ? 'Vehicle Health Check${vehicleType.isNotEmpty ? ' ($vehicleType)' : ''}'
+        : _visitTitle((booking['package_name'] ?? 'Doorstep Car Inspection').toString());
+    final price = (booking['package_price'] ?? booking['price'])?.toString();
+    final photos = ((booking['inspection_photos'] as List?) ?? const []).map((e) => '$e').toList();
+
+    return _cardShell(
+      key: highlightKey,
+      icon: Icons.search_rounded,
+      tint: _blue,
+      title: title,
+      subtitle: [formatFullDateTime(booking['created_at']), 'at your location'].where((s) => s.isNotEmpty).join(' · '),
+      price: price == null ? null : (price.startsWith('₹') ? price : '₹$price'),
+      status: _visitStatus(stage),
+      finished: finished,
+      body: [
+        BookingSlotBadge(record: booking),
+        _VisitTimeline(booking: booking),
+        if (photos.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text(
+            'Photos from your expert (${photos.length})',
+            style: TextStyle(color: AppColors.txt, fontSize: 16, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 8),
+          _VisitPhotoStrip(paths: photos),
+        ],
+        if (_isCancellable(booking))
+          _buildCancelWindow(
+            record: booking,
+            table: table,
+            bookingType: isHealthCheck ? 'inspection' : 'service',
+            title: title,
+            price: price,
+          ),
+      ],
+    );
+  }
+
+  /// "DOORSTEP INSPECTION" → "Doorstep Inspection".
+  static String _visitTitle(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty || t != t.toUpperCase()) return t.isEmpty ? 'Doorstep Car Inspection' : t;
+    return t.toLowerCase().split(' ').map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1)).join(' ');
   }
 
   // ── "Needs your attention" ───────────────────────────────────────────
@@ -2480,7 +2581,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       'service': ('Service', Icons.build_rounded),
       'wash': ('Wash', Icons.local_car_wash_rounded),
       'claims': ('Claims', Icons.description_rounded),
-      'puc': ('PUC', Icons.eco_rounded),
+      'puc': ('Checks', Icons.fact_check_rounded),
     };
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -4943,6 +5044,271 @@ class _SkeletonCard extends StatelessWidget {
           SizedBox(height: 16),
           _SkeletonBox(height: 54, radius: 16),
         ],
+      ),
+    );
+  }
+}
+
+// ── Inspection visit pieces ──────────────────────────────────────────────
+
+/// Expert being assigned → Expert on the way → Analyzing your car → Completed.
+class _VisitTimeline extends StatelessWidget {
+  const _VisitTimeline({required this.booking});
+
+  final Map booking;
+
+  static const Color _green = Color(0xFF1FAA59);
+  static const Color _blue = Color(0xFF1E5EFF);
+
+  static String _time(dynamic iso) {
+    final d = DateTime.tryParse('${iso ?? ''}')?.toLocal();
+    if (d == null) return '';
+    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    final m = d.minute.toString().padLeft(2, '0');
+    final now = DateTime.now();
+    final today = d.year == now.year && d.month == now.month && d.day == now.day;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${today ? '' : '${d.day} ${months[d.month - 1]}, '}$h:$m ${d.hour >= 12 ? 'PM' : 'AM'}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stage = (booking['inspection_stage'] ?? 'assigning').toString();
+    const order = ['assigning', 'assigned', 'on_the_way', 'analyzing', 'completed'];
+    final at = math.max(0, order.indexOf(stage));
+    // (label, done, current, time)
+    final steps = <(String, bool, bool, String)>[
+      (
+        stage == 'assigning' ? 'Expert being assigned' : 'Expert assigned',
+        at >= 1,
+        at == 0,
+        stage == 'assigning' ? "We'll tell you when an expert is assigned" : _time(booking['inspection_assigned_at']),
+      ),
+      ('Expert on the way', at >= 3, at == 2, _time(booking['inspection_on_the_way_at'])),
+      ('Analyzing your car', at >= 4, at == 3, _time(booking['inspection_analyzing_at'])),
+      ('Completed', at >= 4, false, _time(booking['inspection_completed_at'])),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(
+        children: [
+          for (var i = 0; i < steps.length; i++)
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: 24,
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: steps[i].$2 ? _green : (steps[i].$3 ? _blue : AppColors.line),
+                          ),
+                          child: steps[i].$2
+                              ? const Icon(Icons.check_rounded, color: Colors.white, size: 16)
+                              : (steps[i].$3
+                                  ? const Center(child: SizedBox(width: 8, height: 8, child: DecoratedBox(decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle))))
+                                  : null),
+                        ),
+                        if (i < steps.length - 1)
+                          Expanded(
+                            child: Container(
+                              width: 2,
+                              constraints: const BoxConstraints(minHeight: 14),
+                              color: steps[i].$2 ? _green : AppColors.line,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: i < steps.length - 1 ? 12 : 0, top: 1),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            steps[i].$1,
+                            style: TextStyle(
+                              color: (steps[i].$2 || steps[i].$3) ? AppColors.txt : AppColors.mut,
+                              fontSize: 16,
+                              fontWeight: (steps[i].$2 || steps[i].$3) ? FontWeight.w900 : FontWeight.w600,
+                              height: 1.25,
+                            ),
+                          ),
+                          if (steps[i].$4.isNotEmpty)
+                            Text(
+                              steps[i].$4,
+                              style: TextStyle(color: AppColors.mut, fontSize: 13.5, height: 1.3),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The expert's photos (private inspection-photos bucket → short-lived
+/// links). Tap one to open them all full screen with pinch-to-zoom.
+class _VisitPhotoStrip extends StatefulWidget {
+  const _VisitPhotoStrip({required this.paths});
+
+  final List<String> paths;
+
+  @override
+  State<_VisitPhotoStrip> createState() => _VisitPhotoStripState();
+}
+
+class _VisitPhotoStripState extends State<_VisitPhotoStrip> {
+  // Shared across cards and rebuilds so the 15-second refresh doesn't
+  // re-sign (and re-download) every photo.
+  static final Map<String, (String, DateTime)> _cache = {};
+  Map<String, String> _urls = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VisitPhotoStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.paths.join('|') != widget.paths.join('|')) _load();
+  }
+
+  Future<void> _load() async {
+    final now = DateTime.now();
+    final fresh = <String, String>{};
+    final missing = <String>[];
+    for (final p in widget.paths) {
+      final c = _cache[p];
+      if (c != null && now.difference(c.$2) < const Duration(minutes: 8)) {
+        fresh[p] = c.$1;
+      } else {
+        missing.add(p);
+      }
+    }
+    if (missing.isNotEmpty) {
+      try {
+        final signed = await Supabase.instance.client.storage
+            .from('inspection-photos')
+            .createSignedUrls(missing, 600);
+        for (final s in signed) {
+          if (s.signedUrl.isNotEmpty) {
+            fresh[s.path] = s.signedUrl;
+            _cache[s.path] = (s.signedUrl, now);
+          }
+        }
+      } catch (e) {
+        debugPrint('Inspection photos: $e');
+      }
+    }
+    if (mounted) setState(() => _urls = fresh);
+  }
+
+  void _open(int index) {
+    final urls = [for (final p in widget.paths) _urls[p]].whereType<String>().toList();
+    if (urls.isEmpty) return;
+    Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      barrierColor: Colors.black,
+      pageBuilder: (context, _, __) => _VisitPhotoViewer(urls: urls, initial: math.min(index, urls.length - 1)),
+      transitionsBuilder: (context, a, _, child) => FadeTransition(opacity: a, child: child),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 76,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: widget.paths.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final url = _urls[widget.paths[i]];
+          return GestureDetector(
+            onTap: () => _open(i),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: 94,
+                height: 76,
+                color: AppColors.surfaceSunken,
+                child: url == null
+                    ? Center(child: Icon(Icons.image_outlined, color: AppColors.mut))
+                    : Image.network(
+                        url,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Center(child: Icon(Icons.broken_image_outlined, color: AppColors.mut)),
+                      ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _VisitPhotoViewer extends StatefulWidget {
+  const _VisitPhotoViewer({required this.urls, required this.initial});
+
+  final List<String> urls;
+  final int initial;
+
+  @override
+  State<_VisitPhotoViewer> createState() => _VisitPhotoViewerState();
+}
+
+class _VisitPhotoViewerState extends State<_VisitPhotoViewer> {
+  late final PageController _page = PageController(initialPage: widget.initial);
+  late int _index = widget.initial;
+
+  @override
+  void dispose() {
+    _page.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: Text('Photo ${_index + 1} of ${widget.urls.length}'),
+      ),
+      body: PageView.builder(
+        controller: _page,
+        itemCount: widget.urls.length,
+        onPageChanged: (i) => setState(() => _index = i),
+        itemBuilder: (context, i) => InteractiveViewer(
+          minScale: 1,
+          maxScale: 5,
+          child: Center(
+            child: Image.network(
+              widget.urls[i],
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 64),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -17,6 +17,10 @@
 //   → sends a ReperiResolve price (text + amount + optional photo) to the
 //     customer. Shows in their app; the DB webhook sends the push.
 // POST { action: "resolve_assign", id, admin_id }   (admin_id null = unassign)
+// POST { action: "inspection_assign", table, id, partner_id }   (partner_id null = unassign)
+//   → picks the expert (a delivery partner) for an inspection visit.
+// POST { action: "inspection_photos", paths: [...] }
+//   → 5-minute signed URLs for inspection photos (thumbnails in the CRM).
 // POST { action: "me" }
 //   → { email } — used by the page to confirm access after sign-in.
 
@@ -409,12 +413,69 @@ async function resolveAssign(client: SupabaseClient, body: Row) {
   return { row: data };
 }
 
+// Inspection visits (Doorstep Car Inspection in `bookings`, Vehicle Health
+// Check in `inspection_booking`): staff pick the expert from the delivery
+// partners. The DB trigger notifies the customer and the partner.
+const INSPECTION_TABLES = new Set(["bookings", "inspection_booking"]);
+
+async function inspectionAssign(client: SupabaseClient, body: Row) {
+  const table = String(body.table ?? "");
+  const id = String(body.id ?? "");
+  if (!INSPECTION_TABLES.has(table) || !id) throw new HttpError(400, "bad_request", "Unknown inspection.");
+  const raw = body.partner_id === null || body.partner_id === undefined ? "" : String(body.partner_id).trim();
+
+  const { data: row, error } = await client.from(table)
+    .select("id,inspection_stage,delivery_partner_id").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!row || !row.inspection_stage) throw new HttpError(404, "not_found", "Inspection not found.");
+  if (row.inspection_stage === "completed") {
+    throw new HttpError(400, "completed", "This inspection is already completed.");
+  }
+
+  let partnerId: number | null = null;
+  if (raw) {
+    const { data: partner, error: pErr } = await client.from("delivery_partners")
+      .select("id").eq("id", raw).maybeSingle();
+    if (pErr) throw pErr;
+    if (!partner) throw new HttpError(400, "bad_partner", "That delivery partner doesn't exist.");
+    partnerId = Number(partner.id);
+  }
+  if (String(row.delivery_partner_id ?? "") === String(partnerId ?? "")) return { row };
+
+  // New (or no) expert → the visit starts again for them.
+  const update = partnerId === null
+    ? {
+      delivery_partner_id: null, inspection_stage: "assigning", inspection_assigned_at: null,
+      inspection_on_the_way_at: null, inspection_analyzing_at: null,
+    }
+    : {
+      delivery_partner_id: partnerId, inspection_stage: "assigned", inspection_assigned_at: new Date().toISOString(),
+      inspection_on_the_way_at: null, inspection_analyzing_at: null,
+    };
+  const { data, error: uErr } = await client.from(table).update(update).eq("id", id).select("*").single();
+  if (uErr) throw uErr;
+  return { row: strip([data as Row])[0] };
+}
+
+async function inspectionPhotos(client: SupabaseClient, body: Row) {
+  const paths = (Array.isArray(body.paths) ? body.paths : [])
+    .map((p: unknown) => String(p ?? "").replace(/^\/+/, ""))
+    .filter((p: string) => p && !p.includes("..") && /^(bookings|inspection_booking)\//.test(p))
+    .slice(0, 60);
+  if (!paths.length) return { urls: {} };
+  const { data, error } = await client.storage.from("inspection-photos").createSignedUrls(paths, 300);
+  if (error) throw error;
+  const urls: Record<string, string> = {};
+  for (const d of data ?? []) if (d.path && d.signedUrl) urls[d.path] = d.signedUrl;
+  return { urls };
+}
+
 async function signedDoc(client: SupabaseClient, body: Row) {
   const path = String(body.path ?? "").replace(/^\/+/, "");
   if (!path || path.includes("..")) throw new HttpError(400, "bad_request", "Invalid document.");
   if (/^https?:\/\//i.test(path)) return { url: path };
   const bucket = body.bucket === "booking-images" || body.bucket === "subscription-services" ||
-      body.bucket === "resolve-media"
+      body.bucket === "resolve-media" || body.bucket === "inspection-photos"
     ? String(body.bucket)
     : "insurance-documents";
   const { data, error } = await client.storage.from(bucket).createSignedUrl(path, 300);
@@ -442,6 +503,10 @@ Deno.serve(async (req: Request) => {
         return json(await resolveQuote(client, body, user));
       case "resolve_assign":
         return json(await resolveAssign(client, body));
+      case "inspection_assign":
+        return json(await inspectionAssign(client, body));
+      case "inspection_photos":
+        return json(await inspectionPhotos(client, body));
       default:
         throw new HttpError(400, "invalid_action", "Unknown action.");
     }

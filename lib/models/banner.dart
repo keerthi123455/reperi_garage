@@ -16,7 +16,7 @@ const List<String> kCoverflowBanners = [
 /// first appears — looked up by filename (not a hardcoded index) so it
 /// still points at the right slide if the list above gets reordered. Also
 /// the one slide the "OUR PACKAGES" side heading is visible at.
-const String kDefaultCoverflowBanner = 'assets/images/wheelmanagement.jpg';
+const String kDefaultCoverflowBanner = 'assets/images/service.jpg';
 
 /// Shown in the flat 2-up horizontal-scroll row below the coverflow
 /// (landscape, 3:2 — matches the images' native 1536x1024 size).

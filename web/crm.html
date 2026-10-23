@@ -544,6 +544,11 @@ const STAGE_LABEL = {
 };
 const ON_ROAD = new Set(['pickup_started', 'picked_up', 'out_for_delivery']);
 const DONE_STATUS = /^(delivered|completed|rejected|cancell?ed)$/i;
+// Inspection visits (inspection_stage on bookings / inspection_booking).
+const INSP_STATUS = {
+  assigning: 'Expert being assigned', assigned: 'Expert assigned', on_the_way: 'Expert on the way',
+  analyzing: 'Analyzing', completed: 'Completed',
+};
 const GARAGE_WORK = /picked up|inspection|service in progress|billing/i;
 const TYPE_TONE = { Service: 'blue', Wash: 'violet', Roadside: 'red', PUC: 'amber', Inspection: 'amber', Claim: 'gold', 'Monthly wash': 'violet', Fleet: 'green', Detailing: '', 'Offer wash': 'violet', ReperiResolve: 'green' };
 const TYPE_COLOR = { Service: '#2563eb', Wash: '#7c3aed', Roadside: '#dc2626', PUC: '#d97706', Inspection: '#ca8a04', Claim: '#b8860b', 'Monthly wash': '#a855f7', Fleet: '#16a34a', Detailing: '#64748b' };
@@ -586,11 +591,15 @@ function buildModel(d) {
     let type = 'Service';
     if (r.washer_id || /wash/i.test(name)) type = 'Wash';
     if (/roadside|emergency/i.test(name) || /emergency/i.test(garageName)) type = 'Roadside';
-    const done = DONE_STATUS.test(r.booking_status || '') || r.delivery_stage === 'delivered' || !!r.return_otp_verified_at;
+    if (r.inspection_stage) type = 'Inspection';
+    const done = DONE_STATUS.test(r.booking_status || '') || r.delivery_stage === 'delivered' || !!r.return_otp_verified_at ||
+      r.inspection_stage === 'completed';
     push({
       table: 'bookings', id: r.id, raw: r, type, title: name, amount: money(r.package_price),
       pay: (r.payment_status || '').toLowerCase() === 'cod' ? 'cod' : (r.payment_status ? 'paid' : 'unknown'),
-      status: r.booking_status || 'Pending', stage: r.delivery_stage || null, pickup: r.pickupdrop === 'yes',
+      insp: r.inspection_stage || null,
+      status: r.inspection_stage ? INSP_STATUS[r.inspection_stage] : (r.booking_status || 'Pending'),
+      stage: r.delivery_stage || null, pickup: r.pickupdrop === 'yes' && !r.inspection_stage,
       garageId: r.assigned_to_admin_id, deliveryId: r.delivery_partner_id, washerId: r.washer_id,
       userId: r.user_id, vehicleId: r.vehicle_id, customer: r.customer_name, phone: r.customer_phone,
       address: r.pickup_address, created: r.created_at, done, doneAt: r.stage_delivered_at || r.return_otp_verified_at || r.marked_done_at,
@@ -640,10 +649,14 @@ function buildModel(d) {
     const cod = r.razorpay_payment_id === 'COD' || (r.payment_status || '').toLowerCase() === 'cod';
     push({
       table: 'inspection_booking', id: r.id, raw: r, type: 'Inspection', title: 'Inspection' + (r.vehicle_type ? ' · ' + r.vehicle_type : ''),
-      amount: money(r.package_price), pay: cod ? 'cod' : 'paid',
-      status: r.delivery_stage ? STAGE_LABEL[r.delivery_stage] || r.delivery_stage : 'Booked', stage: r.delivery_stage || null, pickup: true,
+      amount: money(r.package_price), pay: cod ? 'cod' : 'paid', insp: r.inspection_stage || null,
+      status: r.inspection_stage ? INSP_STATUS[r.inspection_stage]
+        : (r.delivery_stage ? STAGE_LABEL[r.delivery_stage] || r.delivery_stage : 'Booked'),
+      stage: r.delivery_stage || null, pickup: !r.inspection_stage,
       deliveryId: r.delivery_partner_id, userId: r.user_id, vehicleId: r.vehicle_id, customer: r.customer_name, phone: r.customer_phone,
-      address: r.pickup_address, created: r.created_at, done: r.delivery_stage === 'delivered', doneAt: r.stage_delivered_at,
+      address: r.pickup_address, created: r.created_at,
+      done: r.delivery_stage === 'delivered' || r.inspection_stage === 'completed',
+      doneAt: r.stage_delivered_at || r.inspection_completed_at,
     });
   }
   for (const r of d.claims || []) {
@@ -776,7 +789,7 @@ const TABS = [
   ['overview', 'Overview'], ['live', 'Live ops'], ['bookings', 'All bookings'], ['deliveries', 'Deliveries'],
   ['washes', 'Washes'], ['claims', 'Claims'], ['fleet', 'Fleet'], ['customers', 'Customers'],
   ['partners', 'Partners'], ['payments', 'Payments'], ['cancellations', 'Cancellations'],
-  ['resolve', 'After service issue'], ['addons', 'Add-ons'],
+  ['resolve', 'After service issue'], ['addons', 'Add-ons'], ['inspections', 'Inspections'],
 ];
 function buildChrome() {
   document.querySelectorAll('#rangeSeg button').forEach((b) => {
@@ -808,10 +821,11 @@ function renderNav() {
     overview: att,
     resolve: vis(m.jobs).filter((j) => j.table === 'resolve_requests' && j.raw.status === 'Submitted').length,
     addons: vis(m.addons || []).filter((a) => a.open).length,
+    inspections: vis(m.jobs).filter((j) => j.insp === 'assigning').length,
   };
   $('nav').innerHTML = TABS.map(([k, label]) => {
     const c = counts[k];
-    const badge = c ? `<span class="count ${k === 'overview' || k === 'resolve' ? 'alert' : ''}">${c}</span>` : '';
+    const badge = c ? `<span class="count ${k === 'overview' || k === 'resolve' || k === 'inspections' ? 'alert' : ''}">${c}</span>` : '';
     return `<button data-tab="${k}" class="${state.tab === k ? 'active' : ''}"><span>${label}</span>${badge}</button>`;
   }).join('');
   $('nav').querySelectorAll('button').forEach((b) => b.onclick = () => go(b.dataset.tab));
@@ -832,7 +846,7 @@ function render() {
   $('pageTitle').textContent = label;
   const errs = Object.keys(state.data.errors || {});
   const banner = errs.length ? `<div class="banner">Some data couldn't be loaded (${esc(errs.join(', '))}). Everything else is accurate.</div>` : '';
-  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons }[state.tab] || overview;
+  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons, inspections }[state.tab] || overview;
   $('content').innerHTML = banner + view();
   bindRows();
   afterRender.splice(0).forEach((fn) => fn());
@@ -850,6 +864,8 @@ function attention(m) {
   if (stuckPay.length) out.push({ n: stuckPay.length, tone: 'red', text: 'Paid online but booking not saved — retry or refund', go: 'payments' });
   const noGarage = jobs.filter((j) => j.bucket && j.table === 'bookings' && j.type !== 'Wash' && !j.garageId);
   if (noGarage.length) out.push({ n: noGarage.length, tone: 'red', text: 'Open bookings with no garage assigned', go: 'bookings', f: { status: 'open', type: 'Service' } });
+  const noExpert = jobs.filter((j) => j.insp === 'assigning');
+  if (noExpert.length) out.push({ n: noExpert.length, tone: 'red', text: 'Inspections waiting for an expert', go: 'inspections' });
   const noPartner = jobs.filter((j) => j.bucket && j.pickup && !j.deliveryId && j.table !== 'fleet_pickup_requests');
   if (noPartner.length) out.push({ n: noPartner.length, tone: 'amber', text: 'Pickup bookings with no delivery partner', go: 'deliveries' });
   const late = jobs.filter((j) => j.bucket === 'new' && j.pickup && hoursSince(j.created) > 2);
@@ -1000,6 +1016,10 @@ function jobCard(j) {
 
 // ── Job table (shared) ──
 function statusPill(j) {
+  if (j.insp) {
+    const tone = { assigning: 'amber', assigned: 'blue', on_the_way: 'violet', analyzing: 'violet', completed: 'green' }[j.insp] || '';
+    return pill(INSP_STATUS[j.insp] || titleCase(j.insp), tone);
+  }
   if (j.table === 'resolve_requests') return pill(j.status, j.done ? 'green' : /needs/i.test(j.status) ? 'amber' : /accepted/i.test(j.status) ? 'green' : 'blue');
   if (j.enquiry) return pill('Enquiry');
   if (j.done) return pill(j.status === 'Pending' ? 'Done' : titleCase(j.status), 'green');
@@ -1293,6 +1313,84 @@ function resolve() {
     <div class="banner" style="background:var(--blue-soft);color:var(--text)"><b>1.</b> Pick the garage · <b>2.</b> Type the price (₹100 pickup &amp; drop is added) and a message, press <b>Send price to customer</b> · <b>3.</b> When the customer accepts, a pickup &amp; drop repair booking is created for that garage automatically.</div>
     <div class="section-title"><h3>After service issues</h3><span class="hint">Needs a price first · then accepted · then price sent</span></div>
     ${list.length ? list.map(card).join('') : '<div class="card"><div class="empty">No after-service issues yet.</div></div>'}`;
+}
+
+// ── Inspections (Doorstep Car Inspection + Vehicle Health Check) ──
+// Pick the expert (a delivery partner) from the dropdown. They tap
+// On the way → Analyzing → Completed in their dashboard and add photos;
+// the customer gets a push at every step.
+const INSP_ORDER = { assigning: 0, assigned: 1, on_the_way: 2, analyzing: 3, completed: 4 };
+function inspections() {
+  const all = vis(state.model.jobs).filter((j) => j.insp);
+  const list = all.filter((j) => j.inRange || j.insp !== 'completed').sort((a, b) =>
+    (INSP_ORDER[a.insp] ?? 9) - (INSP_ORDER[b.insp] ?? 9) ||
+    new Date(a.slotStart || a.created) - new Date(b.slotStart || b.created));
+  const n = (s) => all.filter((j) => j.insp === s).length;
+  const partners = [...(state.model.delivery?.values?.() || [])]
+    .sort((a, b) => String(a.email || '').localeCompare(String(b.email || '')));
+  const when = (iso) => iso ? fmtDT(iso) : '—';
+  const card = (j) => {
+    const r = j.raw;
+    const photos = Array.isArray(r.inspection_photos) ? r.inspection_photos : [];
+    const done = j.insp === 'completed';
+    const title = j.table === 'inspection_booking'
+      ? 'Vehicle Health Check' + (r.vehicle_type ? ` (${r.vehicle_type})` : '')
+      : (r.package_name || 'Doorstep Car Inspection');
+    return `<div class="card" style="padding:16px;margin-bottom:12px;${j.insp === 'assigning' ? 'border-color:var(--amber);background:var(--amber-soft, #fff7ed)' : ''}">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+        <div>
+          <div style="font-weight:800;font-size:16px">${esc(titleCase(String(title).toLowerCase()))}</div>
+          <div class="secondary" style="margin-top:2px">${esc(j.customer || '—')}${j.phone ? ` · <a href="tel:${esc(j.phone)}">${esc(j.phone)}</a>` : ''} · ${esc(j.vehicle || '')}</div>
+          <div class="secondary">📍 ${esc(j.address || 'No address')}${j.slot ? ` · 🕒 <b>${esc(j.slot)}</b>` : ''}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">${statusPill(j)}${j.amount ? `<b>${inr(j.amount)}</b>` : ''}<button class="btn" data-job="${esc(j.table)}:${esc(j.id)}">Open</button></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--blue-soft)">
+        <b>🧑‍🔧 Expert</b>
+        <select class="select" data-insp-assign="${esc(j.table)}:${esc(j.id)}" style="min-width:240px" ${done ? 'disabled' : ''}>
+          <option value="">— Pick an expert —</option>
+          ${partners.map((p) => `<option value="${esc(p.id)}" ${String(p.id) === String(r.delivery_partner_id || '') ? 'selected' : ''}>${esc(p.email || 'Partner #' + p.id)}${p.status && p.status !== 'active' ? ' · ' + esc(p.status) : ''}</option>`).join('')}
+        </select>
+        <span class="secondary" data-assign-status>${done ? 'Completed — can’t be reassigned' : r.delivery_partner_id ? 'Changing the expert restarts the visit for the new expert and notifies the customer' : 'Nobody is assigned yet — the customer sees “Expert being assigned”'}</span>
+      </div>
+      <div class="secondary" style="margin-top:10px">Booked ${when(j.created)} · Assigned ${when(r.inspection_assigned_at)} · On the way ${when(r.inspection_on_the_way_at)} · Analyzing ${when(r.inspection_analyzing_at)} · Completed ${when(r.inspection_completed_at)}</div>
+      ${photos.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">${photos.map((p) => `<img data-insp-thumb="${esc(p)}" alt="Inspection photo" title="Open full size" style="width:110px;height:84px;object-fit:cover;border-radius:10px;background:var(--surface-2);border:1px solid var(--line);cursor:zoom-in">`).join('')}</div>` : (j.insp === 'analyzing' ? '<div class="secondary" style="margin-top:8px">No photos yet.</div>' : '')}
+    </div>`;
+  };
+  afterRender.push(bindInspections);
+  return `<div class="grid kpis">
+      ${kpi('Waiting for an expert', num(n('assigning')), 'pick one below', 'amber')}
+      ${kpi('Assigned / on the way', num(n('assigned') + n('on_the_way')), 'any date', 'blue')}
+      ${kpi('Analyzing now', num(n('analyzing')), 'expert at the car', 'violet')}
+      ${kpi('Completed', num(all.filter((j) => j.insp === 'completed' && j.inRange).length), rangeBounds().label, 'green')}
+    </div>
+    <div class="banner" style="background:var(--blue-soft);color:var(--text)"><b>1.</b> Pick the expert from the dropdown (delivery partners) · <b>2.</b> They tap <b>On the way → Start analyzing → Mark completed</b> in their dashboard and add photos · <b>3.</b> The customer gets a notification at every step and sees the photos.</div>
+    <div class="section-title"><h3>Inspection visits</h3><span class="hint">Waiting for an expert first · then by slot</span></div>
+    ${list.length ? list.map(card).join('') : '<div class="card"><div class="empty">No inspections in this period.</div></div>'}`;
+}
+function bindInspections() {
+  document.querySelectorAll('[data-insp-assign]').forEach((sel) => {
+    sel.onchange = async () => {
+      const [table, id] = sel.dataset.inspAssign.split(':');
+      const note = sel.parentElement.querySelector('[data-assign-status]');
+      sel.disabled = true; note.style.color = ''; note.textContent = 'Saving…';
+      try {
+        await api('inspection_assign', { table, id, partner_id: sel.value || null });
+        note.style.color = 'var(--green)'; note.textContent = sel.value ? 'Assigned ✓ — expert and customer notified' : 'Unassigned ✓';
+        await load(true);
+      } catch (e) {
+        note.style.color = 'var(--red)'; note.textContent = e.message || "Couldn't save";
+        sel.disabled = false;
+      }
+    };
+  });
+  const imgs = [...document.querySelectorAll('img[data-insp-thumb]')];
+  imgs.forEach((img) => img.addEventListener('click', () => openDoc(img.dataset.inspThumb, 'inspection-photos')));
+  const paths = [...new Set(imgs.map((i) => i.dataset.inspThumb))];
+  if (!paths.length) return;
+  api('inspection_photos', { paths }).then(({ urls }) => {
+    imgs.forEach((img) => { if (urls?.[img.dataset.inspThumb]) img.src = urls[img.dataset.inspThumb]; });
+  }).catch(() => {});
 }
 
 // Shrinks a photo in the browser before sending it (max 1600px JPEG).
@@ -1631,6 +1729,12 @@ function detailHtml(j, d) {
   let html = '';
   const times = STAGE_TIMES.filter(([k]) => r[k]).map(([k, l]) => ({ k, l, t: r[k] })).sort((a, b) => new Date(a.t) - new Date(b.t));
   if (times.length > 1) html += `<h4>Timeline</h4><ul class="timeline">${times.map((x) => `<li><div><b>${x.l}</b></div><div class="when">${fmtDT(x.t)}</div></li>`).join('')}</ul>`;
+  if (r.inspection_stage) {
+    const ph = Array.isArray(r.inspection_photos) ? r.inspection_photos : [];
+    html += `<h4>Inspection visit · ${esc(INSP_STATUS[r.inspection_stage] || r.inspection_stage)}</h4>`
+      + `<div class="secondary">Assigned ${fmtDT(r.inspection_assigned_at)} · On the way ${fmtDT(r.inspection_on_the_way_at)} · Analyzing ${fmtDT(r.inspection_analyzing_at)} · Completed ${fmtDT(r.inspection_completed_at)}</div>`
+      + (ph.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${ph.map((p, i) => `<button class="btn" data-doc="${esc(p)}" data-bucket="inspection-photos">📷 Photo ${i + 1}</button>`).join('')}</div>` : '');
+  }
   if (d.updates?.length) html += `<h4>Garage updates</h4><ul class="timeline">${d.updates.map((u) => `<li><div><b>${esc(u.stage || 'Update')}</b></div>${u.description ? `<div>${esc(u.description)}</div>` : ''}<div class="when">${fmtDT(u.created_at)}${u.image_url || u.photo_url ? ` · <button class="btn-link" style="color:var(--blue)" data-doc="${esc(u.image_url || u.photo_url)}" data-bucket="booking-images">Photo</button>` : ''}</div></li>`).join('')}</ul>`;
   if (d.addons?.length) {
     const paidSum = d.addons.filter((a) => a.status === 'Paid').reduce((s, a) => s + Number(a.price || 0), 0);
