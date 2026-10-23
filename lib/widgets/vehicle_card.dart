@@ -31,7 +31,7 @@ class VehicleCard extends StatefulWidget {
   /// vehicle for anything booked elsewhere on the Home screen.
   final bool isActive;
 
-  static const double _photoSize = 76;
+  static const double _photoSize = 56;
 
   @override
   State<VehicleCard> createState() => _VehicleCardState();
@@ -73,18 +73,21 @@ class _VehicleCardState extends State<VehicleCard> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
-    final status = _statusFor(widget.vehicle.bookingStatus, offerWash: widget.vehicle.hasActiveOfferWash);
+    final v = widget.vehicle;
+    final name = [v.brand, v.model].where((s) => s.trim().isNotEmpty).join(' ');
 
-    return ScaleTransition(
-      scale: _scale,
-      child: Stack(
-      clipBehavior: Clip.none,
-      children: [
-        AnimatedContainer(
+    // Slim card: photo, name and plate on one row, then a "My bookings &
+    // updates" bar so it's obvious what tapping the card does. Text scaling
+    // is capped a little here because the carousel gives every card a
+    // fixed height — this keeps big system font sizes from overflowing.
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.15,
+      child: ScaleTransition(
+        scale: _scale,
+        child: AnimatedContainer(
           duration: const Duration(milliseconds: 280),
           curve: Curves.easeOut,
           width: widget.width,
-          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
@@ -102,110 +105,102 @@ class _VehicleCardState extends State<VehicleCard> with SingleTickerProviderStat
                   ]
                 : null,
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
             children: [
-              _VehiclePhoto(
-                url: widget.vehicle.photoUrl,
-                isBike: widget.vehicle.isTwoWheeler,
-                onTap: widget.onPhotoTap,
-              ),
-              const SizedBox(width: 14),
               Expanded(
-                // A separate GestureDetector from the photo's — nesting one
-                // inside the other would make both onTap callbacks fire on
-                // a photo tap, since sibling tap recognizers don't
-                // suppress each other in Flutter's gesture arena.
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: widget.onTap,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: Row(
                     children: [
-                      Text(
-                        widget.vehicle.brand.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.manrope(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.4,
-                          color: AppColors.mut,
+                      _VehiclePhoto(
+                        url: v.photoUrl,
+                        isBike: v.isTwoWheeler,
+                        onTap: widget.onPhotoTap,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        // A separate GestureDetector from the photo's — nesting
+                        // one inside the other would make both fire on a photo tap.
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: widget.onTap,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                name.isEmpty ? 'My vehicle' : name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.manrope(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.txt,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              _LicensePlate(number: v.carNumber),
+                            ],
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              widget.vehicle.model,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.manrope(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.txt,
-                              ),
-                            ),
-                          ),
-                          if (widget.vehicle.hasActiveSubscription) ...[
-                            const SizedBox(width: 8),
-                            const _ActiveSubBadge(),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Container(height: 1, color: AppColors.line),
-                      const SizedBox(height: 10),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Flexible(child: _LicensePlate(number: widget.vehicle.carNumber)),
-                          const Spacer(),
-                          Icon(Symbols.arrow_forward, size: 18, color: AppColors.accent),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          status.pulsing
-                              ? _PulsingDot(color: status.dotColor)
-                              : _StaticDot(color: status.dotColor),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              status.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.manrope(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.6,
-                                color: AppColors.mut,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                     ],
+                  ),
+                ),
+              ),
+              Container(height: 1, color: AppColors.line),
+              Material(
+                color: Colors.transparent,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+                child: InkWell(
+                  onTap: widget.onTap,
+                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                    child: Row(
+                      children: [
+                        Icon(Symbols.calendar_month, size: 18, color: AppColors.accent, weight: 600),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'My bookings & updates',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.manrope(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.txt,
+                            ),
+                          ),
+                        ),
+                        if (v.hasUpdate) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE5484D),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              'New',
+                              style: GoogleFonts.manrope(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(width: 4),
+                        Icon(Icons.chevron_right_rounded, size: 22, color: AppColors.mut),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ],
           ),
         ),
-        if (status.showBadge)
-          const Positioned(top: -8, right: 8, child: _ServiceBadge()),
-        // Bottom-left — the one corner nothing else reaches into. The
-        // photo (top-left) tops out well above this, and the license
-        // plate/arrow row lives over in the right-hand content column, so
-        // this can't crowd either one the way bottom-right did.
-        if (widget.vehicle.hasUpdate)
-          const Positioned(bottom: -10, left: 8, child: _NotificationBadge()),
-      ],
       ),
     );
   }
@@ -332,30 +327,6 @@ void _showVehiclePhotoViewer(BuildContext context, String imageUrl) {
   );
 }
 
-class _ActiveSubBadge extends StatelessWidget {
-  const _ActiveSubBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.accent,
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Text(
-        'WASH PLAN',
-        style: GoogleFonts.manrope(
-          fontSize: 8.5,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.8,
-          color: AppColors.onAccentDark,
-        ),
-      ),
-    );
-  }
-}
-
 /// A real Indian number plate's look — white plate, black text, blue strip —
 /// kept fixed regardless of light/dark mode since it represents a physical
 /// object, not a themed surface.
@@ -401,220 +372,6 @@ class _LicensePlate extends StatelessWidget {
     );
   }
 }
-
-class _StaticDot extends StatelessWidget {
-  const _StaticDot({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-    );
-  }
-}
-
-/// A status dot with an expanding, fading ring behind it — used when a
-/// service is actively in progress on this vehicle.
-class _PulsingDot extends StatefulWidget {
-  const _PulsingDot({required this.color});
-
-  final Color color;
-
-  @override
-  State<_PulsingDot> createState() => _PulsingDotState();
-}
-
-class _PulsingDotState extends State<_PulsingDot> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 18,
-      height: 18,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          final t = _controller.value;
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              Opacity(
-                opacity: 1 - t,
-                child: Container(
-                  width: 8 + t * 10,
-                  height: 8 + t * 10,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: widget.color),
-                ),
-              ),
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: widget.color),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// The red "service in progress" spanner badge overlaid on the card's top
-/// corner, with the same expanding-ring pulse as [_PulsingDot].
-class _ServiceBadge extends StatefulWidget {
-  const _ServiceBadge();
-
-  @override
-  State<_ServiceBadge> createState() => _ServiceBadgeState();
-}
-
-class _ServiceBadgeState extends State<_ServiceBadge> with SingleTickerProviderStateMixin {
-  static const Color _red = Color(0xFFE5484D);
-
-  late final AnimationController _controller =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 40,
-      height: 40,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          final t = _controller.value;
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              Opacity(
-                opacity: (1 - t) * 0.5,
-                child: Container(
-                  width: 28 + t * 14,
-                  height: 28 + t * 14,
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: _red),
-                ),
-              ),
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _red,
-                  border: Border.all(color: AppColors.surfaceRaised, width: 2),
-                ),
-                child: const Icon(Symbols.build, size: 15, color: Colors.white, weight: 700),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// The red "update from garage/washer/delivery/claim" bell badge,
-/// overlaid on the card's bottom-right corner — deliberately bigger than
-/// [_ServiceBadge]'s spanner (34px core vs. 28px) since a new update needs
-/// to be the first thing that catches your eye on the tile. Goes off (see
-/// `VehicleUpdateTracker.markSeen`) once the vehicle's bookings screen —
-/// where every one of those sources is actually shown — has been opened.
-class _NotificationBadge extends StatelessWidget {
-  const _NotificationBadge();
-
-  static const Color _red = Color(0xFFE5484D);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 34,
-      height: 34,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: _red,
-        border: Border.all(color: AppColors.surfaceRaised, width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: _red.withOpacity(0.45),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: const Icon(Icons.notifications_rounded, size: 19, color: Colors.white),
-    );
-  }
-}
-
-class _StatusInfo {
-  const _StatusInfo({
-    required this.label,
-    required this.dotColor,
-    required this.pulsing,
-    required this.showBadge,
-  });
-
-  final String label;
-  final Color dotColor;
-  final bool pulsing;
-  final bool showBadge;
-}
-
-/// Maps the latest booking's `booking_status` to the tile's status row.
-/// `null`/empty means the vehicle has no bookings yet; any non-"delivered"
-/// status (pending, confirmed, in_progress, ...) reads as an active service.
-_StatusInfo _statusFor(String? bookingStatus, {bool offerWash = false}) {
-  final status = bookingStatus?.trim().toLowerCase();
-  // No service running right now, but an apartment offer wash is booked.
-  if (offerWash && (status == null || status.isEmpty || status == 'delivered' || status == 'completed')) {
-    return const _StatusInfo(
-      label: 'OFFER WASH ACTIVE',
-      dotColor: AppColors.accent,
-      pulsing: true,
-      showBadge: false,
-    );
-  }
-  if (status == null || status.isEmpty) {
-    return const _StatusInfo(
-      label: 'NO ACTIVE SERVICE',
-      dotColor: Color(0xFF9AA0A6),
-      pulsing: false,
-      showBadge: false,
-    );
-  }
-  if (status == 'delivered') {
-    return const _StatusInfo(
-      label: 'VEHICLE IS DELIVERED',
-      dotColor: Color(0xFF3DBE6C),
-      pulsing: false,
-      showBadge: false,
-    );
-  }
-  return const _StatusInfo(
-    label: 'SERVICE IN PROGRESS',
-    dotColor: AppColors.accent,
-    pulsing: true,
-    showBadge: true,
-  );
-}
-
 
 /// Shown until the customer adds a photo of their own vehicle: a friendly
 /// cartoon car (or scooter) on a light-blue circle, drawn in code.

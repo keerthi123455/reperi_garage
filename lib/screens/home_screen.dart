@@ -40,6 +40,7 @@ import '../widgets/packages_side_heading.dart';
 import '../widgets/promo_banner.dart';
 import '../widgets/quick_action_row.dart';
 import '../widgets/reperi_resolve_card.dart';
+import '../widgets/ride_picker_card.dart';
 import '../widgets/service_banner_row.dart';
 import '../widgets/services_grid.dart';
 import '../widgets/toast_banner.dart';
@@ -146,6 +147,43 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool get _isActiveVehicleTwoWheeler => _activeVehicle?.isTwoWheeler ?? false;
 
+  // ── "What do you ride?" (guests / no vehicle saved yet) ──────────────
+  // 'car' | 'bike' | 'both' — remembered on this device. With 'both', the
+  // Car | Bike switch below the card picks which packages show.
+  static const _ridePrefKey = 'home_ride_pref';
+  String _ridePref = 'car';
+  String _bothView = 'car';
+
+  Future<void> _loadRidePref() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final v = prefs.getString(_ridePrefKey);
+      if (!mounted || v == null) return;
+      if (v == 'car' || v == 'bike' || v == 'both') setState(() => _ridePref = v);
+    } catch (_) {}
+  }
+
+  Future<void> _setRidePref(String v) async {
+    setState(() {
+      _ridePref = v;
+      if (v != 'both') _bothView = v;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_ridePrefKey, v);
+    } catch (_) {}
+  }
+
+  /// Bike packages or car packages below the vehicle area. With a vehicle
+  /// saved this follows the selected vehicle (as before); without one it
+  /// follows the "What do you ride?" choice.
+  bool get _showBikePackages {
+    if (_vehicles.isNotEmpty) return _isActiveVehicleTwoWheeler;
+    if (_ridePref == 'bike') return true;
+    if (_ridePref == 'both') return _bothView == 'bike';
+    return false;
+  }
+
   // Settled slide + continuous drag/settle position for the two-wheeler
   // coverflow (servicing/washing) — mirrors _selectedBanner/_coverflowPosition
   // above exactly, including driving its own "OUR PACKAGES" side heading.
@@ -191,6 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
     vehicleChangeBus.addListener(_loadVehicles);
     vehicleChangeBus.addListener(_loadProfile);
     _loadVehicles();
+    _loadRidePref();
     _loadProfile();
     _loadServiceAddress();
     _maybeShowNotificationPrimer();
@@ -915,7 +954,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         if (_vehiclesLoading)
                           const SizedBox(
-                            height: 158,
+                            height: 126,
                             child: Center(
                               child: SizedBox(
                                 width: 18,
@@ -927,7 +966,25 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           )
-                        else
+                        else if (_vehicles.isEmpty) ...[
+                          // Guests / no vehicle yet: "What do you ride?" decides
+                          // which packages show below. "Add your vehicle" on the
+                          // card opens the same add-vehicle flow as before.
+                          const SizedBox(height: 6),
+                          RidePickerCard(
+                            value: _ridePref,
+                            onChanged: _setRidePref,
+                            onAddVehicle: _openAddVehicle,
+                          ),
+                          if (_ridePref == 'both') ...[
+                            const SizedBox(height: 12),
+                            CarBikeSwitch(
+                              value: _bothView,
+                              onChanged: (v) => setState(() => _bothView = v),
+                            ),
+                          ],
+                          const SizedBox(height: 10),
+                        ] else
                           // VehicleCarousel already renders a "+ Add
                           // Vehicle" tile after the last vehicle card, and
                           // handles an empty vehicle list on its own
@@ -951,7 +1008,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         // Book Service/Book Washing don't apply to a
                         // two-wheeler — its own servicing/washing packages
                         // are booked straight from the coverflow below.
-                        if (!_isActiveVehicleTwoWheeler)
+                        if (!_showBikePackages)
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 18),
                             child: QuickActionRow(
@@ -959,7 +1016,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               onBookWashing: _bookWashing,
                             ),
                           ),
-                        if (_isActiveVehicleTwoWheeler) ...[
+                        if (_showBikePackages) ...[
                           const SizedBox(height: 22),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -1354,18 +1411,27 @@ class _HomeScreenState extends State<HomeScreen> {
               bottom: 134 + bottomInset,
               child: const EmergencyStatusBanner(),
             ),
-            // Offer hub (switched on/off from Supabase: offer_banner_control).
-            // Sits just above the spot where the emergency banner shrinks
-            // into its red circle, so the two never overlap.
-            // Other Reperi Services hub (yellow spanner) sits right above it:
-            // grows into the 16:9 banner; tapping the banner opens the
-            // Other Services screen.
-            Positioned(
-              right: 16,
-              bottom: 212 + bottomInset,
+            // Bottom-right corner, just above the nav bar:
+            //  • Yellow hub (Other Reperi Services) at the bottom — grows into
+            //    the 16:9 banner; tapping the banner opens Other Services.
+            //  • Offer button above it, only on days the offer is switched on
+            //    (Supabase: offer_banner_control = SHOW).
+            // While an emergency booking is open, both slide up above the
+            // red emergency banner (and its corner circle) so nothing overlaps.
+            ValueListenableBuilder<bool>(
+              valueListenable: EmergencyStatusBanner.active,
+              builder: (context, emergency, child) => AnimatedPositioned(
+                duration: const Duration(milliseconds: 380),
+                curve: Curves.easeOutCubic,
+                right: 16,
+                bottom: (emergency ? 212 : 104) + bottomInset,
+                child: child!,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const OfferHubButton(),
+                  const SizedBox(height: 14),
                   OtherServicesHubButton(
                     onOpen: () => Navigator.push(
                       context,
@@ -1374,8 +1440,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     // SOS circle in the hub's pop-up → Roadside Assistance.
                     onSos: _openRoadsideAssistance,
                   ),
-                  const SizedBox(height: 14),
-                  const OfferHubButton(),
                 ],
               ),
             ),

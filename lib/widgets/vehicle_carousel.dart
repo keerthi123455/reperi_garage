@@ -174,7 +174,8 @@ class _VehicleCarouselState extends State<VehicleCarousel> {
     });
   }
 
-  static const double _tileHeight = 158;
+  // Slim card: one row (photo, name, plate) + the "My bookings & updates" bar.
+  static const double _tileHeight = 126;
 
   @override
   Widget build(BuildContext context) {

@@ -70,6 +70,11 @@ class EmergencyBannerOverlay extends StatelessWidget {
 class EmergencyStatusBanner extends StatefulWidget {
   const EmergencyStatusBanner({super.key});
 
+  /// True while the customer has an open Roadside Assistance booking (the
+  /// banner is showing). Home listens to this to lift its floating buttons
+  /// above the banner.
+  static final ValueNotifier<bool> active = ValueNotifier<bool>(false);
+
   @override
   State<EmergencyStatusBanner> createState() => _EmergencyStatusBannerState();
 }
@@ -231,6 +236,7 @@ class _EmergencyStatusBannerState extends State<EmergencyStatusBanner>
       }
       if (!mounted) return;
       final active = open != null;
+      EmergencyStatusBanner.active.value = active;
       final otpRequested = open?['return_otp_generated_at'] != null;
       final bookingId = open?['id']?.toString();
       if (active != _active ||
