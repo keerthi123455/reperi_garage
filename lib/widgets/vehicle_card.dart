@@ -647,6 +647,37 @@ class _DefaultVehicleAvatar extends StatelessWidget {
   }
 }
 
+/// The same cartoon car / scooter avatar at any size — used by the
+/// vehicle dashboard header (vehicle_bookings_screen.dart).
+class VehicleCartoonAvatar extends StatelessWidget {
+  const VehicleCartoonAvatar({super.key, required this.isBike, this.size = 72});
+
+  final bool isBike;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment(-0.4, -1),
+          end: Alignment(0.4, 1),
+          colors: [Color(0xFFBFE3FF), Color(0xFF7FB8F0)],
+        ),
+      ),
+      alignment: Alignment.center,
+      child: SizedBox(
+        width: size * 0.82,
+        height: size * 0.82 * 40 / 66,
+        child: CustomPaint(painter: _CartoonVehiclePainter(isBike: isBike)),
+      ),
+    );
+  }
+}
+
 /// Draws in a 66 × 40 grid, scaled to fit.
 class _CartoonVehiclePainter extends CustomPainter {
   const _CartoonVehiclePainter({required this.isBike});

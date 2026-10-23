@@ -166,27 +166,28 @@ class _BannerCoverflowState extends State<BannerCoverflow>
     // out to the left/right), so normal hit-testing would ignore touches on
     // them. _SwipeArea accepts touches anywhere in the strip's height —
     // drag anywhere to scroll, tap any slide to bring it forward.
+    // No SizedBox in between: a normal box would reject touches outside its
+    // own bounds before they reach the side slides — _SwipeArea sets the
+    // strip's height itself.
     return _SwipeArea(
+      height: kBannerHeight,
       onDragStart: _onDragStart,
       onDragUpdate: _onDragUpdate,
       onDragEnd: _onDragEnd,
-      child: SizedBox(
-        height: kBannerHeight,
-        child: _OverflowHitStack(
-          alignment: Alignment.centerLeft,
-          clipBehavior: Clip.none,
-          children: [
-            for (final i in order)
-              _BannerTransform(
-                params: _paramsFor(i - _position),
-                child: _BannerSlide(
-                  assetPath: widget.imagePaths[i],
-                  selected: i == nearest,
-                  onTap: () => _tapSlide(i),
-                ),
+      child: _OverflowHitStack(
+        alignment: Alignment.centerLeft,
+        clipBehavior: Clip.none,
+        children: [
+          for (final i in order)
+            _BannerTransform(
+              params: _paramsFor(i - _position),
+              child: _BannerSlide(
+                assetPath: widget.imagePaths[i],
+                selected: i == nearest,
+                onTap: () => _tapSlide(i),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -358,22 +359,25 @@ class _RenderOverflowHitStack extends RenderStack {
 /// through to the slide under the finger.
 class _SwipeArea extends SingleChildRenderObjectWidget {
   const _SwipeArea({
+    required this.height,
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
     required super.child,
   });
 
+  final double height;
   final GestureDragStartCallback onDragStart;
   final GestureDragUpdateCallback onDragUpdate;
   final GestureDragEndCallback onDragEnd;
 
   @override
   _RenderSwipeArea createRenderObject(BuildContext context) =>
-      _RenderSwipeArea(onDragStart, onDragUpdate, onDragEnd, MediaQuery.maybeGestureSettingsOf(context));
+      _RenderSwipeArea(height, onDragStart, onDragUpdate, onDragEnd, MediaQuery.maybeGestureSettingsOf(context));
 
   @override
   void updateRenderObject(BuildContext context, _RenderSwipeArea renderObject) {
+    renderObject.height = height;
     renderObject.drag
       ..onStart = onDragStart
       ..onUpdate = onDragUpdate
@@ -384,6 +388,7 @@ class _SwipeArea extends SingleChildRenderObjectWidget {
 
 class _RenderSwipeArea extends RenderProxyBox {
   _RenderSwipeArea(
+    this._height,
     GestureDragStartCallback onStart,
     GestureDragUpdateCallback onUpdate,
     GestureDragEndCallback onEnd,
@@ -395,6 +400,24 @@ class _RenderSwipeArea extends RenderProxyBox {
           ..gestureSettings = settings;
 
   final HorizontalDragGestureRecognizer drag;
+
+  double _height;
+  set height(double v) {
+    if (v == _height) return;
+    _height = v;
+    markNeedsLayout();
+  }
+
+  @override
+  void performLayout() {
+    final c = BoxConstraints.tightFor(height: _height).enforce(constraints);
+    if (child != null) {
+      child!.layout(c, parentUsesSize: true);
+      size = constraints.constrain(child!.size);
+    } else {
+      size = c.constrain(Size(c.maxWidth.isFinite ? c.maxWidth : 0, _height));
+    }
+  }
 
   @override
   bool hitTest(BoxHitTestResult result, {required Offset position}) {

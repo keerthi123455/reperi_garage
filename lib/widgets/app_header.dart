@@ -4,7 +4,6 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
-import 'hex_logo.dart';
 
 class AppHeader extends StatelessWidget {
   const AppHeader({
@@ -28,30 +27,9 @@ class AppHeader extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _IconButtonChip(icon: Symbols.menu, onTap: onMenu),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const HexLogo(),
-              const SizedBox(width: 10),
-              ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFFF7DE9B), AppColors.accent, AppColors.accent2],
-                  stops: [0, 0.6, 1],
-                ).createShader(bounds),
-                child: Text(
-                  'REPERI',
-                  style: GoogleFonts.manrope(
-                    fontSize: 25,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2.5,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
+          // Wordmark only (no logo): bold, wide-spaced letters with a small
+          // gold bar under them. Dark text in light mode, gold in dark mode.
+          Flexible(child: _Wordmark()),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -65,6 +43,55 @@ class AppHeader extends StatelessWidget {
                 onTap: onSearch,
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Wordmark extends StatelessWidget {
+  const _Wordmark();
+
+  @override
+  Widget build(BuildContext context) {
+    final style = GoogleFonts.manrope(
+      fontSize: 26,
+      fontWeight: FontWeight.w900,
+      letterSpacing: 6,
+      height: 1,
+      color: AppColors.isDark ? Colors.white : AppColors.onAccentDark,
+    );
+    final text = Text('REPERI', maxLines: 1, style: style);
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            // letterSpacing adds space after the last letter too — nudge
+            // so the word stays optically centred.
+            padding: const EdgeInsets.only(left: 6),
+            child: AppColors.isDark
+                ? ShaderMask(
+                    shaderCallback: (b) => const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0xFFF7DE9B), AppColors.accent, AppColors.accent2],
+                      stops: [0, 0.6, 1],
+                    ).createShader(b),
+                    child: text,
+                  )
+                : text,
+          ),
+          const SizedBox(height: 5),
+          Container(
+            width: 28,
+            height: 3,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(2),
+              gradient: const LinearGradient(colors: [Color(0xFFF5C842), AppColors.accent2]),
+            ),
           ),
         ],
       ),

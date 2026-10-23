@@ -26,17 +26,17 @@ class AppColors {
   static const Color onAccentDark = Color(0xFF12100B);
   static const Color onAccentDarker = Color(0xFF15120A);
 
-  // Theme-dependent surfaces — mutated by [applyMode]. Dark-mode values are
-  // the defaults the prototype shipped with.
-  static Color ink = const Color(0xFF08080A);
-  static Color txt = const Color(0xFFF4F1EA);
-  static Color surfaceRaised = const Color(0xFF101012);
-  static Color surfaceSunken = const Color(0xFF0E0E10);
-  static Color chipBg = const Color(0xFF131316);
-  static Color photoPlaceholder = const Color(0xFF1D1D21);
-  static Color toastBg = const Color(0xFF1B1B1F);
-  static Color activeCardGradientStart = const Color(0xFF17171A);
-  static Color activeCardGradientEnd = const Color(0xFF101012);
+  // Theme-dependent surfaces — mutated by [applyMode]. The app now starts in
+  // LIGHT mode, so these start with the light values (same as applyMode(false)).
+  static Color ink = const Color(0xFFEFEFED);
+  static Color txt = onAccentDark;
+  static Color surfaceRaised = const Color(0xFFFCFCFC);
+  static Color surfaceSunken = const Color(0xFFEFEFED);
+  static Color chipBg = const Color(0xFFFCFCFC);
+  static Color photoPlaceholder = const Color(0xFFEFEFED);
+  static Color toastBg = const Color(0xFFFCFCFC);
+  static Color activeCardGradientStart = const Color(0xFFFCFCFC);
+  static Color activeCardGradientEnd = const Color(0xFFEFEFED);
 
   /// Muted text — always derived from the current [txt], so it stays
   /// correct across a mode switch without needing its own field.
@@ -45,7 +45,7 @@ class AppColors {
   /// Hairline borders — same derivation as [mut].
   static Color get line => txt.withOpacity(0.10);
 
-  static bool _isDark = true;
+  static bool _isDark = false;
   static bool get isDark => _isDark;
 
   /// Repaints every theme-dependent field for [isDark] true (the

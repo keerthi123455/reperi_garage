@@ -22,6 +22,7 @@ import '../widgets/offer_bookings_list.dart';
 import '../widgets/resolve_requests_list.dart';
 import '../widgets/slot_picker.dart';
 import '../widgets/subscription_renewal.dart';
+import '../widgets/vehicle_card.dart' show VehicleCartoonAvatar;
 import 'booking_tracking_screen.dart';
 
 // Same brand catalog as profile_screen.dart's "Add/Edit Vehicle" sheet —
@@ -96,6 +97,16 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
   bool _claimsExpanded = false;
   bool _subscriptionExpanded = false;
   Map subscription = {};
+
+  // ── Dashboard layout (display only) ─────────────────────────────────
+  final ScrollController _scroll = ScrollController();
+  bool _headerCollapsed = false; // big header scrolled away → small one in the bar
+  bool _showPast = false; // Ongoing | Past tab
+  String _filter = 'all'; // all | service | wash | claims | puc
+  final Map<String, GlobalKey> _cardKeys = {}; // "Needs your attention" → card
+  final GlobalKey _planKey = GlobalKey();
+  bool _isBike = false; // cartoon car or scooter in the header
+  int _refreshTick = 0; // pull-to-refresh reloads the offer / resolve sections too
 
   // ── Scroll-to-new-booking ────────────────────────────────────────────
   // Set by PaymentScreen right after a successful booking so the customer
@@ -254,6 +265,9 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     // change immediately too.
     vehicleChangeBus.addListener(_refreshVehicleInfo);
     _startAutoRefresh();
+    _scroll.addListener(_onScroll);
+    // Vehicle type (car / scooter picture in the header).
+    _refreshVehicleInfo();
   }
 
   void _onThemeChanged() {
@@ -272,6 +286,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
         _carModel = (response['car_model'] ?? _carModel).toString();
         _carBrand = (response['car_brand'] ?? _carBrand).toString();
         _carNumber = (response['car_number'] ?? _carNumber).toString();
+        _isBike = (response['vehicle_type'] ?? '').toString() == 'two_wheeler';
       });
     } catch (e) {
       debugPrint('Error refreshing vehicle info: $e');
@@ -284,6 +299,8 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     vehicleChangeBus.removeListener(_refreshVehicleInfo);
     _cancelTicker?.cancel();
     _autoRefreshTimer?.cancel();
+    _scroll.removeListener(_onScroll);
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -1539,1159 +1556,449 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     }
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // Dashboard layout (display only — every fetch, verify, cancel, chat,
+  // renew and navigate action below is the same one used before).
+  // ══════════════════════════════════════════════════════════════════════
+
+  static const Color _gold = Color(0xFFD4A017);
+  static const Color _green = Color(0xFF1FAA59);
+  static const Color _blue = Color(0xFF1E5EFF);
+  static const Color _orange = Color(0xFFF08C00);
+  static const Color _red = Color(0xFFE5383B);
+
+  static const Set<String> _finishedWords = {
+    'delivered', 'completed', 'complete', 'cancelled', 'canceled',
+    'rejected', 'closed', 'done',
+  };
+
+  static bool _isFinished(dynamic status) =>
+      _finishedWords.contains((status ?? '').toString().trim().toLowerCase());
+
+  GlobalKey _keyFor(String id) => _cardKeys.putIfAbsent(id, () => GlobalKey());
+
+  void _onScroll() {
+    final collapsed = _scroll.hasClients && _scroll.offset > 120;
+    if (collapsed != _headerCollapsed) setState(() => _headerCollapsed = collapsed);
+  }
+
+  /// Brings a card on screen (switching back to Ongoing · All first).
+  void _jumpTo(GlobalKey key) {
+    setState(() {
+      _showPast = false;
+      _filter = 'all';
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = key.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
+        alignment: 0.05,
+      );
+    });
+  }
+
+  /// Same as tapping a booking before: marks its status seen, opens the
+  /// tracking screen (optionally straight into the chat), refreshes after.
+  void _openTracking(Map booking, {bool chat = false}) {
+    final bookingId = booking['id'].toString();
+    final currentStatus = (booking['booking_status'] ?? '').toString();
+    if (currentStatus.isNotEmpty) {
+      _markBookingStatusSeen(bookingId, currentStatus);
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BookingTrackingScreen(booking: booking, autoOpenChat: chat),
+      ),
+    ).then((_) => fetchBookings());
+  }
+
+  Future<void> _refreshAll() async {
+    setState(() => _refreshTick++);
+    await Future.wait([
+      fetchBookings(),
+      fetchClaimUpdates(),
+      fetchClaims(),
+      fetchSubscription(),
+      fetchWashHistory(),
+      fetchPollutionBookings(),
+      fetchInspectionBookings(),
+      _refreshVehicleInfo(),
+    ]);
+  }
+
+  // ── Plain-words status ────────────────────────────────────────────────
+  String _plainBookingStatus(Map b) {
+    final status = (b['booking_status'] ?? '').toString();
+    final pickup = (b['pickupdrop'] ?? '').toString().toLowerCase() == 'yes';
+    final stage = (b['delivery_stage'] ?? '').toString();
+    if (status == 'Delivered') return 'Completed';
+    if (status == 'Cancelled' || status == 'Rejected') return status;
+    if (pickup) {
+      if (stage == 'pickup_started') return 'Driver has arrived for pickup';
+      if (stage == 'picked_up') return 'Picked up — going to the garage';
+      if (stage == 'out_for_delivery') return 'On the way back to you';
+      if (stage == 'delivered') return 'Delivered to you';
+    }
+    if (status == 'Ready for Pickup') {
+      return pickup ? 'Ready — coming back to you soon' : 'Ready — you can collect it';
+    }
+    final early = status.isEmpty || status == 'Pending' || status == 'Accepted';
+    if (pickup && stage == 'to_garage' && early) return 'At the garage';
+    if (status.isEmpty || status == 'Pending') {
+      return pickup ? 'Booked — pickup is being arranged' : 'Booked — waiting for the garage';
+    }
+    if (status == 'Accepted') return 'Garage has accepted your booking';
+    return status;
+  }
+
+  String _plainComplianceStatus(Map b, String table) {
+    final status = (b['status'] ?? 'booked').toString();
+    if (_isFinished(status)) return _capitalise(status);
+    if (table == 'pollution_booking') {
+      switch ((b['delivery_stage'] ?? '').toString()) {
+        case 'pickup_started':
+          return 'Driver has arrived for pickup';
+        case 'picked_up':
+          return 'Getting your certificate';
+        case 'to_garage':
+          return 'On the way back to you';
+        case 'delivered':
+          return 'Delivered to you';
+      }
+    }
+    return _capitalise(status);
+  }
+
+  String _plainClaimStatus(Map c) {
+    final status = (c['claim_status'] ?? 'submitted').toString();
+    if (_isFinished(status)) return _capitalise(status);
+    switch ((c['delivery_stage'] ?? '').toString()) {
+      case 'pickup_started':
+        return 'Driver has arrived for pickup';
+      case 'picked_up':
+        return 'Picked up — going to the garage';
+      case 'to_garage':
+        return 'At the garage';
+      case 'out_for_delivery':
+        return 'On the way back to you';
+      case 'delivered':
+        return 'Delivered to you';
+    }
+    return _capitalise(status);
+  }
+
+  static String _capitalise(String s) {
+    final t = s.replaceAll('_', ' ').trim();
+    if (t.isEmpty) return t;
+    return t[0].toUpperCase() + t.substring(1);
+  }
+
+  // ── Feed (every booking type in one list) ────────────────────────────
+  List<_FeedItem> _feed() {
+    DateTime at(Map m) => DateTime.tryParse('${m['created_at'] ?? ''}') ?? DateTime(2000);
+    final items = <_FeedItem>[];
+    for (var i = 0; i < bookings.length; i++) {
+      final b = bookings[i] as Map;
+      final isWash = (b['package_name'] ?? '').toString().toLowerCase().contains('wash');
+      items.add(_FeedItem(
+        kind: isWash ? 'wash' : 'service',
+        past: _isFinished(b['booking_status']),
+        at: at(b),
+        build: () => _buildServiceCard(i, b),
+      ));
+    }
+    for (var i = 0; i < pollutionBookings.length; i++) {
+      final b = pollutionBookings[i] as Map;
+      items.add(_FeedItem(
+        kind: 'puc',
+        past: _isFinished(b['status']) || b['delivery_stage'] == 'delivered',
+        at: at(b),
+        build: () => KeyedSubtree(
+          key: _keyFor('p:${b['id']}'),
+          child: _buildComplianceCard(
+            title: 'Pollution Check',
+            booking: b,
+            table: 'pollution_booking',
+            bookingType: 'pollution',
+            highlightKey: (widget.highlightSection == 'pollution' && i == 0) ? _highlightKey : null,
+          ),
+        ),
+      ));
+    }
+    for (var i = 0; i < inspectionBookings.length; i++) {
+      final b = inspectionBookings[i] as Map;
+      items.add(_FeedItem(
+        kind: 'puc',
+        past: _isFinished(b['status']),
+        at: at(b),
+        build: () => KeyedSubtree(
+          key: _keyFor('i:${b['id']}'),
+          child: _buildComplianceCard(
+            title: 'Vehicle Inspection',
+            booking: b,
+            table: 'inspection_booking',
+            bookingType: 'inspection',
+            highlightKey: (widget.highlightSection == 'inspection' && i == 0) ? _highlightKey : null,
+          ),
+        ),
+      ));
+    }
+    for (var i = 0; i < claims.length; i++) {
+      final c = claims[i] as Map;
+      items.add(_FeedItem(
+        kind: 'claims',
+        past: _isFinished(c['claim_status']) || c['delivery_stage'] == 'delivered',
+        at: at(c),
+        build: () => KeyedSubtree(
+          key: _keyFor('c:${c['id']}'),
+          child: _buildClaimCard(
+            c,
+            highlightKey: (widget.highlightSection == 'claim' && i == 0) ? _highlightKey : null,
+          ),
+        ),
+      ));
+    }
+    items.sort((a, b) => b.at.compareTo(a.at));
+    return items;
+  }
+
+  // ── "Needs your attention" ───────────────────────────────────────────
+  List<_Attention> _attention() {
+    final out = <_Attention>[];
+
+    for (final raw in bookings) {
+      final b = raw as Map;
+      final id = b['id'].toString();
+      final name = (b['package_name'] ?? 'your booking').toString();
+      final status = (b['booking_status'] ?? '').toString();
+      final pickup = (b['pickupdrop'] ?? '').toString().toLowerCase() == 'yes';
+      final stage = b['delivery_stage'];
+      final key = _keyFor('b:$id');
+
+      if (pickup) {
+        if (stage == 'pickup_started' && b['pickup_otp_verified_at'] == null) {
+          out.add(_Attention(
+            icon: Icons.key_rounded,
+            color: _blue,
+            title: 'Driver is here for pickup',
+            body: 'Ask your driver for the code and enter it on "$name".',
+            onTap: () => _jumpTo(key),
+          ));
+        }
+        if (stage == 'out_for_delivery' && b['return_otp_verified_at'] == null) {
+          out.add(_Attention(
+            icon: Icons.key_rounded,
+            color: _blue,
+            title: 'Your vehicle is coming back',
+            body: 'When it arrives, ask your driver for the code and enter it on "$name".',
+            onTap: () => _jumpTo(key),
+          ));
+        }
+      } else {
+        if (status != 'Ready for Pickup' &&
+            status != 'Delivered' &&
+            b['pickup_otp_code'] != null &&
+            b['pickup_otp_verified_at'] == null) {
+          out.add(_Attention(
+            icon: Icons.key_rounded,
+            color: _blue,
+            title: "Enter the garage's code",
+            body: 'Ask the garage for the code and enter it on "$name".',
+            onTap: () => _jumpTo(key),
+          ));
+        }
+        if (status == 'Ready for Pickup' && b['return_otp_verified_at'] == null) {
+          out.add(_Attention(
+            icon: Icons.key_rounded,
+            color: _blue,
+            title: 'Your vehicle is ready to collect',
+            body: 'At the garage, ask for the code and enter it on "$name".',
+            onTap: () => _jumpTo(key),
+          ));
+        }
+      }
+
+      if (unreadBookingIds.contains(id)) {
+        out.add(_Attention(
+          icon: Icons.chat_bubble_rounded,
+          color: _red,
+          title: 'New message from the garage',
+          body: 'About "$name" — tap to reply.',
+          onTap: () => _openTracking(b, chat: true),
+        ));
+      } else if (!_isFinished(status) &&
+          status.isNotEmpty &&
+          status != 'Pending' &&
+          _seenBookingStatuses[id] != status) {
+        out.add(_Attention(
+          icon: Icons.notifications_active_rounded,
+          color: _red,
+          title: 'New update on "$name"',
+          body: 'Tap to see what changed.',
+          onTap: () => _openTracking(b),
+        ));
+      }
+    }
+
+    for (final raw in pollutionBookings) {
+      final b = raw as Map;
+      final key = _keyFor('p:${b['id']}');
+      if (b['delivery_stage'] == 'pickup_started' && b['pickup_otp_verified_at'] == null) {
+        out.add(_Attention(
+          icon: Icons.key_rounded,
+          color: _blue,
+          title: 'Driver is here for pickup',
+          body: 'Ask your driver for the code and enter it on "Pollution Check".',
+          onTap: () => _jumpTo(key),
+        ));
+      }
+      if (b['delivery_stage'] == 'to_garage' && b['return_otp_verified_at'] == null) {
+        out.add(_Attention(
+          icon: Icons.key_rounded,
+          color: _blue,
+          title: 'Your vehicle is coming back',
+          body: 'When it arrives, ask your driver for the code and enter it on "Pollution Check".',
+          onTap: () => _jumpTo(key),
+        ));
+      }
+    }
+
+    for (final raw in claims) {
+      final c = raw as Map;
+      final key = _keyFor('c:${c['id']}');
+      if (c['delivery_stage'] == 'pickup_started' && c['pickup_otp_verified_at'] == null) {
+        out.add(_Attention(
+          icon: Icons.key_rounded,
+          color: _blue,
+          title: 'Driver is here for pickup',
+          body: 'Ask your driver for the code and enter it on "Claim Assistance".',
+          onTap: () => _jumpTo(key),
+        ));
+      }
+      if (c['delivery_stage'] == 'out_for_delivery' && c['return_otp_verified_at'] == null) {
+        out.add(_Attention(
+          icon: Icons.key_rounded,
+          color: _blue,
+          title: 'Your vehicle is coming back',
+          body: 'When it arrives, ask your driver for the code and enter it on "Claim Assistance".',
+          onTap: () => _jumpTo(key),
+        ));
+      }
+    }
+
+    if (subscription.isNotEmpty && planRenewalDue(subscription)) {
+      out.add(_Attention(
+        icon: Icons.autorenew_rounded,
+        color: _orange,
+        title: 'Wash plan: ${planStatusLabel(subscription).toLowerCase()}',
+        body: 'Renew now to keep your washes going.',
+        onTap: () {
+          setState(() => _subscriptionExpanded = true);
+          _jumpTo(_planKey);
+        },
+      ));
+    }
+    return out;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.ink,
       appBar: AppBar(
         backgroundColor: AppColors.surfaceRaised,
-        elevation: 0,
-        title: Text(
-          _carModel,
-          style: const TextStyle(
-            color: Color(0xFFD4A017),
-            fontWeight: FontWeight.w900,
-          ),
+        elevation: _headerCollapsed ? 1 : 0,
+        scrolledUnderElevation: 1,
+        iconTheme: IconThemeData(color: AppColors.txt),
+        title: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          child: _headerCollapsed
+              ? Row(
+                  key: const ValueKey('collapsed'),
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _carModel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: AppColors.txt, fontSize: 19, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(child: _plate(small: true)),
+                    const SizedBox(width: 12),
+                  ],
+                )
+              : Text(
+                  'My vehicle',
+                  key: const ValueKey('expanded'),
+                  style: TextStyle(color: AppColors.mut, fontSize: 18, fontWeight: FontWeight.w800),
+                ),
         ),
       ),
       body: EmergencyBannerOverlay(
         child: loading
-          ? const Center(
-              child:
-                  CircularProgressIndicator(color: Color(0xFFD4A017)),
-            )
-          : _loadError
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.cloud_off_rounded, color: AppColors.mut, size: 40),
-                        const SizedBox(height: 16),
-                        Text(
-                          "Couldn't load this vehicle's bookings",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w700, fontSize: 15),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Check your connection and try again.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.mut, fontSize: 13),
-                        ),
-                        const SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: () {
-                            setState(() => loading = true);
-                            fetchBookings();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFD4A017),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          ),
-                          child: const Text('RETRY',
-                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800)),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    // ── VEHICLE HEADER ──
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [AppColors.ink, AppColors.surfaceRaised],
-                        ),
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(color: AppColors.line),
-                      ),
+            ? _buildSkeleton()
+            : _loadError
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'ACTIVE VEHICLE',
-                                style: TextStyle(
-                                  color: Color(0xFFD4A017),
-                                  fontSize: 11,
-                                  letterSpacing: 2,
-                                ),
-                              ),
-                              Row(
-                                children: [
-                                  Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: _editVehicleSheet,
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(7),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFD4A017).withOpacity(0.12),
-                                          borderRadius: BorderRadius.circular(10),
-                                        ),
-                                        child: const Icon(
-                                          Icons.edit_outlined,
-                                          color: Color(0xFFD4A017),
-                                          size: 18,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: _confirmDeleteVehicle,
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(7),
-                                        decoration: BoxDecoration(
-                                          color: Colors.red.withOpacity(0.12),
-                                          borderRadius: BorderRadius.circular(10),
-                                        ),
-                                        child: const Icon(
-                                          Icons.delete_outline_rounded,
-                                          color: Colors.red,
-                                          size: 18,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
+                          Icon(Icons.cloud_off_rounded, color: AppColors.mut, size: 44),
+                          const SizedBox(height: 16),
                           Text(
-                            _carModel,
-                            style: TextStyle(
-                              color: AppColors.txt,
-                              fontSize: 34,
-                              fontWeight: FontWeight.w900,
-                            ),
+                            "Couldn't load this vehicle's bookings",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w800, fontSize: 18),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 6),
                           Text(
-                            _carBrand,
-                            style: TextStyle(color: AppColors.mut, fontSize: 16),
+                            'Check your connection and try again.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: AppColors.mut, fontSize: 15),
                           ),
-                          const SizedBox(height: 22),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFD4A017)
-                                  .withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: const Color(0xFFD4A017)
-                                    .withOpacity(0.3),
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            height: 52,
+                            child: ElevatedButton(
+                              onPressed: () {
+                                setState(() => loading = true);
+                                fetchBookings();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _gold,
+                                padding: const EdgeInsets.symmetric(horizontal: 32),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                               ),
-                            ),
-                            child: Text(
-                              _carNumber,
-                              style: const TextStyle(
-                                color: Color(0xFFD4A017),
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 2,
-                              ),
+                              child: const Text('TRY AGAIN',
+                                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 16)),
                             ),
                           ),
                         ],
                       ),
                     ),
-
-                    // This entire section only applies to THIS vehicle —
-                    // `subscription` comes from fetchSubscription(), which
-                    // queries `subscriptions` filtered to
-                    // `vehicle_id = widget.vehicleId`, and stays `{}` when
-                    // this vehicle has none. Previously this whole block
-                    // rendered unconditionally with a hardcoded title/price
-                    // fallback, making every vehicle look like it had an
-                    // active subscription regardless of the actual data.
-                    if (subscription.isNotEmpty) ...[
-                    const SizedBox(height: 34),
-
-                    const Text(
-                      'Monthly Wash Plan',
-                      style: TextStyle(
-                        color: Color(0xFFD4A017),
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ── EXPANDABLE SUBSCRIPTION TILE ──
-                    GestureDetector(
-                      key: widget.highlightSection == 'subscription' ? _highlightKey : null,
-                      onTap: () {
-                        setState(() {
-                          _subscriptionExpanded = !_subscriptionExpanded;
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFD4A017).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: const Color(0xFFD4A017).withOpacity(0.5),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        subscription['plan_title'] ??
-                                            'Monthly Wash Plan',
-                                        style: const TextStyle(
-                                          color: Color(0xFFD4A017),
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Flexible(
-                                            child: Text(
-                                              '₹${subscription['price'] ?? '-'}/month',
-                                              style: TextStyle(
-                                                color: AppColors.txt,
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 6,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFD4A017),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              planStatusLabel(subscription),
-                                              style: TextStyle(
-                                                color: AppColors.onAccentDark,
-                                                fontWeight: FontWeight.w900,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  _subscriptionExpanded ? Icons.expand_less : Icons.expand_more,
-                                  color: const Color(0xFFD4A017),
-                                  size: 28,
-                                ),
-                              ],
-                            ),
-
-                            // ── EXPANDED WASH HISTORY ──
-                            if (_subscriptionExpanded) ...[
-                              const SizedBox(height: 20),
-                              const Divider(color: Color(0xFFD4A017)),
-                              const SizedBox(height: 16),
-                              // Last 2 days / last day: blue RENEW AND PAY.
-                              if (planRenewalDue(subscription))
-                                SubscriptionRenewButton(
-                                  subscription: subscription,
-                                  onRenewed: () {
-                                    fetchSubscription();
-                                    fetchWashHistory();
-                                  },
-                                ),
-                              const Text(
-                                'Wash History',
-                                style: TextStyle(
-                                  color: Color(0xFFD4A017),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              if (washHistory.isEmpty)
-                                Text(
-                                  'No washes yet',
-                                  style: TextStyle(
-                                    color: AppColors.mut,
-                                    fontSize: 12,
-                                  ),
-                                )
-                              else
-                                ...washHistory.map((wash) {
-                                  final dateStr = formatDate(wash['created_at'] ?? '');
-                                  final dayStr = formatDay(wash['created_at'] ?? '');
-
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 16),
-                                    padding: const EdgeInsets.all(14),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.surfaceSunken,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: AppColors.line),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        // Date and Day
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  dateStr,
-                                                  style: const TextStyle(
-                                                    color: Color(0xFFD4A017),
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  dayStr,
-                                                  style: TextStyle(
-                                                    color: AppColors.mut,
-                                                    fontSize: 11,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 8,
-                                                vertical: 4,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.green.shade900.withOpacity(0.3),
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                              child: Text(
-                                                'Completed',
-                                                style: TextStyle(
-                                                  color: Colors.green.shade400,
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 12),
-
-                                        // Before and After Photos
-                                        if (wash['before_photo_url'] != null || wash['after_photo_url'] != null)
-                                          Row(
-                                            children: [
-                                              if (wash['before_photo_url'] != null)
-                                                Expanded(
-                                                  child: Column(
-                                                    children: [
-                                                      GestureDetector(
-                                                        onTap: () {
-                                                          _showImageViewer(context, wash['before_photo_url'], 'Before Photo');
-                                                        },
-                                                        child: Container(
-                                                          decoration: BoxDecoration(
-                                                            borderRadius: BorderRadius.circular(10),
-                                                            border: Border.all(
-                                                              color: AppColors.accent.withOpacity(0.35),
-                                                              width: 1.2,
-                                                            ),
-                                                            boxShadow: [
-                                                              BoxShadow(
-                                                                color: Colors.black.withOpacity(0.18),
-                                                                blurRadius: 6,
-                                                                offset: const Offset(0, 3),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                          child: ClipRRect(
-                                                            borderRadius: BorderRadius.circular(9),
-                                                            child: Stack(
-                                                              children: [
-                                                                Image.network(
-                                                                  wash['before_photo_url'],
-                                                                  height: 70,
-                                                                  width: double.infinity,
-                                                                  fit: BoxFit.cover,
-                                                                  errorBuilder: (_, __, ___) => Container(
-                                                                    height: 70,
-                                                                    color: AppColors.photoPlaceholder,
-                                                                    child: Icon(Icons.image_not_supported, color: AppColors.mut),
-                                                                  ),
-                                                                ),
-                                                                Positioned(
-                                                                  right: 4,
-                                                                  bottom: 4,
-                                                                  child: Container(
-                                                                    padding: const EdgeInsets.all(3),
-                                                                    decoration: BoxDecoration(
-                                                                      color: Colors.black.withOpacity(0.45),
-                                                                      shape: BoxShape.circle,
-                                                                    ),
-                                                                    child: const Icon(
-                                                                      Icons.zoom_in_rounded,
-                                                                      color: Colors.white,
-                                                                      size: 13,
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 4),
-                                                      Text(
-                                                        'Before',
-                                                        style: TextStyle(
-                                                          color: AppColors.mut,
-                                                          fontSize: 9,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              const SizedBox(width: 8),
-                                              if (wash['after_photo_url'] != null)
-                                                Expanded(
-                                                  child: Column(
-                                                    children: [
-                                                      GestureDetector(
-                                                        onTap: () {
-                                                          _showImageViewer(context, wash['after_photo_url'], 'After Photo');
-                                                        },
-                                                        child: Container(
-                                                          decoration: BoxDecoration(
-                                                            borderRadius: BorderRadius.circular(10),
-                                                            border: Border.all(
-                                                              color: AppColors.accent.withOpacity(0.35),
-                                                              width: 1.2,
-                                                            ),
-                                                            boxShadow: [
-                                                              BoxShadow(
-                                                                color: Colors.black.withOpacity(0.18),
-                                                                blurRadius: 6,
-                                                                offset: const Offset(0, 3),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                          child: ClipRRect(
-                                                            borderRadius: BorderRadius.circular(9),
-                                                            child: Stack(
-                                                              children: [
-                                                                Image.network(
-                                                                  wash['after_photo_url'],
-                                                                  height: 70,
-                                                                  width: double.infinity,
-                                                                  fit: BoxFit.cover,
-                                                                  errorBuilder: (_, __, ___) => Container(
-                                                                    height: 70,
-                                                                    color: AppColors.photoPlaceholder,
-                                                                    child: Icon(Icons.image_not_supported, color: AppColors.mut),
-                                                                  ),
-                                                                ),
-                                                                Positioned(
-                                                                  right: 4,
-                                                                  bottom: 4,
-                                                                  child: Container(
-                                                                    padding: const EdgeInsets.all(3),
-                                                                    decoration: BoxDecoration(
-                                                                      color: Colors.black.withOpacity(0.45),
-                                                                      shape: BoxShape.circle,
-                                                                    ),
-                                                                    child: const Icon(
-                                                                      Icons.zoom_in_rounded,
-                                                                      color: Colors.white,
-                                                                      size: 13,
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 4),
-                                                      Text(
-                                                        'After',
-                                                        style: TextStyle(
-                                                          color: AppColors.mut,
-                                                          fontSize: 9,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
-                            ],
-                          ],
+                  )
+                : RefreshIndicator(
+                    color: _gold,
+                    onRefresh: _refreshAll,
+                    child: SingleChildScrollView(
+                      controller: _scroll,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 60),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 600),
+                          child: _buildDashboard(context),
                         ),
                       ),
                     ),
-                    ], // end if (subscription.isNotEmpty)
-
-                    const SizedBox(height: 34),
-
-                    Text(
-                      'Booked Services',
-                      style: TextStyle(
-                        color: AppColors.txt,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // ── CLAIM UPDATES SECTION ──
-                    GestureDetector(
-                      onTap: () => setState(() => _claimsExpanded = !_claimsExpanded),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceRaised,
-                          borderRadius: BorderRadius.circular(26),
-                          border: Border.all(
-                            color: claimUpdates.isNotEmpty
-                                ? const Color(0xFFD4A017).withOpacity(0.3)
-                                : AppColors.line,
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text(
-                                  'Claim Updates',
-                                  style: TextStyle(
-                                    color: Color(0xFFD4A017),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                Icon(
-                                  _claimsExpanded
-                                      ? Icons.expand_less
-                                      : Icons.expand_more,
-                                  color: const Color(0xFFD4A017),
-                                ),
-                              ],
-                            ),
-                            if (_claimsExpanded) ...[
-                              const SizedBox(height: 16),
-                              if (claimUpdates.isEmpty)
-                                Center(
-                                  child: Text(
-                                    'No claim updates yet',
-                                    style: TextStyle(
-                                      color: AppColors.mut,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                )
-                              else
-                                ...claimUpdates.map((update) {
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 16),
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.surfaceSunken,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(color: AppColors.line),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        if (update['photo_url'] != null)
-                                          Container(
-                                            height: 160,
-                                            decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              image: DecorationImage(
-                                                image: NetworkImage(
-                                                    update['photo_url']),
-                                                fit: BoxFit.cover,
-                                              ),
-                                            ),
-                                            margin: const EdgeInsets.only(
-                                                bottom: 12),
-                                          ),
-                                        Text(
-                                          update['description'] ??
-                                              'No description',
-                                          style: TextStyle(
-                                            color: AppColors.txt,
-                                            fontSize: 16,
-                                            height: 1.5,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          (DateTime.tryParse('${update['created_at'] ?? ''}')
-                                              ?.toString()
-                                              .split('.')[0] ?? ''),
-                                          style: TextStyle(
-                                            color: AppColors.mut,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    if (bookings.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(30),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceRaised,
-                          borderRadius: BorderRadius.circular(26),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'No Services Booked Yet',
-                            style: TextStyle(color: AppColors.mut, fontSize: 16),
-                          ),
-                        ),
-                      ),
-
-                    ...bookings.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final booking = entry.value;
-                      final bookingId = booking['id'].toString();
-                      final currentStatus = (booking['booking_status'] ?? '').toString();
-                      final hasUpdate = currentStatus != 'Pending' &&
-                          _seenBookingStatuses[bookingId] != currentStatus;
-                      final hasUnread = unreadBookingIds
-                          .contains(booking['id'].toString());
-
-                      // ── GET GARAGE INFO FROM ADMIN DATA ──
-                      final adminData = booking['admin'] as Map<String, dynamic>?;
-                      final garageName = adminData?['username'] ?? 'Garage';
-                      final garageAddress = adminData?['address'] ?? '';
-                      final garageLat = (adminData?['latitude'] as num?)?.toDouble();
-                      final garageLong = (adminData?['longitude'] as num?)?.toDouble();
-                      // No pickup/drop selected means the customer
-                      // themselves is the one going to the garage in
-                      // person (to drop off and later collect the
-                      // vehicle), so that's the case worth a navigate
-                      // button — doorstep pickup/drop is a delivery
-                      // partner's job instead, regardless of how the
-                      // booking was paid for.
-                      final needsGarageVisit =
-                          (booking['pickupdrop'] ?? '').toString().toLowerCase() != 'yes';
-
-                      return GestureDetector(
-                        key: (widget.highlightSection == 'bookings' && index == 0)
-                            ? _highlightKey
-                            : null,
-                        onTap: () {
-                          // Viewing the tracking screen IS "seeing" this
-                          // booking's current status — snapshot it now so
-                          // the "NEW SERVICE UPDATE" badge clears and stays
-                          // cleared until the status next changes.
-                          if (currentStatus.isNotEmpty) {
-                            _markBookingStatusSeen(bookingId, currentStatus);
-                          }
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => BookingTrackingScreen(
-                                booking: booking,
-                              ),
-                            ),
-                          ).then((_) => fetchBookings());
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 22),
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceRaised,
-                            borderRadius: BorderRadius.circular(28),
-                            border: Border.all(color: AppColors.line),
-                          ),
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      booking['package_name'] ?? '',
-                                      style: TextStyle(
-                                        color: AppColors.txt,
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                  ),
-                                  // ── UNREAD CHAT BADGE ──
-                                  if (hasUnread) ...[
-                                    const SizedBox(width: 10),
-                                    Container(
-                                      padding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 5),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red,
-                                        borderRadius:
-                                            BorderRadius.circular(20),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.red
-                                                .withOpacity(0.5),
-                                            blurRadius: 8,
-                                          ),
-                                        ],
-                                      ),
-                                      child: const Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                              Icons
-                                                  .chat_bubble_rounded,
-                                              color: Colors.white,
-                                              size: 11),
-                                          SizedBox(width: 5),
-                                          Text(
-                                            'CHAT',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 10,
-                                              fontWeight:
-                                                  FontWeight.w900,
-                                              letterSpacing: 0.8,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                  const SizedBox(width: 10),
-                                  Icon(
-                                    Icons.arrow_forward_ios,
-                                    color: AppColors.mut,
-                                    size: 18,
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 18),
-
-                              if (hasUpdate)
-                                Container(
-                                  margin: const EdgeInsets.only(
-                                      bottom: 18),
-                                  padding:
-                                      const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.shade700,
-                                    borderRadius:
-                                        BorderRadius.circular(18),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.red
-                                            .withOpacity(0.45),
-                                        blurRadius: 18,
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                          Icons
-                                              .notifications_active,
-                                          color: Colors.white,
-                                          size: 18),
-                                      SizedBox(width: 10),
-                                      Text(
-                                        'NEW SERVICE UPDATE',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: 1,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-
-                              Text(
-                                booking['package_price'] ?? '',
-                                style: const TextStyle(
-                                  color: Color(0xFFD4A017),
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                formatFullDateTime(booking['created_at']),
-                                style: TextStyle(color: AppColors.mut, fontSize: 13),
-                              ),
-                              BookingSlotBadge(record: booking),
-
-                              // Add-ons the garage asked for (approve & pay /
-                              // reject), and paid ones as sub-orders.
-                              BookingAddons(booking: booking),
-
-                              const SizedBox(height: 20),
-
-                              // ── NEW: GARAGE INFO SECTION ──
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.surfaceSunken,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: AppColors.line),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    // Garage Name
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.location_on_outlined,
-                                          color:
-                                              const Color(0xFFD4A017),
-                                          size: 16,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            'Garage: $garageName',
-                                            style: const TextStyle(
-                                              color: Color(0xFFD4A017),
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    // Garage Address
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Icon(
-                                          Icons.home_outlined,
-                                          color: AppColors.mut,
-                                          size: 16,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            garageAddress,
-                                            style: TextStyle(
-                                              color: AppColors.mut,
-                                              fontSize: 12,
-                                              height: 1.4,
-                                            ),
-                                            maxLines: 2,
-                                            overflow:
-                                                TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    if (needsGarageVisit &&
-                                        garageLat != null &&
-                                        garageLong != null &&
-                                        booking['booking_status'] != 'Delivered') ...[
-                                      const SizedBox(height: 12),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: OutlinedButton.icon(
-                                          onPressed: () =>
-                                              _openGarageNavigation(garageLat, garageLong),
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: const Color(0xFFD4A017),
-                                            side: const BorderSide(color: Color(0xFFD4A017)),
-                                            padding: const EdgeInsets.symmetric(vertical: 10),
-                                            shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(12)),
-                                          ),
-                                          icon: const Icon(Icons.directions_rounded, size: 18),
-                                          label: const Text(
-                                            'NAVIGATE TO GARAGE',
-                                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, letterSpacing: 0.4),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-
-                              const SizedBox(height: 20),
-
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFD4A017),
-                                  borderRadius:
-                                      BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFFD4A017)
-                                          .withOpacity(0.35),
-                                      blurRadius: 18,
-                                    ),
-                                  ],
-                                ),
-                                child: Text(
-                                  booking['booking_status'] ?? '',
-                                  style: TextStyle(
-                                    color: AppColors.onAccentDark,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
-                              ),
-
-                              if (_isCancellable(booking))
-                                _buildCancelWindow(
-                                  record: booking,
-                                  table: 'bookings',
-                                  bookingType: 'service',
-                                  title: booking['package_name'] as String,
-                                  price: booking['package_price'] as String?,
-                                ),
-
-                              if ((booking['pickupdrop'] ?? '')
-                                      .toString()
-                                      .toLowerCase() ==
-                                  'yes') ...[
-                                _DeliveryStageTracker(
-                                  stage: booking['delivery_stage'],
-                                  stageTimestamps: {
-                                    'pickup_started': booking['stage_pickup_started_at'],
-                                    'picked_up': booking['stage_picked_up_at'],
-                                    'to_garage': booking['stage_to_garage_at'],
-                                    'out_for_delivery': booking['stage_out_for_delivery_at'],
-                                    'delivered': booking['stage_delivered_at'],
-                                  },
-                                  createdAt: booking['created_at'],
-                                  hasGarageLeg: true,
-                                ),
-                                if (booking['delivery_stage'] == 'pickup_started')
-                                  _PickupOtpVerification(
-                                    table: 'bookings',
-                                    bookingId: booking['id'],
-                                    otpCode: booking['pickup_otp_code'] as String?,
-                                    verifiedAt: booking['pickup_otp_verified_at'],
-                                    onVerified: fetchBookings,
-                                  ),
-                                // Final leg back to the customer — mirrors
-                                // the pickup OTP above, gating the delivery
-                                // partner's "Vehicle Delivered" tap on the
-                                // customer confirming they actually got it.
-                                if (booking['delivery_stage'] == 'out_for_delivery')
-                                  _ReturnOtpVerification(
-                                    table: 'bookings',
-                                    bookingId: booking['id'],
-                                    otpCode: booking['return_otp_code'] as String?,
-                                    verifiedAt: booking['return_otp_verified_at'],
-                                    partnerLabel: 'your delivery partner',
-                                    isCod: (booking['payment_status'] ?? '')
-                                            .toString()
-                                            .toLowerCase() ==
-                                        'cod',
-                                    amount: booking['package_price'] as String?,
-                                    onVerified: fetchBookings,
-                                  ),
-                              ] else ...[
-                                // No pickup/drop — the customer drives to
-                                // the garage themselves, so there's a
-                                // drop-off OTP exchange with the garage
-                                // directly (booking_details_screen.dart
-                                // generates it) instead of a delivery
-                                // partner's pickup OTP. Reuses the same
-                                // pickup_otp_* columns, which otherwise sit
-                                // unused for a booking with no delivery trip.
-                                if (booking['booking_status'] !=
-                                        'Ready for Pickup' &&
-                                    booking['booking_status'] != 'Delivered')
-                                  _PickupOtpVerification(
-                                    table: 'bookings',
-                                    bookingId: booking['id'],
-                                    otpCode: booking['pickup_otp_code'] as String?,
-                                    verifiedAt: booking['pickup_otp_verified_at'],
-                                    partnerLabel: 'the garage',
-                                    onVerified: fetchBookings,
-                                  ),
-                                if (booking['booking_status'] ==
-                                    'Ready for Pickup')
-                                  _ReturnOtpVerification(
-                                    table: 'bookings',
-                                    bookingId: booking['id'],
-                                    otpCode: booking['return_otp_code'] as String?,
-                                    verifiedAt: booking['return_otp_verified_at'],
-                                    partnerLabel: 'the garage',
-                                    isCod: (booking['payment_status'] ?? '')
-                                            .toString()
-                                            .toLowerCase() ==
-                                        'cod',
-                                    amount: booking['package_price'] as String?,
-                                    onVerified: fetchBookings,
-                                  ),
-                              ],
-
-                              const SizedBox(height: 22),
-
-                              Row(
-                                children: [
-                                  const Spacer(),
-                                  Text(
-                                    'Tap to view live updates',
-                                    style: TextStyle(
-                                        color: AppColors.mut,
-                                        fontSize: 13),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Icon(Icons.arrow_forward_ios,
-                                      color: AppColors.mut, size: 13),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-
-                    if (pollutionBookings.isNotEmpty ||
-                        inspectionBookings.isNotEmpty) ...[
-                      const SizedBox(height: 24),
-                      Text(
-                        'Pollution & Inspection',
-                        style: TextStyle(
-                          color: AppColors.txt,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      ...pollutionBookings.asMap().entries.map(
-                        (entry) => _buildComplianceCard(
-                          title: 'Pollution Check',
-                          booking: entry.value,
-                          table: 'pollution_booking',
-                          bookingType: 'pollution',
-                          highlightKey: (widget.highlightSection == 'pollution' && entry.key == 0)
-                              ? _highlightKey
-                              : null,
-                        ),
-                      ),
-                      ...inspectionBookings.asMap().entries.map(
-                        (entry) => _buildComplianceCard(
-                          title: 'Vehicle Inspection',
-                          booking: entry.value,
-                          table: 'inspection_booking',
-                          bookingType: 'inspection',
-                          highlightKey: (widget.highlightSection == 'inspection' && entry.key == 0)
-                              ? _highlightKey
-                              : null,
-                        ),
-                      ),
-                    ],
-
-                    // Apartment offer washes (₹1 / ₹199 / ₹999) — booked per
-                    // apartment, not per vehicle, so this loads by the user.
-                    // Shows nothing when they have none.
-                    const OfferBookingsSection(),
-
-                    // ReperiResolve: after-service issues the customer sent,
-                    // with the price / message / photo your team sends from
-                    // the CRM. Shows nothing when there are none.
-                    ResolveRequestsSection(vehicleId: widget.vehicleId),
-
-                    if (claims.isNotEmpty) ...[
-                      const SizedBox(height: 24),
-                      Text(
-                        'Claims',
-                        style: TextStyle(
-                          color: AppColors.txt,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      ...claims.asMap().entries.map((entry) => _buildClaimCard(
-                            entry.value,
-                            highlightKey: (widget.highlightSection == 'claim' && entry.key == 0)
-                                ? _highlightKey
-                                : null,
-                          )),
-                    ],
-
-                    const SizedBox(height: 40),
-                  ],
-                ),
-              ),
-            ),
+                  ),
       ),
       bottomNavigationBar: BottomNavBar(
         currentIndex: 1,
@@ -2705,6 +2012,1071 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: AskAiButton(
         onTap: () => openAiAdvisor(context, _activeVehicleMap),
+      ),
+    );
+  }
+
+  Widget _buildDashboard(BuildContext context) {
+    final feed = _feed();
+    final attention = _attention();
+
+    final kinds = <String>{for (final f in feed) f.kind};
+    final chipKinds = ['service', 'wash', 'claims', 'puc'].where(kinds.contains).toList();
+    // A filter whose items have all gone away falls back to All.
+    final filter = (_filter == 'all' || kinds.contains(_filter)) ? _filter : 'all';
+    bool inFilter(_FeedItem f) => filter == 'all' || f.kind == filter;
+
+    final ongoing = feed.where((f) => !f.past && inFilter(f)).toList();
+    final past = feed.where((f) => f.past && inFilter(f)).toList();
+    final shown = _showPast ? past : ongoing;
+
+    final showClaimUpdates = (filter == 'all' || filter == 'claims') &&
+        (claims.isNotEmpty || claimUpdates.isNotEmpty);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildVehicleHeader(),
+
+        if (attention.isNotEmpty) ...[
+          const SizedBox(height: 26),
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  'Needs your attention',
+                  style: TextStyle(color: AppColors.txt, fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(color: _red, borderRadius: BorderRadius.circular(20)),
+                child: Text(
+                  '${attention.length}',
+                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...attention.map(_buildAttentionCard),
+        ],
+
+        // Only THIS vehicle's plan — fetchSubscription() filters by
+        // vehicle_id and leaves `subscription` empty when there's none.
+        if (subscription.isNotEmpty) ...[
+          const SizedBox(height: 26),
+          Text(
+            'Monthly wash plan',
+            style: TextStyle(color: AppColors.txt, fontSize: 22, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          KeyedSubtree(key: _planKey, child: _buildPlanCard(context)),
+        ],
+
+        const SizedBox(height: 28),
+        Text(
+          'Your bookings',
+          style: TextStyle(color: AppColors.txt, fontSize: 22, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 12),
+        _buildTabs(ongoing.length, past.length),
+        if (chipKinds.length > 1) ...[
+          const SizedBox(height: 12),
+          _buildChips(chipKinds, filter),
+        ],
+        const SizedBox(height: 16),
+
+        if (showClaimUpdates) _buildClaimUpdatesTile(),
+
+        if (shown.isEmpty) _buildEmptyState(anyBookings: feed.isNotEmpty, filter: filter),
+        ...shown.map((f) => f.build()),
+
+        if (!_showPast) ...[
+          // Apartment offer washes (₹1 / ₹199 / ₹999) — booked per
+          // apartment, not per vehicle, so this loads by the user.
+          // Shows nothing when they have none.
+          if (filter == 'all' || filter == 'wash')
+            OfferBookingsSection(key: ValueKey('offers-$_refreshTick')),
+          // ReperiResolve: after-service issues the customer sent, with the
+          // price / message / photo your team sends from the CRM. Shows
+          // nothing when there are none.
+          if (filter == 'all' || filter == 'service')
+            ResolveRequestsSection(
+              key: ValueKey('resolve-$_refreshTick'),
+              vehicleId: widget.vehicleId,
+            ),
+        ],
+      ],
+    );
+  }
+
+  // ── Header ────────────────────────────────────────────────────────────
+  Widget _plate({bool small = false}) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: small ? 10 : 14, vertical: small ? 5 : 7),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(small ? 8 : 10),
+          border: Border.all(color: const Color(0xFF111111), width: small ? 1.6 : 2),
+        ),
+        child: Text(
+          _carNumber.isEmpty ? '—' : _carNumber.toUpperCase(),
+          maxLines: 1,
+          style: TextStyle(
+            color: const Color(0xFF111111),
+            fontSize: small ? 14 : 17,
+            fontWeight: FontWeight.w900,
+            letterSpacing: small ? 1.5 : 2.5,
+            fontFamily: 'monospace',
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _headerButton({required IconData icon, required Color color, required VoidCallback onTap, required String tooltip}) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: SizedBox(width: 44, height: 44, child: Icon(icon, color: color, size: 22)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVehicleHeader() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.line),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 18, offset: const Offset(0, 6)),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          VehicleCartoonAvatar(isBike: _isBike, size: 76),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _carModel,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: AppColors.txt, fontSize: 26, fontWeight: FontWeight.w900, height: 1.1),
+                ),
+                if (_carBrand.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    _carBrand,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: AppColors.mut, fontSize: 15.5, fontWeight: FontWeight.w600),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                _plate(),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _headerButton(icon: Icons.edit_outlined, color: _gold, onTap: _editVehicleSheet, tooltip: 'Edit vehicle'),
+              const SizedBox(height: 10),
+              _headerButton(
+                  icon: Icons.delete_outline_rounded, color: _red, onTap: _confirmDeleteVehicle, tooltip: 'Delete vehicle'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Attention card ────────────────────────────────────────────────────
+  Widget _buildAttentionCard(_Attention a) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: a.onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Ink(
+            padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [a.color, Color.lerp(a.color, Colors.black, 0.22)!],
+              ),
+              boxShadow: [
+                BoxShadow(color: a.color.withOpacity(0.28), blurRadius: 14, offset: const Offset(0, 6)),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                  child: Icon(a.icon, color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        a.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900, height: 1.2),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        a.body,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14.5, height: 1.35),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 26),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Monthly plan card ────────────────────────────────────────────────
+  Widget _buildPlanCard(BuildContext context) {
+    final daysLeft = planDaysLeft(subscription);
+    final start = DateTime.tryParse('${subscription['start_date'] ?? ''}');
+    final end = DateTime.tryParse('${subscription['end_date'] ?? ''}');
+    final totalDays = (start != null && end != null && end.isAfter(start))
+        ? end.difference(start).inDays.clamp(1, 400)
+        : 30;
+    final shownDays = daysLeft == null ? null : math.max(0, daysLeft);
+    final progress = shownDays == null ? 1.0 : (shownDays / totalDays).clamp(0.0, 1.0).toDouble();
+    final due = planRenewalDue(subscription);
+    final ringColor = due ? _orange : _green;
+    final subId = subscription['id']?.toString();
+    final washesThisPlan = washHistory.where((w) => w['subscription_id']?.toString() == subId).length;
+    final endText = subscription['end_date'] == null ? null : formatDate(subscription['end_date'].toString());
+
+    return GestureDetector(
+      key: widget.highlightSection == 'subscription' ? _highlightKey : null,
+      onTap: () => setState(() => _subscriptionExpanded = !_subscriptionExpanded),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: due ? _orange.withOpacity(0.6) : AppColors.line, width: due ? 1.5 : 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                SizedBox(
+                  width: 74,
+                  height: 74,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox.expand(
+                        child: CircularProgressIndicator(
+                          value: progress,
+                          strokeWidth: 7,
+                          backgroundColor: AppColors.line,
+                          color: ringColor,
+                          strokeCap: StrokeCap.round,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                shownDays == null ? '—' : '$shownDays',
+                                style: TextStyle(color: AppColors.txt, fontSize: 22, fontWeight: FontWeight.w900, height: 1),
+                              ),
+                              Text(
+                                shownDays == 1 ? 'day' : 'days',
+                                style: TextStyle(color: AppColors.mut, fontSize: 12, fontWeight: FontWeight.w700),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        (subscription['plan_title'] ?? 'Monthly Wash Plan').toString(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: AppColors.txt, fontSize: 19, fontWeight: FontWeight.w900, height: 1.2),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '₹${subscription['price'] ?? '-'}/month',
+                        style: const TextStyle(color: _gold, fontSize: 16, fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        [
+                          '$washesThisPlan ${washesThisPlan == 1 ? 'wash' : 'washes'} done',
+                          if (endText != null && endText.isNotEmpty) 'ends $endText',
+                        ].join(' · '),
+                        style: TextStyle(color: AppColors.mut, fontSize: 14.5, height: 1.3),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: ringColor.withOpacity(0.14),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          planStatusLabel(subscription),
+                          style: TextStyle(color: ringColor, fontSize: 13, fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  _subscriptionExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                  color: AppColors.mut,
+                  size: 30,
+                ),
+              ],
+            ),
+            if (!_subscriptionExpanded) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Tap to see wash photos',
+                style: const TextStyle(color: _blue, fontSize: 15, fontWeight: FontWeight.w800),
+              ),
+            ],
+            if (_subscriptionExpanded) ...[
+              const SizedBox(height: 16),
+              Divider(color: AppColors.line, height: 1),
+              const SizedBox(height: 16),
+              // Last 2 days / last day: blue RENEW AND PAY.
+              if (due)
+                SubscriptionRenewButton(
+                  subscription: subscription,
+                  onRenewed: () {
+                    fetchSubscription();
+                    fetchWashHistory();
+                  },
+                ),
+              Text(
+                'Wash history',
+                style: TextStyle(color: AppColors.txt, fontSize: 17, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 12),
+              if (washHistory.isEmpty)
+                Text(
+                  'No washes yet',
+                  style: TextStyle(color: AppColors.mut, fontSize: 14.5),
+                )
+              else
+                ...washHistory.map((wash) => _buildWashItem(context, wash as Map)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Tabs + filter chips ──────────────────────────────────────────────
+  Widget _buildTabs(int ongoingCount, int pastCount) {
+    Widget seg(String label, bool selected, VoidCallback onTap) => Expanded(
+          child: GestureDetector(
+            onTap: onTap,
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              height: 50,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: selected ? AppColors.surfaceRaised : Colors.transparent,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: selected
+                    ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 10, offset: const Offset(0, 3))]
+                    : null,
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: selected ? AppColors.txt : AppColors.mut,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSunken,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Row(
+        children: [
+          seg('Ongoing · $ongoingCount', !_showPast, () => setState(() => _showPast = false)),
+          seg('Past · $pastCount', _showPast, () => setState(() => _showPast = true)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChips(List<String> chipKinds, String filter) {
+    const labels = {
+      'all': ('All', Icons.apps_rounded),
+      'service': ('Service', Icons.build_rounded),
+      'wash': ('Wash', Icons.local_car_wash_rounded),
+      'claims': ('Claims', Icons.description_rounded),
+      'puc': ('PUC', Icons.eco_rounded),
+    };
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: ['all', ...chipKinds].map((k) {
+          final selected = filter == k;
+          final (label, icon) = labels[k]!;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Material(
+              color: selected ? AppColors.txt : AppColors.surfaceRaised,
+              shape: StadiumBorder(side: BorderSide(color: selected ? AppColors.txt : AppColors.line)),
+              child: InkWell(
+                customBorder: const StadiumBorder(),
+                onTap: () => setState(() => _filter = k),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (k != 'all') ...[
+                        Icon(icon, size: 18, color: selected ? AppColors.ink : AppColors.mut),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: selected ? AppColors.ink : AppColors.txt,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ── Empty state + skeleton ───────────────────────────────────────────
+  Widget _buildEmptyState({required bool anyBookings, required String filter}) {
+    final String title;
+    final String body;
+    var showBook = false;
+    if (_showPast) {
+      title = 'Nothing here yet';
+      body = 'Finished bookings will show up here.';
+    } else if (filter != 'all') {
+      title = 'Nothing ongoing here';
+      body = 'Check the Past tab, or pick another category.';
+    } else if (!anyBookings) {
+      title = 'No bookings yet';
+      body = 'Book your first service — pickup & drop available.';
+      showBook = true;
+    } else {
+      title = 'No ongoing bookings';
+      body = 'Your finished bookings are in the Past tab.';
+      showBook = true;
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        children: [
+          VehicleCartoonAvatar(isBike: _isBike, size: 72),
+          const SizedBox(height: 14),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.txt, fontSize: 21, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            body,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.mut, fontSize: 15, height: 1.4),
+          ),
+          if (showBook) ...[
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: ElevatedButton(
+                onPressed: () => handleBottomNavSelect(
+                  context,
+                  3,
+                  currentIndex: 1,
+                  activeVehicle: _activeVehicleMap,
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.txt,
+                  foregroundColor: AppColors.ink,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                child: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Book a service', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkeleton() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+      physics: const NeverScrollableScrollPhysics(),
+      children: const [
+        _SkeletonBox(height: 112, radius: 28),
+        SizedBox(height: 28),
+        _SkeletonBox(height: 50, radius: 18),
+        SizedBox(height: 16),
+        _SkeletonCard(),
+        _SkeletonCard(),
+      ],
+    );
+  }
+
+  // ── One card shape for every booking type ────────────────────────────
+  Widget _iconAction({required IconData icon, required VoidCallback onTap, bool dot = false, required String tooltip}) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: AppColors.surfaceSunken,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            width: 54,
+            height: 54,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(icon, color: AppColors.txt, size: 24),
+                if (dot)
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Container(
+                      width: 11,
+                      height: 11,
+                      decoration: BoxDecoration(
+                        color: _red,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.surfaceSunken, width: 2),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _cardShell({
+    Key? key,
+    required IconData icon,
+    required Color tint,
+    required String title,
+    required String subtitle,
+    String? price,
+    required String status,
+    required bool finished,
+    List<Widget> body = const [],
+    String? primaryLabel,
+    VoidCallback? onPrimary,
+    List<Widget> actions = const [],
+    VoidCallback? onTap,
+  }) {
+    final dotColor = finished ? AppColors.mut : _green;
+    return GestureDetector(
+      key: key,
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.line),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 14, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: (finished ? _green : tint).withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(finished ? Icons.check_circle_rounded : icon, color: finished ? _green : tint, size: 28),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: AppColors.txt, fontSize: 20, fontWeight: FontWeight.w900, height: 1.2),
+                      ),
+                      if (subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          style: TextStyle(color: AppColors.mut, fontSize: 14.5, height: 1.35),
+                        ),
+                      ],
+                      if (price != null && price.trim().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          price,
+                          style: const TextStyle(color: _gold, fontSize: 18, fontWeight: FontWeight.w900),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    status,
+                    style: TextStyle(color: AppColors.txt, fontSize: 17, fontWeight: FontWeight.w800, height: 1.3),
+                  ),
+                ),
+              ],
+            ),
+            ...body,
+            if (primaryLabel != null || actions.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  if (primaryLabel != null)
+                    Expanded(
+                      child: SizedBox(
+                        height: 54,
+                        child: ElevatedButton(
+                          onPressed: onPrimary,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.txt,
+                            foregroundColor: AppColors.ink,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              primaryLabel,
+                              maxLines: 1,
+                              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  for (final a in actions) ...[
+                    const SizedBox(width: 10),
+                    a,
+                  ],
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildServiceCard(int index, Map booking) {
+    final bookingId = booking['id'].toString();
+    final currentStatus = (booking['booking_status'] ?? '').toString();
+    final hasUpdate = currentStatus != 'Pending' && _seenBookingStatuses[bookingId] != currentStatus;
+    final hasUnread = unreadBookingIds.contains(bookingId);
+    final finished = _isFinished(currentStatus);
+    final name = (booking['package_name'] ?? '').toString();
+    final isWash = name.toLowerCase().contains('wash');
+
+    // ── GET GARAGE INFO FROM ADMIN DATA ──
+    final adminData = booking['admin'] as Map<String, dynamic>?;
+    final garageName = adminData?['username'] ?? 'Garage';
+    final garageAddress = (adminData?['address'] ?? '').toString();
+    final garageLat = (adminData?['latitude'] as num?)?.toDouble();
+    final garageLong = (adminData?['longitude'] as num?)?.toDouble();
+    // No pickup/drop selected means the customer themselves goes to the
+    // garage (drop off and collect), so that's when a navigate button is
+    // worth showing — doorstep pickup/drop is a delivery partner's job.
+    final needsGarageVisit = (booking['pickupdrop'] ?? '').toString().toLowerCase() != 'yes';
+    final canNavigate = needsGarageVisit &&
+        garageLat != null &&
+        garageLong != null &&
+        booking['booking_status'] != 'Delivered';
+
+    return KeyedSubtree(
+      key: _keyFor('b:$bookingId'),
+      child: _cardShell(
+        key: (widget.highlightSection == 'bookings' && index == 0) ? _highlightKey : null,
+        onTap: () => _openTracking(booking),
+        icon: isWash ? Icons.local_car_wash_rounded : Icons.build_rounded,
+        tint: isWash ? _blue : _gold,
+        title: name,
+        subtitle: [
+          formatFullDateTime(booking['created_at']),
+          needsGarageVisit ? 'at the garage' : 'pickup & drop',
+        ].where((s) => s.isNotEmpty).join(' · '),
+        price: booking['package_price']?.toString(),
+        status: _plainBookingStatus(booking),
+        finished: finished,
+        body: [
+          if (hasUpdate && !finished)
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: _red,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.notifications_active, color: Colors.white, size: 18),
+                  SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'NEW SERVICE UPDATE',
+                      style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 0.8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          BookingSlotBadge(record: booking),
+          // Add-ons the garage asked for (approve & pay / reject), and
+          // paid ones as sub-orders.
+          BookingAddons(booking: booking),
+
+          if (!finished)
+            Container(
+              margin: const EdgeInsets.only(top: 14),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceSunken,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.storefront_rounded, color: _gold, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '$garageName',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: AppColors.txt, fontSize: 15.5, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (garageAddress.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.location_on_outlined, color: AppColors.mut, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            garageAddress,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: AppColors.mut, fontSize: 14, height: 1.4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (canNavigate) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _openGarageNavigation(garageLat!, garageLong!),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _gold,
+                          side: const BorderSide(color: _gold, width: 1.5),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        icon: const Icon(Icons.directions_rounded, size: 20),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Directions to garage',
+                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+          if (_isCancellable(booking))
+            _buildCancelWindow(
+              record: booking,
+              table: 'bookings',
+              bookingType: 'service',
+              title: name,
+              price: booking['package_price'] as String?,
+            ),
+
+          if (!needsGarageVisit) ...[
+            if (!finished)
+              _DeliveryStageTracker(
+                stage: booking['delivery_stage'],
+                stageTimestamps: {
+                  'pickup_started': booking['stage_pickup_started_at'],
+                  'picked_up': booking['stage_picked_up_at'],
+                  'to_garage': booking['stage_to_garage_at'],
+                  'out_for_delivery': booking['stage_out_for_delivery_at'],
+                  'delivered': booking['stage_delivered_at'],
+                },
+                createdAt: booking['created_at'],
+                hasGarageLeg: true,
+              ),
+            if (booking['delivery_stage'] == 'pickup_started')
+              _PickupOtpVerification(
+                table: 'bookings',
+                bookingId: booking['id'],
+                otpCode: booking['pickup_otp_code'] as String?,
+                verifiedAt: booking['pickup_otp_verified_at'],
+                onVerified: fetchBookings,
+              ),
+            // Final leg back to the customer — gates the delivery partner's
+            // "Vehicle Delivered" tap on the customer confirming receipt.
+            if (booking['delivery_stage'] == 'out_for_delivery')
+              _ReturnOtpVerification(
+                table: 'bookings',
+                bookingId: booking['id'],
+                otpCode: booking['return_otp_code'] as String?,
+                verifiedAt: booking['return_otp_verified_at'],
+                partnerLabel: 'your delivery partner',
+                isCod: (booking['payment_status'] ?? '').toString().toLowerCase() == 'cod',
+                amount: booking['package_price'] as String?,
+                onVerified: fetchBookings,
+              ),
+          ] else ...[
+            // No pickup/drop — the customer drives to the garage, so the
+            // drop-off / collection code is exchanged with the garage
+            // directly (booking_details_screen.dart generates it).
+            if (booking['booking_status'] != 'Ready for Pickup' && booking['booking_status'] != 'Delivered')
+              _PickupOtpVerification(
+                table: 'bookings',
+                bookingId: booking['id'],
+                otpCode: booking['pickup_otp_code'] as String?,
+                verifiedAt: booking['pickup_otp_verified_at'],
+                partnerLabel: 'the garage',
+                onVerified: fetchBookings,
+              ),
+            if (booking['booking_status'] == 'Ready for Pickup')
+              _ReturnOtpVerification(
+                table: 'bookings',
+                bookingId: booking['id'],
+                otpCode: booking['return_otp_code'] as String?,
+                verifiedAt: booking['return_otp_verified_at'],
+                partnerLabel: 'the garage',
+                isCod: (booking['payment_status'] ?? '').toString().toLowerCase() == 'cod',
+                amount: booking['package_price'] as String?,
+                onVerified: fetchBookings,
+              ),
+          ],
+        ],
+        primaryLabel: finished ? 'See details' : 'See live updates',
+        onPrimary: () => _openTracking(booking),
+        actions: [
+          _iconAction(
+            icon: Icons.chat_bubble_outline_rounded,
+            dot: hasUnread,
+            tooltip: 'Chat with the garage',
+            onTap: () => _openTracking(booking, chat: true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClaimUpdatesTile() {
+    return GestureDetector(
+      onTap: () => setState(() => _claimsExpanded = !_claimsExpanded),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceRaised,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: claimUpdates.isNotEmpty ? const Color(0xFF7C4DFF).withOpacity(0.4) : AppColors.line,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7C4DFF).withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.forum_rounded, color: Color(0xFF7C4DFF), size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Claim updates',
+                        style: TextStyle(color: AppColors.txt, fontSize: 18, fontWeight: FontWeight.w900),
+                      ),
+                      Text(
+                        claimUpdates.isEmpty
+                            ? 'No updates yet'
+                            : '${claimUpdates.length} ${claimUpdates.length == 1 ? 'update' : 'updates'} · tap to ${_claimsExpanded ? 'hide' : 'see'}',
+                        style: TextStyle(color: AppColors.mut, fontSize: 14.5),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  _claimsExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                  color: AppColors.mut,
+                  size: 28,
+                ),
+              ],
+            ),
+            if (_claimsExpanded) ...[
+              const SizedBox(height: 16),
+              if (claimUpdates.isEmpty)
+                Center(
+                  child: Text(
+                    'No claim updates yet',
+                    style: TextStyle(color: AppColors.mut, fontSize: 15),
+                  ),
+                )
+              else
+                ...claimUpdates.map((update) => _buildClaimUpdateItem(update as Map)),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -2728,220 +3100,398 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
     final dateStr = formatFullDateTime(booking['created_at']);
     // Pre-delivery inspection deliberately skips the delivery-stage
     // timeline/OTP flow shown for pollution certificates — coordination
-    // happens by phone instead (see customer_phone below and
+    // happens by phone instead (see customer_phone in
     // web/deliverydashboard.html), since it's a scheduled-slot booking
-    // rather than a spontaneous doorstep pickup. The customer just needs
-    // to see the booking went through with the right details.
+    // rather than a spontaneous doorstep pickup.
     final showTimeline = table != 'inspection_booking';
+    final finished = _isFinished(status) || booking['delivery_stage'] == 'delivered';
+
+    return _cardShell(
+      key: highlightKey,
+      icon: table == 'pollution_booking' ? Icons.eco_rounded : Icons.fact_check_rounded,
+      tint: table == 'pollution_booking' ? _green : _blue,
+      title: title,
+      subtitle: [dateStr, if (showTimeline) 'pickup & drop'].where((s) => s.isNotEmpty).join(' · '),
+      price: price == null ? null : '₹$price',
+      status: _plainComplianceStatus(booking, table),
+      finished: finished,
+      body: [
+        // Inspection shows its own "Scheduled" row below.
+        if (table != 'inspection_booking') BookingSlotBadge(record: booking),
+        // Pollution bookings are always doorstep pickup+drop, so the tracker
+        // always applies; inspection bookings skip it (see showTimeline).
+        if (showTimeline) ...[
+          _DeliveryStageTracker(
+            stage: booking['delivery_stage'],
+            stageTimestamps: {
+              'pickup_started': booking['stage_pickup_started_at'],
+              'picked_up': booking['stage_picked_up_at'],
+              'to_garage': booking['stage_to_garage_at'],
+              'delivered': booking['stage_delivered_at'],
+            },
+            createdAt: booking['created_at'],
+            isPollutionCertificate: table == 'pollution_booking',
+          ),
+          if (booking['delivery_stage'] == 'pickup_started')
+            _PickupOtpVerification(
+              table: table,
+              bookingId: booking['id'],
+              otpCode: booking['pickup_otp_code'] as String?,
+              verifiedAt: booking['pickup_otp_verified_at'],
+              onVerified: fetchPollutionBookings,
+            ),
+          // Final leg back to the customer — these tables skip the
+          // out_for_delivery stage, so 'to_garage' is the one immediately
+          // before 'delivered' here.
+          if (booking['delivery_stage'] == 'to_garage')
+            _ReturnOtpVerification(
+              table: table,
+              bookingId: booking['id'],
+              otpCode: booking['return_otp_code'] as String?,
+              verifiedAt: booking['return_otp_verified_at'],
+              partnerLabel: 'your delivery partner',
+              isCod: (booking['payment_status'] ?? '').toString().toLowerCase() == 'cod',
+              amount: price,
+              onVerified: fetchPollutionBookings,
+            ),
+        ] else
+          _InspectionBookingSummary(booking: booking),
+        if (_isCancellable(booking))
+          _buildCancelWindow(
+            record: booking,
+            table: table,
+            bookingType: bookingType,
+            title: title,
+            price: price,
+          ),
+      ],
+    );
+  }
+
+  /// A claim from `claim_table` — a full doorstep pickup/garage/return
+  /// trip just like a paid 'bookings' service (see claim_screen.dart), so
+  /// it shows the same delivery-stage timeline + pickup/return OTP flow.
+  Widget _buildClaimCard(Map claim, {Key? highlightKey}) {
+    final dateStr = formatFullDateTime(claim['created_at']);
+    final description = (claim['damage_description'] ?? '').toString();
+    final price = claim['package_price']?.toString();
+    final finished = _isFinished(claim['claim_status']) || claim['delivery_stage'] == 'delivered';
+
+    return _cardShell(
+      key: highlightKey,
+      icon: Icons.description_rounded,
+      tint: const Color(0xFF7C4DFF),
+      title: 'Claim Assistance',
+      subtitle: dateStr.isEmpty ? '' : 'Submitted $dateStr',
+      price: price,
+      status: _plainClaimStatus(claim),
+      finished: finished,
+      body: [
+        BookingSlotBadge(record: claim),
+        if (description.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text(
+            description,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: AppColors.mut, fontSize: 15, height: 1.4),
+          ),
+        ],
+        _DeliveryStageTracker(
+          stage: claim['delivery_stage'],
+          stageTimestamps: {
+            'pickup_started': claim['stage_pickup_started_at'],
+            'picked_up': claim['stage_picked_up_at'],
+            'to_garage': claim['stage_to_garage_at'],
+            'out_for_delivery': claim['stage_out_for_delivery_at'],
+            'delivered': claim['stage_delivered_at'],
+          },
+          createdAt: claim['created_at'],
+          hasGarageLeg: true,
+        ),
+        if (claim['delivery_stage'] == 'pickup_started')
+          _PickupOtpVerification(
+            table: 'claim_table',
+            bookingId: claim['id'],
+            otpCode: claim['pickup_otp_code'] as String?,
+            verifiedAt: claim['pickup_otp_verified_at'],
+            onVerified: fetchClaims,
+          ),
+        if (claim['delivery_stage'] == 'out_for_delivery')
+          _ReturnOtpVerification(
+            table: 'claim_table',
+            bookingId: claim['id'],
+            otpCode: claim['return_otp_code'] as String?,
+            verifiedAt: claim['return_otp_verified_at'],
+            partnerLabel: 'your delivery partner',
+            onVerified: fetchClaims,
+          ),
+        // Claims have no cancel option — see _anyCancellable.
+      ],
+    );
+  }
+
+  Widget _buildWashItem(BuildContext context, Map wash) {
+    final dateStr = formatDate(wash['created_at'] ?? '');
+    final dayStr = formatDay(wash['created_at'] ?? '');
 
     return Container(
-      key: highlightKey,
-      margin: const EdgeInsets.only(bottom: 22),
-      padding: const EdgeInsets.all(24),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(28),
+        color: AppColors.surfaceSunken,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: AppColors.txt,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (price != null)
-            Text(
-              '₹$price',
-              style: const TextStyle(
-                color: Color(0xFFD4A017),
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+          // Date and Day
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    dateStr,
+                    style: const TextStyle(
+                      color: Color(0xFFD4A017),
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    dayStr,
+                    style: TextStyle(
+                      color: AppColors.mut,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ],
               ),
-            ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade900.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'Completed',
+                  style: TextStyle(
+                    color: Colors.green.shade400,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
-          Text(
-            dateStr,
-            style: TextStyle(color: AppColors.mut, fontSize: 13),
-          ),
-          // Inspection shows its own "Scheduled" row below.
-          if (table != 'inspection_booking') BookingSlotBadge(record: booking),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFD4A017),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              status.toUpperCase(),
-              style: TextStyle(
-                color: AppColors.onAccentDark,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1,
-              ),
-            ),
-          ),
-          // Pollution bookings are always doorstep pickup+drop (see
-          // supabase_pollution_inspection_tables.sql), so this tracker
-          // always applies here — no pickupdrop check needed. Inspection
-          // bookings skip it entirely (see showTimeline above).
-          if (showTimeline) ...[
-            _DeliveryStageTracker(
-              stage: booking['delivery_stage'],
-              stageTimestamps: {
-                'pickup_started': booking['stage_pickup_started_at'],
-                'picked_up': booking['stage_picked_up_at'],
-                'to_garage': booking['stage_to_garage_at'],
-                'delivered': booking['stage_delivered_at'],
-              },
-              createdAt: booking['created_at'],
-              isPollutionCertificate: table == 'pollution_booking',
-            ),
-            if (booking['delivery_stage'] == 'pickup_started')
-              _PickupOtpVerification(
-                table: table,
-                bookingId: booking['id'],
-                otpCode: booking['pickup_otp_code'] as String?,
-                verifiedAt: booking['pickup_otp_verified_at'],
-                onVerified: fetchPollutionBookings,
-              ),
-            // Final leg back to the customer — these tables skip the
-            // out_for_delivery stage, so 'to_garage' is the one immediately
-            // before 'delivered' here.
-            if (booking['delivery_stage'] == 'to_garage')
-              _ReturnOtpVerification(
-                table: table,
-                bookingId: booking['id'],
-                otpCode: booking['return_otp_code'] as String?,
-                verifiedAt: booking['return_otp_verified_at'],
-                partnerLabel: 'your delivery partner',
-                isCod: (booking['payment_status'] ?? '').toString().toLowerCase() == 'cod',
-                amount: price,
-                onVerified: fetchPollutionBookings,
-              ),
-          ] else
-            _InspectionBookingSummary(booking: booking),
-          if (_isCancellable(booking))
-            _buildCancelWindow(
-              record: booking,
-              table: table,
-              bookingType: bookingType,
-              title: title,
-              price: price,
+
+          // Before and After Photos
+          if (wash['before_photo_url'] != null || wash['after_photo_url'] != null)
+            Row(
+              children: [
+                if (wash['before_photo_url'] != null)
+                  Expanded(
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            _showImageViewer(context, wash['before_photo_url'], 'Before Photo');
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: AppColors.accent.withOpacity(0.35),
+                                width: 1.2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.18),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(9),
+                              child: Stack(
+                                children: [
+                                  Image.network(
+                                    wash['before_photo_url'],
+                                    height: 110,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      height: 110,
+                                      color: AppColors.photoPlaceholder,
+                                      child: Icon(Icons.image_not_supported, color: AppColors.mut),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: 4,
+                                    bottom: 4,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(3),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.45),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.zoom_in_rounded,
+                                        color: Colors.white,
+                                        size: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Before',
+                          style: TextStyle(
+                            color: AppColors.mut,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                if (wash['after_photo_url'] != null)
+                  Expanded(
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            _showImageViewer(context, wash['after_photo_url'], 'After Photo');
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: AppColors.accent.withOpacity(0.35),
+                                width: 1.2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.18),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(9),
+                              child: Stack(
+                                children: [
+                                  Image.network(
+                                    wash['after_photo_url'],
+                                    height: 110,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      height: 110,
+                                      color: AppColors.photoPlaceholder,
+                                      child: Icon(Icons.image_not_supported, color: AppColors.mut),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: 4,
+                                    bottom: 4,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(3),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.45),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.zoom_in_rounded,
+                                        color: Colors.white,
+                                        size: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'After',
+                          style: TextStyle(
+                            color: AppColors.mut,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
         ],
       ),
     );
   }
 
-  /// A claim from `claim_table` — since this is now a full doorstep
-  /// pickup/garage/return trip just like a paid 'bookings' service (see
-  /// claim_screen.dart), this shows the exact same
-  /// delivery-stage timeline + pickup/return OTP flow as a regular online
-  /// service booking with pickup/drop, rather than the old plain
-  /// status-only card.
-  Widget _buildClaimCard(Map claim, {Key? highlightKey}) {
-    final status = (claim['claim_status'] ?? 'submitted').toString();
-    final dateStr = formatFullDateTime(claim['created_at']);
-    final description = (claim['damage_description'] ?? '').toString();
-    final price = claim['package_price']?.toString();
-
+  Widget _buildClaimUpdateItem(Map update) {
     return Container(
-      key: highlightKey,
-      margin: const EdgeInsets.only(bottom: 22),
-      padding: const EdgeInsets.all(24),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(28),
+        color: AppColors.surfaceSunken,
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.line),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
+          if (update['photo_url'] != null)
+            Container(
+              height: 160,
+              decoration: BoxDecoration(
+                borderRadius:
+                    BorderRadius.circular(8),
+                image: DecorationImage(
+                  image: NetworkImage(
+                      update['photo_url']),
+                  fit: BoxFit.cover,
+                ),
+              ),
+              margin: const EdgeInsets.only(
+                  bottom: 12),
+            ),
           Text(
-            'Claim Assistance',
+            update['description'] ??
+                'No description',
             style: TextStyle(
               color: AppColors.txt,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
+              fontSize: 16,
+              height: 1.5,
+              fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 10),
-          if (price != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                price,
-                style: const TextStyle(color: Color(0xFFD4A017), fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
+          const SizedBox(height: 8),
           Text(
-            dateStr,
-            style: TextStyle(color: AppColors.mut, fontSize: 13),
-          ),
-          BookingSlotBadge(record: claim),
-          if (description.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              description,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: AppColors.mut, fontSize: 13.5, height: 1.4),
-            ),
-          ],
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFD4A017),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              status.toUpperCase(),
-              style: TextStyle(
-                color: AppColors.onAccentDark,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1,
-              ),
+            (DateTime.tryParse('${update['created_at'] ?? ''}')
+                ?.toString()
+                .split('.')[0] ?? ''),
+            style: TextStyle(
+              color: AppColors.mut,
+              fontSize: 12,
             ),
           ),
-          _DeliveryStageTracker(
-            stage: claim['delivery_stage'],
-            stageTimestamps: {
-              'pickup_started': claim['stage_pickup_started_at'],
-              'picked_up': claim['stage_picked_up_at'],
-              'to_garage': claim['stage_to_garage_at'],
-              'out_for_delivery': claim['stage_out_for_delivery_at'],
-              'delivered': claim['stage_delivered_at'],
-            },
-            createdAt: claim['created_at'],
-            hasGarageLeg: true,
-          ),
-          if (claim['delivery_stage'] == 'pickup_started')
-            _PickupOtpVerification(
-              table: 'claim_table',
-              bookingId: claim['id'],
-              otpCode: claim['pickup_otp_code'] as String?,
-              verifiedAt: claim['pickup_otp_verified_at'],
-              onVerified: fetchClaims,
-            ),
-          if (claim['delivery_stage'] == 'out_for_delivery')
-            _ReturnOtpVerification(
-              table: 'claim_table',
-              bookingId: claim['id'],
-              otpCode: claim['return_otp_code'] as String?,
-              verifiedAt: claim['return_otp_verified_at'],
-              partnerLabel: 'your delivery partner',
-              onVerified: fetchClaims,
-            ),
-          // Claims have no cancel option — see _anyCancellable, which no
-          // longer includes `claims` either.
         ],
       ),
     );
@@ -4284,5 +4834,116 @@ class _UpperCaseTextFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
     return newValue.copyWith(text: newValue.text.toUpperCase());
+  }
+}
+
+// ── Dashboard helpers ─────────────────────────────────────────────────────
+
+/// One booking of any type in the Ongoing / Past list.
+class _FeedItem {
+  const _FeedItem({required this.kind, required this.past, required this.at, required this.build});
+
+  /// 'service' | 'wash' | 'claims' | 'puc' — which filter chip shows it.
+  final String kind;
+  final bool past;
+  final DateTime at;
+  final Widget Function() build;
+}
+
+/// One card in "Needs your attention".
+class _Attention {
+  const _Attention({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.body,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String body;
+  final VoidCallback onTap;
+}
+
+/// Grey shape that gently pulses while the page loads.
+class _SkeletonBox extends StatefulWidget {
+  const _SkeletonBox({required this.height, this.width, this.radius = 12});
+
+  final double height;
+  final double? width;
+  final double radius;
+
+  @override
+  State<_SkeletonBox> createState() => _SkeletonBoxState();
+}
+
+class _SkeletonBoxState extends State<_SkeletonBox> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.45, end: 1).animate(_c),
+      child: Container(
+        height: widget.height,
+        width: widget.width,
+        decoration: BoxDecoration(
+          color: AppColors.line,
+          borderRadius: BorderRadius.circular(widget.radius),
+        ),
+      ),
+    );
+  }
+}
+
+/// Card-shaped placeholder (instead of a spinner).
+class _SkeletonCard extends StatelessWidget {
+  const _SkeletonCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _SkeletonBox(height: 52, width: 52, radius: 16),
+              SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FractionallySizedBox(widthFactor: 0.8, child: _SkeletonBox(height: 18)),
+                    SizedBox(height: 10),
+                    FractionallySizedBox(widthFactor: 0.5, child: _SkeletonBox(height: 14)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 18),
+          _SkeletonBox(height: 8, radius: 4),
+          SizedBox(height: 16),
+          _SkeletonBox(height: 54, radius: 16),
+        ],
+      ),
+    );
   }
 }
