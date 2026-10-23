@@ -2854,7 +2854,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
           BookingSlotBadge(record: booking),
           // Add-ons the garage asked for (approve & pay / reject), and
           // paid ones as sub-orders.
-          BookingAddons(booking: booking),
+          BookingAddons(booking: Map<String, dynamic>.from(booking)),
 
           if (!finished)
             Container(
@@ -2906,7 +2906,7 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                       width: double.infinity,
                       height: 48,
                       child: OutlinedButton.icon(
-                        onPressed: () => _openGarageNavigation(garageLat!, garageLong!),
+                        onPressed: () => _openGarageNavigation(garageLat, garageLong),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: _gold,
                           side: const BorderSide(color: _gold, width: 1.5),
