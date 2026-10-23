@@ -38,7 +38,7 @@ import '../widgets/other_services_hub_button.dart';
 import '../widgets/web_notification_permission.dart';
 import '../widgets/packages_side_heading.dart';
 import '../widgets/promo_banner.dart';
-import '../widgets/quick_action_row.dart';
+import '../widgets/inspection_strip.dart';
 import '../widgets/reperi_resolve_card.dart';
 import '../widgets/ride_picker_card.dart';
 import '../widgets/service_banner_row.dart';
@@ -401,7 +401,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Also used to re-check a vehicle's status after returning from a
-  /// booking flow (see [_bookService]/[_bookWashing]) — returns `null` both
+  /// booking flow (see [_openCoverflowPackage]) — returns `null` both
   /// when there's no booking yet and when the lookup itself fails, so a
   /// tile never gets stuck showing a stale "in progress" status.
   Future<String?> _fetchLatestBookingStatus(String vehicleId) async {
@@ -449,33 +449,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // _bookService/_bookWashing/_openCoverflowPackage/_openServiceBanner used
+  // _openCoverflowPackage/_openServiceBanner used
   // to block with a "Add a vehicle first" snackbar whenever there was no
   // active vehicle. That's exactly the browsing these package screens are
   // meant to allow without a vehicle yet (they only need a real one at the
   // final "Book Now" step, which now prompts for one via PaymentScreen) —
   // so they navigate regardless, falling back to an empty vehicle id/map
   // when there isn't one yet.
-
-  void _bookService() {
-    final vehicle = _activeVehicle;
-    Navigator.push(
-      context,
-      premiumPageRoute((_) => ServicingPackageScreen(vehicleId: vehicle?.id ?? '')),
-    ).then((_) {
-      if (vehicle != null) _refreshVehicleBookingStatus(vehicle.id);
-    });
-  }
-
-  void _bookWashing() {
-    final vehicle = _activeVehicle;
-    Navigator.push(
-      context,
-      premiumPageRoute((_) => WashingPackageScreen(vehicleId: vehicle?.id ?? '')),
-    ).then((_) {
-      if (vehicle != null) _refreshVehicleBookingStatus(vehicle.id);
-    });
-  }
 
   /// Maps a coverflow slide's image filename to the package screen it
   /// opens. Tapping a slide that isn't already centered just brings it to
@@ -1005,15 +985,19 @@ class _HomeScreenState extends State<HomeScreen> {
                             },
                           ),
                         const SizedBox(height: 6),
-                        // Book Service/Book Washing don't apply to a
-                        // two-wheeler — its own servicing/washing packages
-                        // are booked straight from the coverflow below.
+                        // Yellow "Car inspection at your location within 2
+                        // hours · ₹199" strip (replaces the old Book Service /
+                        // Book Washing buttons — those are still in the 3D
+                        // packages scroller below and the Services tab).
+                        // Car only, so hidden when bike packages are showing.
                         if (!_showBikePackages)
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 18),
-                            child: QuickActionRow(
-                              onBookService: _bookService,
-                              onBookWashing: _bookWashing,
+                            padding: const EdgeInsets.fromLTRB(18, 6, 18, 0),
+                            child: InspectionStrip(
+                              onTap: () => Navigator.push(
+                                context,
+                                premiumPageRoute((_) => OtherServicesScreen(vehicle: _activeVehicleMap)),
+                              ),
                             ),
                           ),
                         if (_showBikePackages) ...[

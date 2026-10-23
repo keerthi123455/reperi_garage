@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../theme/app_colors.dart';
+import 'reperi_logo.dart';
 import 'vehicle_card.dart' show VehicleCartoonAvatar;
 
 /// Shared look for the sign-up and login screens (light by default, follows
@@ -10,13 +11,21 @@ import 'vehicle_card.dart' show VehicleCartoonAvatar;
 
 const Color kAuthGold = Color(0xFFD4A017);
 
-/// REPERI wordmark with the gold bar — same as the app header.
+/// Logo (yellow disc + navy spanner) beside the REPERI wordmark with its
+/// gold bar — same as the app header, just bigger.
 class AuthWordmark extends StatelessWidget {
   const AuthWordmark({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const ReperiLogoMark(size: 54),
+          const SizedBox(width: 12),
+          Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
@@ -35,6 +44,9 @@ class AuthWordmark extends StatelessWidget {
           decoration: BoxDecoration(color: kAuthGold, borderRadius: BorderRadius.circular(2)),
         ),
       ],
+          ),
+        ],
+      ),
     );
   }
 }

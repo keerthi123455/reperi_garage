@@ -3,10 +3,10 @@
 
 /// Shown in the 3D coverflow (portrait, 9:16).
 const List<String> kCoverflowBanners = [
+  'assets/images/service.jpg',
+  'assets/images/washing.jpg',
   'assets/images/wheelmanagement.jpg',
   'assets/images/paintcare.jpg',
-  'assets/images/washing.jpg',
-  'assets/images/service.jpg',
   'assets/images/ac.jpg',
   'assets/images/lighting_services_banner.jpeg',
   'assets/images/other_services_banner.jpeg',

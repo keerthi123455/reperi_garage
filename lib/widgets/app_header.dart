@@ -4,6 +4,7 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import 'reperi_logo.dart';
 
 class AppHeader extends StatelessWidget {
   const AppHeader({
@@ -27,9 +28,17 @@ class AppHeader extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _IconButtonChip(icon: Symbols.menu, onTap: onMenu),
-          // Wordmark only (no logo): bold, wide-spaced letters with a small
-          // gold bar under them. Dark text in light mode, gold in dark mode.
-          Flexible(child: _Wordmark()),
+          const SizedBox(width: 10),
+          // Logo (yellow disc + navy spanner, same as the hub button) and the
+          // REPERI wordmark with its gold bar. Dark text in light mode, gold
+          // in dark mode.
+          // Not const: _Wordmark reads AppColors, so it must rebuild on a
+          // light/dark switch.
+          Expanded(
+            // ignore: prefer_const_constructors
+            child: Align(alignment: Alignment.centerLeft, child: _Wordmark()),
+          ),
+          const SizedBox(width: 10),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -65,7 +74,12 @@ class _Wordmark extends StatelessWidget {
     final text = Text('REPERI', maxLines: 1, style: style);
     return FittedBox(
       fit: BoxFit.scaleDown,
-      child: Column(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const ReperiLogoMark(size: 38),
+          const SizedBox(width: 9),
+          Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
@@ -92,6 +106,8 @@ class _Wordmark extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
               gradient: const LinearGradient(colors: [Color(0xFFF5C842), AppColors.accent2]),
             ),
+          ),
+        ],
           ),
         ],
       ),

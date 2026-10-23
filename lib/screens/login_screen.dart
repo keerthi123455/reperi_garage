@@ -40,7 +40,8 @@ class _LoginScreenState extends State<LoginScreen>
   // CLIENT-only alternate sign-in: email + one-time code instead of a
   // password. Garage login never shows this — see _buildLoginCard/
   // _buildLoginAsSection, which only render the toggle when isClient.
-  bool _clientOtpMode = false;
+  // OTP login is the default for customers (no password to remember).
+  bool _clientOtpMode = true;
   bool _otpSent = false;
   bool _otpLoading = false;
   final otpLoginController = TextEditingController();
@@ -323,7 +324,7 @@ class _LoginScreenState extends State<LoginScreen>
       });
       ErrorDisplay.showPremiumToast(
         context,
-        message: 'Code sent to $email.',
+        message: 'OTP sent to $email.',
         icon: Icons.mark_email_read_rounded,
         accent: const Color(0xFF3DD68C),
       );
@@ -618,8 +619,8 @@ class _LoginScreenState extends State<LoginScreen>
       ),
       child: Row(
         children: [
-          segment('Use password', false),
-          segment('Email me a code', true),
+          segment('OTP login', true),
+          segment('Password', false),
         ],
       ),
     );
@@ -633,9 +634,9 @@ class _LoginScreenState extends State<LoginScreen>
       children: [
         if (_otpSent) ...[
           AuthField(
-            label: 'Code from your email',
+            label: 'OTP from your email',
             controller: otpLoginController,
-            hint: '6-digit code',
+            hint: '6-digit OTP',
             icon: Icons.mark_email_read_outlined,
             keyboardType: TextInputType.number,
             autofillHints: const [AutofillHints.oneTimeCode],
@@ -654,19 +655,19 @@ class _LoginScreenState extends State<LoginScreen>
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text('Resend code', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+              child: const Text('Resend OTP', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
             ),
           ),
           const SizedBox(height: 4),
         ] else ...[
           Text(
-            "We'll email you a one-time code — no password needed.",
+            "We'll email you a one-time password (OTP) — no password to remember.",
             style: TextStyle(color: AppColors.mut, fontSize: 14, fontWeight: FontWeight.w600, height: 1.4),
           ),
           const SizedBox(height: 14),
         ],
         AuthPrimaryButton(
-          label: _otpSent ? 'Verify & log in' : 'Send me a code',
+          label: _otpSent ? 'Verify OTP & log in' : 'Get OTP',
           loading: _otpLoading,
           onTap: _otpSent ? _verifyClientLoginOtp : _sendClientLoginOtp,
         ),
@@ -698,9 +699,9 @@ class _LoginScreenState extends State<LoginScreen>
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() {
         isClient = value;
-        // Garage never shows code login — reset so switching back to
-        // customer always starts fresh in password mode.
-        _clientOtpMode = false;
+        // Customers start on OTP login (the default); garage login only
+        // ever uses a password, so this is ignored there.
+        _clientOtpMode = value;
         _otpSent = false;
         otpLoginController.clear();
       }),
