@@ -4,7 +4,6 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
-import 'placeholder_box.dart';
 
 class VehicleCard extends StatefulWidget {
   const VehicleCard({
@@ -106,7 +105,11 @@ class _VehicleCardState extends State<VehicleCard> with SingleTickerProviderStat
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _VehiclePhoto(url: widget.vehicle.photoUrl, onTap: widget.onPhotoTap),
+              _VehiclePhoto(
+                url: widget.vehicle.photoUrl,
+                isBike: widget.vehicle.isTwoWheeler,
+                onTap: widget.onPhotoTap,
+              ),
               const SizedBox(width: 14),
               Expanded(
                 // A separate GestureDetector from the photo's — nesting one
@@ -209,9 +212,12 @@ class _VehicleCardState extends State<VehicleCard> with SingleTickerProviderStat
 }
 
 class _VehiclePhoto extends StatelessWidget {
-  const _VehiclePhoto({required this.url, required this.onTap});
+  const _VehiclePhoto({required this.url, required this.onTap, this.isBike = false});
 
   final String? url;
+
+  /// Picks the default car / bike picture when there's no photo yet.
+  final bool isBike;
 
   /// Opens the camera/gallery picker for this vehicle's photo.
   final VoidCallback onTap;
@@ -239,16 +245,10 @@ class _VehiclePhoto extends StatelessWidget {
                       width: VehicleCard._photoSize,
                       height: VehicleCard._photoSize,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => PlaceholderBox(
-                        label: 'CAR PHOTO',
-                        borderRadius: VehicleCard._photoSize / 2,
-                      ),
+                      errorBuilder: (_, __, ___) => _DefaultVehicleAvatar(isBike: isBike),
                     ),
                   )
-                : PlaceholderBox(
-                    label: 'CAR PHOTO',
-                    borderRadius: VehicleCard._photoSize / 2,
-                  ),
+                : _DefaultVehicleAvatar(isBike: isBike),
           ),
           // Gold "+" badge — always opens the camera/gallery picker,
           // regardless of whether a photo already exists.
@@ -613,4 +613,190 @@ _StatusInfo _statusFor(String? bookingStatus, {bool offerWash = false}) {
     pulsing: true,
     showBadge: true,
   );
+}
+
+
+/// Shown until the customer adds a photo of their own vehicle: a friendly
+/// cartoon car (or scooter) on a light-blue circle, drawn in code.
+class _DefaultVehicleAvatar extends StatelessWidget {
+  const _DefaultVehicleAvatar({required this.isBike});
+
+  final bool isBike;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = VehicleCard._photoSize;
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment(-0.4, -1),
+          end: Alignment(0.4, 1),
+          colors: [Color(0xFFBFE3FF), Color(0xFF7FB8F0)],
+        ),
+      ),
+      alignment: Alignment.center,
+      child: SizedBox(
+        width: size * 0.82,
+        height: size * 0.82 * 40 / 66,
+        child: CustomPaint(painter: _CartoonVehiclePainter(isBike: isBike)),
+      ),
+    );
+  }
+}
+
+/// Draws in a 66 × 40 grid, scaled to fit.
+class _CartoonVehiclePainter extends CustomPainter {
+  const _CartoonVehiclePainter({required this.isBike});
+
+  final bool isBike;
+
+  static const _red = Color(0xFFE8453C);
+  static const _darkRed = Color(0xFFB8322B);
+  static const _glass = Color(0xFFDFF2FF);
+  static const _light = Color(0xFFFFE08A);
+  static const _tyre = Color(0xFF222222);
+  static const _hub = Color(0xFFDDDDDD);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 66, size.height / 40);
+    final p = Paint()..isAntiAlias = true;
+
+    // Shadow
+    p.color = const Color(0x401D3B63);
+    canvas.drawOval(Rect.fromCenter(center: const Offset(33, 36.3), width: 54, height: 5), p);
+
+    if (isBike) {
+      _scooter(canvas, p);
+    } else {
+      _car(canvas, p);
+    }
+    canvas.restore();
+  }
+
+  void _wheel(Canvas canvas, Paint p, Offset c, double r, double hub) {
+    p.color = _tyre;
+    canvas.drawCircle(c, r, p);
+    p.color = _hub;
+    canvas.drawCircle(c, hub, p);
+  }
+
+  void _car(Canvas canvas, Paint p) {
+    final body = Path()
+      ..moveTo(5, 28)
+      ..cubicTo(5, 22, 8, 20, 14, 19)
+      ..lineTo(20, 12)
+      ..cubicTo(22, 10, 25, 9, 29, 9)
+      ..lineTo(40, 9)
+      ..cubicTo(44, 9, 47, 10, 50, 13)
+      ..lineTo(55, 19)
+      ..cubicTo(60, 20, 62, 22, 62, 27)
+      ..lineTo(62, 30)
+      ..cubicTo(62, 31, 61, 32, 60, 32)
+      ..lineTo(7, 32)
+      ..cubicTo(6, 32, 5, 31, 5, 30)
+      ..close();
+    p.color = _red;
+    canvas.drawPath(body, p);
+
+    p.color = _glass;
+    canvas.drawPath(
+      Path()
+        ..moveTo(22, 13)
+        ..cubicTo(23, 12, 25, 11.5, 28, 11.5)
+        ..lineTo(32, 11.5)
+        ..lineTo(32, 19)
+        ..lineTo(17, 19)
+        ..close(),
+      p,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(34, 11.5)
+        ..lineTo(40, 11.5)
+        ..cubicTo(43, 11.5, 45, 12.5, 47, 14.5)
+        ..lineTo(51, 19)
+        ..lineTo(34, 19)
+        ..close(),
+      p,
+    );
+
+    p.color = _light;
+    canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(56, 22, 5, 2.5), const Radius.circular(1.2)), p);
+
+    _wheel(canvas, p, const Offset(17, 31), 6, 2.6);
+    _wheel(canvas, p, const Offset(50, 31), 6, 2.6);
+  }
+
+  void _scooter(Canvas canvas, Paint p) {
+    // Handlebar
+    final bar = Paint()
+      ..color = const Color(0xFF333333)
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(const Offset(49, 9), const Offset(57, 6.5), bar);
+
+    // Rear body
+    p.color = _red;
+    canvas.drawPath(
+      Path()
+        ..moveTo(8, 26)
+        ..cubicTo(8, 19, 13, 16, 20, 16)
+        ..lineTo(31, 16)
+        ..cubicTo(34, 16, 35, 18, 35, 21)
+        ..lineTo(35, 26)
+        ..close(),
+      p,
+    );
+    // Floorboard
+    p.color = _darkRed;
+    canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(30, 24, 15, 4), const Radius.circular(1.5)), p);
+    // Front shield / steering column
+    p.color = _red;
+    canvas.drawPath(
+      Path()
+        ..moveTo(41, 28)
+        ..lineTo(46, 12)
+        ..cubicTo(46.6, 10, 48, 9, 50, 9)
+        ..lineTo(52, 9)
+        ..lineTo(51.5, 12)
+        ..lineTo(50, 12)
+        ..lineTo(46, 28)
+        ..close(),
+      p,
+    );
+    // Front mudguard
+    canvas.drawPath(
+      Path()
+        ..moveTo(43.5, 30)
+        ..cubicTo(44.5, 24, 59.5, 24, 60.5, 30)
+        ..close(),
+      p,
+    );
+    // Seat
+    p.color = const Color(0xFF333333);
+    canvas.drawPath(
+      Path()
+        ..moveTo(11, 16)
+        ..cubicTo(11, 13, 14, 12, 18, 12)
+        ..lineTo(29, 12)
+        ..cubicTo(31.5, 12, 32.5, 13.5, 31.5, 16)
+        ..close(),
+      p,
+    );
+    // Headlight
+    p.color = _light;
+    canvas.drawCircle(const Offset(51.5, 14), 2.1, p);
+
+    _wheel(canvas, p, const Offset(15, 31), 5.5, 2.4);
+    _wheel(canvas, p, const Offset(52, 31), 5.5, 2.4);
+  }
+
+  @override
+  bool shouldRepaint(covariant _CartoonVehiclePainter old) => old.isBike != isBike;
 }

@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../theme/app_colors.dart';
 import 'placeholder_box.dart';
@@ -51,7 +53,8 @@ class BannerCoverflow extends StatefulWidget {
 class _BannerCoverflowState extends State<BannerCoverflow>
     with SingleTickerProviderStateMixin {
   static const double _perspective = 1100;
-  static const double _pxPerStep = 170;
+  // Finger travel for one slide — lower = easier to move (was 170).
+  static const double _pxPerStep = 115;
   static const Duration _settleDuration = Duration(milliseconds: 450);
   static const Cubic _settleCurve = Cubic(0.32, 0.72, 0.24, 1.0);
 
@@ -92,11 +95,28 @@ class _BannerCoverflowState extends State<BannerCoverflow>
 
   void _settleTo(int target) {
     _lastAnimatedTarget = target;
+    // Longer trips (tapping a slide two away) glide a little longer, so the
+    // jump reads as one smooth sweep rather than a snap.
+    final distance = (target - _position).abs();
+    _controller.duration = Duration(milliseconds: (380 + 170 * distance.clamp(0.0, 3.0)).round());
     final curved = CurvedAnimation(parent: _controller, curve: _settleCurve);
     _settleAnim = Tween<double>(begin: _position, end: target.toDouble()).animate(curved);
     _controller
       ..value = 0
       ..forward();
+  }
+
+  /// Tap on any slide (front or background): bring it to the front in one
+  /// glide; tapping the front one opens it.
+  void _tapSlide(int i) {
+    _controller.stop();
+    _dragging = false;
+    _settleTo(i);
+    if (i != widget.selectedIndex) {
+      widget.onSelect(i);
+    } else {
+      widget.onTapSelected?.call(i);
+    }
   }
 
   double get _maxIndex => (widget.imagePaths.length - 1).toDouble();
@@ -118,9 +138,15 @@ class _BannerCoverflowState extends State<BannerCoverflow>
     _dragging = false;
     final velocity = details.primaryVelocity ?? 0;
     int target;
-    if (velocity <= -300) {
+    if (velocity.abs() >= 1400) {
+      // A fast flick carries on to the next-but-one slide, like momentum.
+      final projected = _position - velocity / (_pxPerStep * 9);
+      target = velocity < 0
+          ? math.max(projected.round(), _position.ceil())
+          : math.min(projected.round(), _position.floor());
+    } else if (velocity <= -250) {
       target = _position.ceil();
-    } else if (velocity >= 300) {
+    } else if (velocity >= 250) {
       target = _position.floor();
     } else {
       target = _position.round();
@@ -136,14 +162,17 @@ class _BannerCoverflowState extends State<BannerCoverflow>
     final order = List.generate(widget.imagePaths.length, (i) => i)
       ..sort((a, b) => (b - _position).abs().compareTo((a - _position).abs()));
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onHorizontalDragStart: _onDragStart,
-      onHorizontalDragUpdate: _onDragUpdate,
-      onHorizontalDragEnd: _onDragEnd,
+    // The side slides are painted outside this widget's own box (they peek
+    // out to the left/right), so normal hit-testing would ignore touches on
+    // them. _SwipeArea accepts touches anywhere in the strip's height —
+    // drag anywhere to scroll, tap any slide to bring it forward.
+    return _SwipeArea(
+      onDragStart: _onDragStart,
+      onDragUpdate: _onDragUpdate,
+      onDragEnd: _onDragEnd,
       child: SizedBox(
         height: kBannerHeight,
-        child: Stack(
+        child: _OverflowHitStack(
           alignment: Alignment.centerLeft,
           clipBehavior: Clip.none,
           children: [
@@ -153,16 +182,7 @@ class _BannerCoverflowState extends State<BannerCoverflow>
                 child: _BannerSlide(
                   assetPath: widget.imagePaths[i],
                   selected: i == nearest,
-                  onTap: () {
-                    _controller.stop();
-                    _dragging = false;
-                    _settleTo(i);
-                    if (i != widget.selectedIndex) {
-                      widget.onSelect(i);
-                    } else {
-                      widget.onTapSelected?.call(i);
-                    }
-                  },
+                  onTap: () => _tapSlide(i),
                 ),
               ),
           ],
@@ -225,11 +245,14 @@ class _BannerTransform extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Opacity(
-      opacity: params.opacity.clamp(0.0, 1.0).toDouble(),
-      child: Transform(
-        alignment: Alignment.center,
-        transform: params.matrix,
+    // Transform on the outside so taps land on the slide where it is drawn
+    // (Opacity would otherwise reject touches outside the un-moved box).
+    // Visually identical to Opacity(Transform(...)).
+    return Transform(
+      alignment: Alignment.center,
+      transform: params.matrix,
+      child: Opacity(
+        opacity: params.opacity.clamp(0.0, 1.0).toDouble(),
         child: child,
       ),
     );
@@ -289,5 +312,108 @@ class _BannerSlide extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+
+// ── Touch handling for the whole strip ──────────────────────────────────
+
+/// A Stack that also hit-tests children painted outside its own box.
+class _OverflowHitStack extends Stack {
+  const _OverflowHitStack({
+    super.alignment,
+    super.clipBehavior,
+    super.children,
+  });
+
+  @override
+  RenderStack createRenderObject(BuildContext context) => _RenderOverflowHitStack(
+        alignment: alignment,
+        textDirection: textDirection ?? Directionality.maybeOf(context),
+        fit: fit,
+        clipBehavior: clipBehavior,
+      );
+}
+
+class _RenderOverflowHitStack extends RenderStack {
+  _RenderOverflowHitStack({
+    super.alignment,
+    super.textDirection,
+    super.fit,
+    super.clipBehavior,
+  });
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (hitTestChildren(result, position: position)) {
+      result.add(BoxHitTestEntry(this, position));
+      return true;
+    }
+    return false;
+  }
+}
+
+/// Horizontal-drag area that accepts touches across the strip's full height
+/// even where slides peek outside the widget's own box, and lets taps fall
+/// through to the slide under the finger.
+class _SwipeArea extends SingleChildRenderObjectWidget {
+  const _SwipeArea({
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+    required super.child,
+  });
+
+  final GestureDragStartCallback onDragStart;
+  final GestureDragUpdateCallback onDragUpdate;
+  final GestureDragEndCallback onDragEnd;
+
+  @override
+  _RenderSwipeArea createRenderObject(BuildContext context) =>
+      _RenderSwipeArea(onDragStart, onDragUpdate, onDragEnd, MediaQuery.maybeGestureSettingsOf(context));
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderSwipeArea renderObject) {
+    renderObject.drag
+      ..onStart = onDragStart
+      ..onUpdate = onDragUpdate
+      ..onEnd = onDragEnd
+      ..gestureSettings = MediaQuery.maybeGestureSettingsOf(context);
+  }
+}
+
+class _RenderSwipeArea extends RenderProxyBox {
+  _RenderSwipeArea(
+    GestureDragStartCallback onStart,
+    GestureDragUpdateCallback onUpdate,
+    GestureDragEndCallback onEnd,
+    DeviceGestureSettings? settings,
+  ) : drag = HorizontalDragGestureRecognizer()
+          ..onStart = onStart
+          ..onUpdate = onUpdate
+          ..onEnd = onEnd
+          ..gestureSettings = settings;
+
+  final HorizontalDragGestureRecognizer drag;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    // Anywhere within the strip's height counts — including the space to
+    // the left/right where the side slides are drawn.
+    if (position.dy < 0 || position.dy > size.height) return false;
+    hitTestChildren(result, position: position);
+    result.add(BoxHitTestEntry(this, position));
+    return true;
+  }
+
+  @override
+  void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
+    if (event is PointerDownEvent) drag.addPointer(event);
+  }
+
+  @override
+  void dispose() {
+    drag.dispose();
+    super.dispose();
   }
 }
