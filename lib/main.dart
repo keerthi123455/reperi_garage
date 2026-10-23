@@ -10,6 +10,7 @@ import 'services/catalog_service.dart';
 import 'services/guest_mode.dart';
 import 'services/push_notification_service.dart';
 import 'services/web_display.dart';
+import 'theme/theme_controller.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -37,6 +38,10 @@ Future<void> main() async {
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtdnhxanlvcWZpbmJycHVic3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMzQyNDcsImV4cCI6MjA5MjgxMDI0N30.NAxb2XnicLSaBoA4kpTFmmutT68Z2ksu-T-P_NUxy5E',
   );
+
+  // Light / dark: bring back the customer's last choice before the first
+  // frame (light is the default).
+  await themeController.loadSaved();
 
   await PushNotificationService.init();
 

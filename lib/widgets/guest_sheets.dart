@@ -45,7 +45,7 @@ Future<void> showGuestInvite(
     (ctx) => const _GuestInviteSheet(),
   );
   if (go == true) {
-    await GuestMode.enable();
+    await GuestMode.enable(source: '${screen}_popup');
     onGuest();
   }
 }

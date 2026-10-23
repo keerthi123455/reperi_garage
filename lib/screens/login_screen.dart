@@ -9,6 +9,9 @@ import 'signup_screen.dart';
 import 'admin_dashboard_screen.dart';
 import 'package:reperi_garage/widgets/error_display.dart';
 import 'package:reperi_garage/widgets/guest_sheets.dart';
+import 'package:reperi_garage/services/guest_mode.dart';
+import 'package:reperi_garage/theme/app_colors.dart';
+import 'package:reperi_garage/widgets/auth_ui.dart';
 
 // Same project URL/anon key as Supabase.initialize() in main.dart — used
 // to spin up a throwaway SupabaseClient for the admin OTP reset flow below
@@ -406,206 +409,169 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  /// "New to Reperi? Create an account". When this screen was opened from
+  /// the sign-up screen (the app's first screen), just go back to it;
+  /// otherwise (e.g. after logging out) open it.
+  void _openSignup() {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      navigator.push(MaterialPageRoute(builder: (_) => const SignupScreen()));
+    }
+  }
+
+  Future<void> _guestTapped() async {
+    await GuestMode.enable(source: 'login_button');
+    _continueAsGuest();
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Detect if we're on a wide screen (web/tablet)
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isWide = screenWidth > 600;
-
-    return Scaffold(
-      // Plain, flat dark grey — no glow orbs or gradient texture behind
-      // the content, just this one solid color.
-      backgroundColor: const Color(0xFF262626),
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: Center(
-            child: ConstrainedBox(
-              // KEY FIX: cap width at 480px so it doesn't stretch on web
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 0,
-                  vertical: isWide ? 24 : 0,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                        // Enough top breathing room to not sit flush
-                        // against the status bar, without pushing
-                        // everything below it too far down.
-                        const SizedBox(height: 32),
-
-                        /// ── HERO IMAGE ────────────────────────────────
-                        SizedBox(
-                          height: 180,
-                          width: double.infinity,
-                          child: Image.asset(
-                            'assets/images/login.jpeg',
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        /// ── LOGIN CARD ──────────────────────────────
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: _buildLoginCard(),
-                        ),
-
-                        if (isClient) ...[
-                        const SizedBox(height: 16),
-
-                        /// ── REGISTER LINK (CLIENT ONLY) ──────────────
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Text(
-                              "Don't have an account?  ",
-                              style: TextStyle(
-                                color: Color(0xFF777777),
-                                fontSize: 14,
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => const SignupScreen()),
-                                );
-                              },
-                              child: Row(
-                                children: const [
-                                  Text(
-                                    'Register Now',
-                                    style: TextStyle(
-                                      color: Color(0xFFD4A017),
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  SizedBox(width: 4),
-                                  Icon(
-                                    Icons.arrow_forward_rounded,
-                                    color: Color(0xFFD4A017),
-                                    size: 16,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        ],
-
-                        const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── LOGIN CARD ─────────────────────────────────────────────────────────────
-  Widget _buildLoginCard() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1C),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: const Color(0xFFD4A017).withOpacity(0.25),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFD4A017).withOpacity(0.08),
-            blurRadius: 40,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          /// EMAIL FIELD
-          _buildInputField(
-            controller: usernameController,
-            hint: 'Email',
-            icon: Icons.person_outline_rounded,
-          ),
-
-          const SizedBox(height: 12),
-
-          // CLIENT-only: "Password" vs "OTP Login" mode toggle. Garage
-          // login never sees this — the else-branch below always shows
-          // the plain password field regardless of _clientOtpMode.
-          if (isClient) ...[
-            _buildClientLoginModeToggle(),
-            const SizedBox(height: 12),
-          ],
-
-          if (!isClient || !_clientOtpMode) ...[
-            /// PASSWORD FIELD
-            _buildPasswordField(),
-
-            /// FORGOT PASSWORD
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () {
-                  if (isClient) {
-                    _forgotPassword();
-                  } else {
-                    _forgotPasswordAdmin();
-                  }
-                },
-                style: TextButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: const Text(
-                  'Forgot Password?',
-                  style: TextStyle(
-                    color: Color(0xFFD4A017),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+    final canPop = Navigator.of(context).canPop();
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: AuthPage(
+        topBar: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 12, 0),
+          child: SizedBox(
+            height: 48,
+            child: Row(
+              children: [
+                if (canPop)
+                  IconButton(
+                    tooltip: 'Back',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: Icon(Icons.arrow_back_rounded, color: AppColors.txt),
                   ),
-                ),
+                const Spacer(),
+              ],
+            ),
+          ),
+        ),
+        children: [
+          const Center(child: AuthWordmark()),
+          const SizedBox(height: 18),
+          if (isClient)
+            const Center(child: AuthHero(size: 72))
+          else
+            Center(
+              child: Container(
+                width: 76,
+                height: 76,
+                decoration: BoxDecoration(color: kAuthGold.withOpacity(0.16), shape: BoxShape.circle),
+                child: const Icon(Icons.storefront_rounded, color: kAuthGold, size: 38),
               ),
             ),
-
-            const SizedBox(height: 14),
-
-            /// SIGN IN BUTTON
-            _buildSignInButton(),
-          ] else ...[
-            /// CLIENT OTP LOGIN
-            _buildClientOtpLoginSection(),
-          ],
-
+          const SizedBox(height: 14),
+          AuthTitle(
+            title: isClient ? 'Welcome back 👋' : 'Garage partner login',
+            subtitle: isClient
+                ? 'Log in to book, track and pay for your vehicle care.'
+                : 'Log in to manage the bookings sent to your garage.',
+          ),
           const SizedBox(height: 18),
 
-          /// LOGIN AS TOGGLE
+          /// ── WHO ARE YOU ────────────────────────────────
           _buildLoginAsSection(),
+          const SizedBox(height: 14),
+
+          /// ── LOGIN CARD ─────────────────────────────────
+          AuthCard(child: _buildLoginForm()),
+
+          if (isClient) ...[
+            const SizedBox(height: 18),
+            const AuthOrDivider(),
+            const SizedBox(height: 18),
+            AuthGuestButton(onTap: _guestTapped),
+            const SizedBox(height: 16),
+            AuthSwitchLink(
+              question: 'New to Reperi?',
+              action: 'Create an account',
+              onTap: _openSignup,
+            ),
+            const SizedBox(height: 10),
+            const AuthLegalNote(),
+          ],
         ],
       ),
     );
   }
 
-  /// The small "Password" / "OTP Login" segmented toggle shown only for
-  /// CLIENT. Switching modes clears whatever OTP was in flight, so
-  /// bouncing back and forth can't leave a stale "code sent" state behind.
+  Widget _buildLoginForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AuthField(
+          label: isClient ? 'Email' : 'Garage username',
+          controller: usernameController,
+          hint: isClient ? 'you@example.com' : 'Your garage username',
+          icon: isClient ? Icons.alternate_email_rounded : Icons.storefront_rounded,
+          keyboardType: isClient ? TextInputType.emailAddress : TextInputType.text,
+          autofillHints: isClient ? const [AutofillHints.email] : const [AutofillHints.username],
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 14),
+
+        // CLIENT-only: password vs one-time email code. Garage login never
+        // sees this — it always gets the plain password field.
+        if (isClient) ...[
+          _buildClientLoginModeToggle(),
+          const SizedBox(height: 14),
+        ],
+
+        if (!isClient || !_clientOtpMode) ...[
+          AuthField(
+            label: 'Password',
+            controller: passwordController,
+            hint: 'Your password',
+            icon: Icons.lock_outline_rounded,
+            obscure: _obscurePassword,
+            onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
+            autofillHints: const [AutofillHints.password],
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              if (!_isLoading) _handleLogin();
+            },
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () {
+                if (isClient) {
+                  _forgotPassword();
+                } else {
+                  _forgotPasswordAdmin();
+                }
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.txt,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Forgot password?',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          AuthPrimaryButton(label: 'Log in', loading: _isLoading, onTap: _handleLogin),
+        ] else
+          _buildClientOtpLoginSection(),
+      ],
+    );
+  }
+
+  /// "Use password" / "Email me a code" — CLIENT only. Switching clears any
+  /// code in flight, so bouncing back and forth can't leave a stale state.
   Widget _buildClientLoginModeToggle() {
     Widget segment(String label, bool selectedValue) {
       final selected = _clientOtpMode == selectedValue;
       return Expanded(
         child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () {
             if (_clientOtpMode == selectedValue) return;
             setState(() {
@@ -614,22 +580,28 @@ class _LoginScreenState extends State<LoginScreen>
               otpLoginController.clear();
             });
           },
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 10),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
-              color: selected ? const Color(0xFFD4A017).withOpacity(0.14) : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: selected ? const Color(0xFFD4A017) : const Color(0xFF3A3A3A),
-              ),
+              color: selected ? AppColors.surfaceRaised : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: selected
+                  ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 2))]
+                  : null,
             ),
             alignment: Alignment.center,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: selected ? const Color(0xFFD4A017) : Colors.white54,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  color: selected ? AppColors.txt : AppColors.mut,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ),
@@ -637,302 +609,128 @@ class _LoginScreenState extends State<LoginScreen>
       );
     }
 
-    return Row(
-      children: [
-        segment('Password', false),
-        const SizedBox(width: 10),
-        segment('OTP Login', true),
-      ],
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSunken,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Row(
+        children: [
+          segment('Use password', false),
+          segment('Email me a code', true),
+        ],
+      ),
     );
   }
 
-  /// CLIENT OTP login body — an email field is already shown above this
-  /// (shared with the password path), so this only needs the OTP field
-  /// (once sent) plus the send/verify button.
+  /// CLIENT code login — the email field is already above, so this is the
+  /// code field (once sent) plus the send / verify button.
   Widget _buildClientOtpLoginSection() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_otpSent) ...[
-          _buildInputField(
+          AuthField(
+            label: 'Code from your email',
             controller: otpLoginController,
-            hint: 'Enter the code sent to your email',
+            hint: '6-digit code',
             icon: Icons.mark_email_read_outlined,
             keyboardType: TextInputType.number,
+            autofillHints: const [AutofillHints.oneTimeCode],
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              if (!_otpLoading) _verifyClientLoginOtp();
+            },
           ),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: _otpLoading ? null : _sendClientLoginOtp,
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                foregroundColor: AppColors.txt,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text(
-                'Resend code',
-                style: TextStyle(color: Color(0xFFD4A017), fontSize: 13, fontWeight: FontWeight.w500),
-              ),
+              child: const Text('Resend code', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
             ),
           ),
-          const SizedBox(height: 6),
-        ] else
+          const SizedBox(height: 4),
+        ] else ...[
+          Text(
+            "We'll email you a one-time code — no password needed.",
+            style: TextStyle(color: AppColors.mut, fontSize: 14, fontWeight: FontWeight.w600, height: 1.4),
+          ),
           const SizedBox(height: 14),
-        GestureDetector(
-          onTap: _otpLoading ? null : (_otpSent ? _verifyClientLoginOtp : _sendClientLoginOtp),
-          child: Container(
-            width: double.infinity,
-            height: 62,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFD4A017), Color(0xFFF5C842)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFFD4A017).withOpacity(0.45),
-                  blurRadius: 28,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Center(
-              child: _otpLoading
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5),
-                    )
-                  : Text(
-                      _otpSent ? 'VERIFY & SIGN IN' : 'SEND OTP',
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                      ),
-                    ),
-            ),
-          ),
+        ],
+        AuthPrimaryButton(
+          label: _otpSent ? 'Verify & log in' : 'Send me a code',
+          loading: _otpLoading,
+          onTap: _otpSent ? _verifyClientLoginOtp : _sendClientLoginOtp,
         ),
       ],
-    );
-  }
-
-  Widget _buildInputField({
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
-  }) {
-    return Container(
-      height: 58,
-      decoration: BoxDecoration(
-        color: const Color(0xFF262626),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF3A3A3A)),
-      ),
-      child: Row(
-        children: [
-          const SizedBox(width: 16),
-          Icon(icon, color: const Color(0xFFD4A017), size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              keyboardType: keyboardType,
-              style: const TextStyle(color: Colors.white, fontSize: 15),
-              decoration: InputDecoration(
-                hintText: hint,
-                hintStyle: const TextStyle(color: Color(0xFF555555)),
-                border: InputBorder.none,
-                isDense: true,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPasswordField() {
-    return Container(
-      height: 58,
-      decoration: BoxDecoration(
-        color: const Color(0xFF262626),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF3A3A3A)),
-      ),
-      child: Row(
-        children: [
-          const SizedBox(width: 16),
-          const Icon(Icons.lock_outline_rounded,
-              color: Color(0xFFD4A017), size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: TextField(
-              controller: passwordController,
-              obscureText: _obscurePassword,
-              style: const TextStyle(color: Colors.white, fontSize: 15),
-              decoration: const InputDecoration(
-                hintText: 'Password',
-                hintStyle: TextStyle(color: Color(0xFF555555)),
-                border: InputBorder.none,
-                isDense: true,
-              ),
-            ),
-          ),
-          Semantics(
-            button: true,
-            label: _obscurePassword ? 'Show password' : 'Hide password',
-            child: GestureDetector(
-              onTap: () =>
-                  setState(() => _obscurePassword = !_obscurePassword),
-              child: Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: Icon(
-                  _obscurePassword
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  color: const Color(0xFFD4A017),
-                  size: 22,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSignInButton() {
-    return GestureDetector(
-      onTap: _isLoading ? null : _handleLogin,
-      child: Container(
-        width: double.infinity,
-        height: 62,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFD4A017), Color(0xFFF5C842)],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFD4A017).withOpacity(0.45),
-              blurRadius: 28,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Center(
-          child: _isLoading
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    color: Colors.black,
-                    strokeWidth: 2.5,
-                  ),
-                )
-              : const Text(
-                  'SIGN IN',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 3,
-                  ),
-                ),
-        ),
-      ),
     );
   }
 
   Widget _buildLoginAsSection() {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-                child: Container(height: 1, color: const Color(0xFF222222))),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                'Login As',
-                style: TextStyle(color: Color(0xFF555555), fontSize: 13),
-              ),
-            ),
-            Expanded(
-                child: Container(height: 1, color: const Color(0xFF222222))),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-                child: _toggleButton(true, Icons.person_rounded, 'CLIENT')),
-            const SizedBox(width: 12),
-            Expanded(
-                child: _toggleButton(false, Icons.shield_rounded, 'GARAGE')),
-          ],
-        ),
-      ],
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSunken,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: _toggleButton(true, Icons.person_rounded, "I'm a customer")),
+          const SizedBox(width: 4),
+          Expanded(child: _toggleButton(false, Icons.storefront_rounded, "I'm a garage")),
+        ],
+      ),
     );
   }
 
   Widget _toggleButton(bool value, IconData icon, String label) {
     final isSelected = isClient == value;
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => setState(() {
         isClient = value;
-        // Garage never shows OTP login — reset so switching back to
-        // CLIENT later always starts fresh in password mode rather than
-        // reappearing mid-flow with a stale "code sent" state.
+        // Garage never shows code login — reset so switching back to
+        // customer always starts fresh in password mode.
         _clientOtpMode = false;
         _otpSent = false;
         otpLoginController.clear();
       }),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
-        height: 52,
+        curve: Curves.easeOutCubic,
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFFD4A017).withOpacity(0.12)
-              : Colors.transparent,
+          color: isSelected ? AppColors.txt : Colors.transparent,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected
-                ? const Color(0xFFD4A017)
-                : const Color(0xFF3A3A3A),
-            width: isSelected ? 1.5 : 1,
-          ),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: isSelected
-                  ? const Color(0xFFD4A017)
-                  : const Color(0xFF555555),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected
-                    ? const Color(0xFFD4A017)
-                    : const Color(0xFF555555),
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                letterSpacing: 1.5,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 19, color: isSelected ? AppColors.ink : AppColors.mut),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  color: isSelected ? AppColors.ink : AppColors.mut,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -969,7 +767,7 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
   late final _otpClient = SupabaseClient(
     _supabaseUrl,
     _supabaseAnonKey,
-    authOptions: const AuthClientOptions(authFlowType: AuthFlowType.implicit),
+    authOptions: AuthClientOptions(authFlowType: AuthFlowType.implicit),
   );
 
   bool _isLoading = false;
@@ -988,21 +786,21 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
 
   InputDecoration _fieldDecoration(String hint) => InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Color(0xFF6B6B6B)),
+        hintStyle: TextStyle(color: AppColors.mut),
         filled: true,
-        fillColor: const Color(0xFF1C1C1C),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        fillColor: AppColors.surfaceSunken,
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF333333)),
+          borderSide: BorderSide(color: AppColors.line),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF333333)),
+          borderSide: BorderSide(color: AppColors.line),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFD4A017), width: 1.4),
+          borderSide: BorderSide(color: Color(0xFFD4A017), width: 1.4),
         ),
       );
 
@@ -1113,16 +911,16 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: const Color(0xFF262626),
+      backgroundColor: AppColors.surfaceRaised,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
-        side: BorderSide(color: const Color(0xFFD4A017).withOpacity(0.25)),
+        side: BorderSide(color: Color(0xFFD4A017).withOpacity(0.25)),
       ),
       // FIX: scrollable so the dialog no longer overflows ("BOTTOM
       // OVERFLOWED BY 97 PIXELS") when the keyboard shrinks the space
       // available to it on step 1 (code + new password fields).
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
+        padding: EdgeInsets.fromLTRB(24, 28, 24, 22),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1131,38 +929,38 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
               height: 60,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFFD4A017).withOpacity(0.12),
+                color: Color(0xFFD4A017).withOpacity(0.12),
               ),
-              child: const Icon(Icons.lock_reset_rounded, color: Color(0xFFD4A017), size: 30),
+              child: Icon(Icons.lock_reset_rounded, color: Color(0xFFD4A017), size: 30),
             ),
-            const SizedBox(height: 18),
+            SizedBox(height: 18),
             Text(
               _step == 0 ? 'Reset Your Password' : 'Enter Code & New Password',
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: AppColors.txt,
                 fontSize: 19,
                 fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               _step == 0
                   ? 'Enter the email you signed up with — we\'ll send a code to it if it\'s registered.'
                   : 'Enter the code sent to ${_emailController.text.trim()} and choose a new password.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white60,
+              style: TextStyle(
+                color: AppColors.mut,
                 fontSize: 13,
                 height: 1.5,
               ),
             ),
-            const SizedBox(height: 22),
+            SizedBox(height: 22),
             if (_step == 0) ...[
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 enabled: !_isLoading,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: AppColors.txt),
                 decoration: _fieldDecoration('your@email.com'),
               ),
             ] else ...[
@@ -1170,66 +968,66 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
                 controller: _otpController,
                 keyboardType: TextInputType.number,
                 enabled: !_isLoading,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: AppColors.txt),
                 decoration: _fieldDecoration('6-digit code'),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               TextField(
                 controller: _newPasswordController,
                 obscureText: true,
                 enabled: !_isLoading,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: AppColors.txt),
                 decoration: _fieldDecoration('New password'),
               ),
             ],
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
+              duration: Duration(milliseconds: 180),
               child: _error == null
-                  ? const SizedBox.shrink(key: ValueKey('no-error'))
+                  ? SizedBox.shrink(key: ValueKey('no-error'))
                   : Padding(
-                      key: const ValueKey('error'),
-                      padding: const EdgeInsets.only(top: 10),
+                      key: ValueKey('error'),
+                      padding: EdgeInsets.only(top: 10),
                       child: Row(
                         children: [
-                          const Icon(Icons.error_outline_rounded, color: Color(0xFFE5484D), size: 16),
-                          const SizedBox(width: 8),
+                          Icon(Icons.error_outline_rounded, color: Color(0xFFE5484D), size: 16),
+                          SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               _error!,
-                              style: const TextStyle(color: Color(0xFFE5484D), fontSize: 12.5),
+                              style: TextStyle(color: Color(0xFFE5484D), fontSize: 12.5),
                             ),
                           ),
                         ],
                       ),
                     ),
             ),
-            const SizedBox(height: 20),
+            SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
                   child: TextButton(
                     onPressed: _isLoading ? null : () => Navigator.pop(context),
                     style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      padding: EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      side: const BorderSide(color: Color(0xFF3A3A3A)),
+                      side: BorderSide(color: AppColors.line),
                     ),
-                    child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                    child: Text('Cancel', style: TextStyle(color: AppColors.mut)),
                   ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : (_step == 0 ? _sendCode : _confirmReset),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFD4A017),
-                      disabledBackgroundColor: const Color(0xFFD4A017).withOpacity(0.5),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      backgroundColor: Color(0xFFD4A017),
+                      disabledBackgroundColor: Color(0xFFD4A017).withOpacity(0.5),
+                      padding: EdgeInsets.symmetric(vertical: 14),
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     child: _isLoading
-                        ? const SizedBox(
+                        ? SizedBox(
                             height: 18,
                             width: 18,
                             child: CircularProgressIndicator(
@@ -1239,17 +1037,17 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
                           )
                         : Text(
                             _step == 0 ? 'Send Code' : 'Reset Password',
-                            style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w800),
+                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800),
                           ),
                   ),
                 ),
               ],
             ),
             if (_step == 1) ...[
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
               TextButton(
                 onPressed: _isLoading ? null : _sendCode,
-                child: const Text('Resend code', style: TextStyle(color: Color(0xFFD4A017))),
+                child: Text('Resend code', style: TextStyle(color: Color(0xFFD4A017))),
               ),
             ],
           ],
@@ -1293,7 +1091,7 @@ class _AdminForgotPasswordDialogState
     // a code verifier across steps — this client never persists
     // anything and never survives a redirect, so implicit flow (which
     // doesn't need that storage) is the right fit here.
-    authOptions: const AuthClientOptions(authFlowType: AuthFlowType.implicit),
+    authOptions: AuthClientOptions(authFlowType: AuthFlowType.implicit),
   );
 
   bool _isLoading = false;
@@ -1312,21 +1110,21 @@ class _AdminForgotPasswordDialogState
 
   InputDecoration _fieldDecoration(String hint) => InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white54),
+        hintStyle: TextStyle(color: AppColors.mut),
         filled: true,
-        fillColor: const Color(0xFF3A3A3A),
+        fillColor: AppColors.surfaceSunken,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFF333333)),
+          borderSide: BorderSide(color: AppColors.line),
         ),
       );
 
   Widget _fieldLabel(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
+        padding: EdgeInsets.only(bottom: 8),
         child: Text(
           text,
-          style: const TextStyle(
-            color: Colors.white70,
+          style: TextStyle(
+            color: AppColors.mut,
             fontSize: 13,
             fontWeight: FontWeight.w600,
           ),
@@ -1360,7 +1158,7 @@ class _AdminForgotPasswordDialogState
           context,
           message: 'That email and username don\'t match a garage account.',
           icon: Icons.error_outline_rounded,
-          accent: const Color(0xFFE5484D),
+          accent: Color(0xFFE5484D),
         );
         setState(() => _isLoading = false);
         return;
@@ -1443,7 +1241,7 @@ class _AdminForgotPasswordDialogState
           context,
           message: '${resetData?['error'] ?? 'Could not reset password — please try again.'}',
           icon: Icons.error_outline_rounded,
-          accent: const Color(0xFFE5484D),
+          accent: Color(0xFFE5484D),
         );
         setState(() => _isLoading = false);
       }
@@ -1453,7 +1251,7 @@ class _AdminForgotPasswordDialogState
         context,
         message: 'That code is invalid or expired — request a new one.',
         icon: Icons.error_outline_rounded,
-        accent: const Color(0xFFE5484D),
+        accent: Color(0xFFE5484D),
       );
       setState(() => _isLoading = false);
     }
@@ -1462,10 +1260,10 @@ class _AdminForgotPasswordDialogState
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Reset Password'),
-      backgroundColor: const Color(0xFF262626),
-      titleTextStyle: const TextStyle(
-        color: Colors.white,
+      title: Text('Reset Password'),
+      backgroundColor: AppColors.surfaceRaised,
+      titleTextStyle: TextStyle(
+        color: AppColors.txt,
         fontSize: 20,
         fontWeight: FontWeight.w600,
       ),
@@ -1479,15 +1277,15 @@ class _AdminForgotPasswordDialogState
                   TextField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppColors.txt),
                     enabled: !_isLoading,
                     decoration: _fieldDecoration('your@email.com'),
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: 16),
                   _fieldLabel('Username registered with Reperi'),
                   TextField(
                     controller: _usernameController,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppColors.txt),
                     enabled: !_isLoading,
                     decoration: _fieldDecoration('your_username'),
                   ),
@@ -1495,23 +1293,23 @@ class _AdminForgotPasswordDialogState
               : [
                   Text(
                     'We sent a 6-digit code to ${_emailController.text.trim()}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    style: TextStyle(color: AppColors.mut, fontSize: 13),
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: 16),
                   _fieldLabel('Verification Code'),
                   TextField(
                     controller: _otpController,
                     keyboardType: TextInputType.number,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppColors.txt),
                     enabled: !_isLoading,
                     decoration: _fieldDecoration('123456'),
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: 16),
                   _fieldLabel('New Password'),
                   TextField(
                     controller: _passwordController,
                     obscureText: true,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppColors.txt),
                     enabled: !_isLoading,
                     decoration: _fieldDecoration('Enter new password'),
                   ),
@@ -1523,18 +1321,18 @@ class _AdminForgotPasswordDialogState
           // Keyboard dismiss now happens in dispose(), not here — doing
           // it right before pop is what raced the route teardown.
           onPressed: _isLoading ? null : () => Navigator.pop(context),
-          child: const Text(
+          child: Text(
             'Cancel',
             style: TextStyle(color: Color(0xFFD4A017)),
           ),
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFD4A017),
+            backgroundColor: Color(0xFFD4A017),
           ),
           onPressed: _isLoading ? null : (_step == 0 ? _sendCode : _confirmReset),
           child: _isLoading
-              ? const SizedBox(
+              ? SizedBox(
                   height: 16,
                   width: 16,
                   child: CircularProgressIndicator(
@@ -1544,7 +1342,7 @@ class _AdminForgotPasswordDialogState
                 )
               : Text(
                   _step == 0 ? 'Send Code' : 'Reset Password',
-                  style: const TextStyle(color: Colors.black),
+                  style: TextStyle(color: Colors.black),
                 ),
         ),
       ],

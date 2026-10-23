@@ -6,9 +6,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
+import '../widgets/booking_addons.dart';
 import '../widgets/inspection_view_widget.dart';
 import '../widgets/error_display.dart';
+import '../widgets/slot_picker.dart';
 
+/// Live updates for one booking: a summary card with the status in plain
+/// words and a progress bar, the garage's updates newest-first (tap a photo
+/// to see it full screen), and Chat / Call fixed at the bottom. Refreshes
+/// itself every 15 seconds and on pull-down.
 class BookingTrackingScreen extends StatefulWidget {
   final Map booking;
   final bool autoOpenChat;
@@ -25,6 +32,11 @@ class BookingTrackingScreen extends StatefulWidget {
 
 class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   static const _signedUrlExpirySeconds = 300;
+  static const _supportNumber = '9353094672';
+
+  static const Color _gold = Color(0xFFD4A017);
+  static const Color _green = Color(0xFF1FAA59);
+  static const Color _red = Color(0xFFE5484D);
 
   List updates = [];
   bool loading = true;
@@ -32,6 +44,17 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   // leaving the loading spinner stuck forever on a bad network moment.
   bool _loadError = false;
   bool hasUnreadMessages = false;
+  bool _showOlder = false;
+
+  /// Live copy of the booking — starts as what the list passed in, then
+  /// refreshed from the database so the status here never goes stale.
+  late Map<String, dynamic> _booking = Map<String, dynamic>.from(widget.booking);
+
+  Timer? _poll;
+
+  /// Signed photo links, reused for a few minutes so the 15-second refresh
+  /// doesn't re-sign (and re-download) every photo each time.
+  final Map<String, ({Future<String> url, DateTime at})> _urlCache = {};
 
   @override
   void initState() {
@@ -42,19 +65,43 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     if (widget.autoOpenChat) {
       WidgetsBinding.instance.addPostFrameCallback((_) => openChat());
     }
+    _poll = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted) return;
+      fetchUpdates(silent: true);
+      checkUnreadMessages();
+      _refreshBooking();
+    });
+    themeController.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    themeController.removeListener(_onThemeChanged);
+    super.dispose();
   }
 
   /// booking-images is a private bucket — `storedValue` is normally just the
   /// storage path (see booking_details_screen.dart's uploadUpdate()), but
   /// older rows may still hold a full public URL from before the bucket was
   /// made private, so both are handled here.
-  Future<String> _resolveImageUrl(String storedValue) async {
+  Future<String> _resolveImageUrl(String storedValue) {
+    final cached = _urlCache[storedValue];
+    if (cached != null && DateTime.now().difference(cached.at) < const Duration(minutes: 4)) {
+      return cached.url;
+    }
     final path = storedValue.contains('/booking-images/')
         ? storedValue.split('/booking-images/').last
         : storedValue;
-    return Supabase.instance.client.storage
+    final future = Supabase.instance.client.storage
         .from('booking-images')
         .createSignedUrl(path, _signedUrlExpirySeconds);
+    _urlCache[storedValue] = (url: future, at: DateTime.now());
+    return future;
   }
 
   Future<void> _markUpdateAsRead() async {
@@ -68,7 +115,8 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     }
   }
 
-  Future<void> fetchUpdates() async {
+  /// [silent]: background refresh — keep showing what's there if it fails.
+  Future<void> fetchUpdates({bool silent = false}) async {
     final supabase = Supabase.instance.client;
 
     try {
@@ -86,14 +134,35 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
         _loadError = false;
       });
     } catch (e) {
-      // Without this, a failed fetch left `loading` stuck true forever —
-      // an unrecoverable spinner with no way out but force-quitting.
-      if (!mounted) return;
+      if (!mounted || silent) return;
       setState(() {
         loading = false;
         _loadError = true;
       });
     }
+  }
+
+  /// Re-reads this booking's row so the status / progress stay current.
+  Future<void> _refreshBooking() async {
+    try {
+      final row = await Supabase.instance.client
+          .from('bookings')
+          .select()
+          .eq('id', widget.booking['id'])
+          .maybeSingle();
+      if (!mounted || row == null) return;
+      setState(() => _booking = {..._booking, ...row});
+    } catch (_) {
+      // Keep the last known state.
+    }
+  }
+
+  Future<void> _pullToRefresh() async {
+    await Future.wait([
+      fetchUpdates(silent: true),
+      checkUnreadMessages(),
+      _refreshBooking(),
+    ]);
   }
 
   Future<void> checkUnreadMessages() async {
@@ -134,21 +203,107 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     );
   }
 
+  Future<void> _call() async {
+    try {
+      await launchUrl(Uri(scheme: 'tel', path: _supportNumber));
+    } catch (_) {
+      if (!mounted) return;
+      ErrorDisplay.showPremiumToast(
+        context,
+        message: 'Call us on $_supportNumber',
+        icon: Icons.phone_rounded,
+      );
+    }
+  }
+
+  // ── Status in plain words + progress ─────────────────────────────────
+  bool get _pickup => (_booking['pickupdrop'] ?? '').toString().toLowerCase() == 'yes';
+  String get _status => (_booking['booking_status'] ?? '').toString();
+  String get _stage => (_booking['delivery_stage'] ?? '').toString();
+
+  bool get _finished {
+    final s = _status.toLowerCase();
+    return s == 'delivered' || s == 'completed' || s == 'cancelled' || s == 'rejected';
+  }
+
+  String get _plainStatus {
+    final status = _status;
+    final stage = _stage;
+    if (status == 'Delivered') return 'Completed';
+    if (status == 'Cancelled' || status == 'Rejected') return status;
+    if (_pickup) {
+      if (stage == 'pickup_started') return 'Driver has arrived for pickup';
+      if (stage == 'picked_up') return 'Picked up — going to the garage';
+      if (stage == 'out_for_delivery') return 'On the way back to you';
+      if (stage == 'delivered') return 'Delivered to you';
+    }
+    if (status == 'Ready for Pickup') {
+      return _pickup ? 'Ready — coming back to you soon' : 'Ready — you can collect it';
+    }
+    final early = status.isEmpty || status == 'Pending' || status == 'Accepted';
+    if (_pickup && stage == 'to_garage' && early) return 'At the garage';
+    if (status.isEmpty || status == 'Pending') {
+      return _pickup ? 'Booked — pickup is being arranged' : 'Booked — waiting for the garage';
+    }
+    if (status == 'Accepted') return 'Garage has accepted your booking';
+    return status;
+  }
+
+  List<String> get _stepLabels => _pickup
+      ? const ['Booked', 'Picked up', 'At garage', 'On the way', 'Done']
+      : const ['Booked', 'At garage', 'Ready', 'Done'];
+
+  /// Index of the step reached so far in [_stepLabels].
+  int get _stepIndex {
+    if (_status == 'Delivered' || _stage == 'delivered') return _stepLabels.length - 1;
+    if (_pickup) {
+      switch (_stage) {
+        case 'out_for_delivery':
+          return 3;
+        case 'to_garage':
+          return 2;
+        case 'picked_up':
+          return 1;
+      }
+      if (_status == 'Ready for Pickup') return 2;
+      return 0;
+    }
+    if (_status == 'Ready for Pickup') return 2;
+    if (_status.isEmpty || _status == 'Pending') return 0;
+    return 1;
+  }
+
+  static String _formatTime(dynamic iso) {
+    final d = DateTime.tryParse('${iso ?? ''}')?.toLocal();
+    if (d == null) return '';
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    final m = d.minute.toString().padLeft(2, '0');
+    final ampm = d.hour >= 12 ? 'PM' : 'AM';
+    final now = DateTime.now();
+    final sameDay = d.year == now.year && d.month == now.month && d.day == now.day;
+    final day = sameDay ? 'Today' : '${d.day} ${months[d.month - 1]}';
+    return '$day, $h:$m $ampm';
+  }
+
+  // ── Build ────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.ink,
       appBar: AppBar(
         backgroundColor: AppColors.surfaceRaised,
+        elevation: 0,
+        scrolledUnderElevation: 1,
+        iconTheme: IconThemeData(color: AppColors.txt),
         title: Text(
-          widget.booking['package_name']?.toString() ?? 'Service',
-          style: const TextStyle(color: Color(0xFFD4A017)),
+          'Live updates',
+          style: TextStyle(color: AppColors.txt, fontSize: 19, fontWeight: FontWeight.w900),
         ),
       ),
+      bottomNavigationBar: _buildActionBar(),
       body: loading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFFD4A017)),
-            )
+          ? _buildSkeleton()
           : _loadError
               ? Center(
                   child: Padding(
@@ -156,270 +311,565 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.cloud_off_rounded, color: AppColors.mut, size: 40),
+                        Icon(Icons.cloud_off_rounded, color: AppColors.mut, size: 44),
                         const SizedBox(height: 16),
                         Text(
                           "Couldn't load this booking's updates",
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w700, fontSize: 15),
+                          style: TextStyle(color: AppColors.txt, fontWeight: FontWeight.w800, fontSize: 18),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           'Check your connection and try again.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.mut, fontSize: 13),
+                          style: TextStyle(color: AppColors.mut, fontSize: 15),
                         ),
                         const SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: () {
-                            setState(() => loading = true);
-                            fetchUpdates();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFD4A017),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        SizedBox(
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() => loading = true);
+                              fetchUpdates();
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _gold,
+                              padding: const EdgeInsets.symmetric(horizontal: 32),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                            child: const Text('TRY AGAIN',
+                                style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 16)),
                           ),
-                          child: Text('RETRY',
-                              style: TextStyle(color: AppColors.onAccentDark, fontWeight: FontWeight.w800)),
                         ),
                       ],
                     ),
                   ),
                 )
-              : Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: ListView(
-                  padding: const EdgeInsets.all(20),
+              : RefreshIndicator(
+                  color: _gold,
+                  onRefresh: _pullToRefresh,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                    children: [
+                      Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 600),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildSummaryCard(),
+                              // Inspection report from the garage (shows
+                              // nothing when there isn't one).
+                              InspectionViewWidget(bookingId: widget.booking['id'].toString()),
+                              const SizedBox(height: 22),
+                              _buildUpdatesSection(),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+    );
+  }
+
+  Widget _buildSummaryCard() {
+    final name = (_booking['package_name'] ?? 'Service').toString();
+    final price = _booking['package_price']?.toString();
+    final steps = _stepLabels;
+    final reached = _stepIndex;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.line),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 14, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: (_finished ? _green : _gold).withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  _finished ? Icons.check_circle_rounded : Icons.build_rounded,
+                  color: _finished ? _green : _gold,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── STATUS BUTTON ONLY ──
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD4A017).withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        widget.booking['booking_status']?.toString() ?? 'PENDING',
-                        style: const TextStyle(
-                          color: Color(0xFFD4A017),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 30),
-
-                    // ── INSPECTION SECTION ──
-                    InspectionViewWidget(
-                      bookingId: widget.booking['id'],
-                    ),
-
-                    const SizedBox(height: 30),
-
                     Text(
-                      'Service Timeline',
-                      style: TextStyle(
-                        color: AppColors.txt,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                      ),
+                      name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: AppColors.txt, fontSize: 20, fontWeight: FontWeight.w900, height: 1.2),
                     ),
-
-                    const SizedBox(height: 20),
-
-                    ...updates.map((u) {
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 24),
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceRaised,
-                          borderRadius: BorderRadius.circular(26),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 14,
-                                  height: 14,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFD4A017),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    u['stage'],
-                                    style: TextStyle(
-                                      color: AppColors.txt,
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                            RepaintBoundary(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(22),
-                                child: FutureBuilder<String>(
-                                  future: _resolveImageUrl(u['image_url']),
-                                  builder: (context, snapshot) {
-                                    if (!snapshot.hasData) {
-                                      return Container(
-                                        height: 220,
-                                        width: double.infinity,
-                                        color: AppColors.surfaceSunken,
-                                        child: const Center(
-                                          child: CircularProgressIndicator(
-                                            color: Color(0xFFD4A017),
-                                            strokeWidth: 2,
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                    return CachedNetworkImage(
-                                      imageUrl: snapshot.data!,
-                                      height: 220,
-                                      width: double.infinity,
-                                      fit: BoxFit.cover,
-                                      fadeInDuration: Duration.zero,
-                                      fadeOutDuration: Duration.zero,
-                                      useOldImageOnUrlChange: false,
-                                      placeholder: (context, url) => Container(
-                                        color: AppColors.surfaceSunken,
-                                        child: const Center(
-                                          child: CircularProgressIndicator(
-                                            color: Color(0xFFD4A017),
-                                            strokeWidth: 2,
-                                          ),
-                                        ),
-                                      ),
-                                      errorWidget: (context, url, error) =>
-                                          Container(
-                                        color: AppColors.surfaceSunken,
-                                        child: Icon(
-                                          Icons.broken_image_rounded,
-                                          color: AppColors.mut,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            Text(
-                              u['description'] ?? '',
-                              style: TextStyle(
-                                color: AppColors.txt.withOpacity(0.7),
-                                height: 1.5,
-                                fontSize: 15,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-
-                    const SizedBox(height: 30),
-
-                    // ── CHAT BUTTON ──
-                    GestureDetector(
-                      onTap: openChat,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Container(
-                            height: 68,
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceRaised,
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: const Color(0xFFD4A017).withOpacity(0.3),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.chat_bubble_outline_rounded,
-                                    color: Color(0xFFD4A017), size: 22),
-                                const SizedBox(width: 10),
-                                Text(
-                                  'CHAT WITH GARAGE',
-                                  style: TextStyle(
-                                    color: AppColors.txt,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (hasUnreadMessages)
-                            Positioned(
-                              top: -6,
-                              right: -6,
-                              child: Container(
-                                width: 18,
-                                height: 18,
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.red.withOpacity(0.6),
-                                      blurRadius: 8,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        _formatTime(_booking['created_at']),
+                        _pickup ? 'pickup & drop' : 'at the garage',
+                      ].where((s) => s.isNotEmpty).join(' · '),
+                      style: TextStyle(color: AppColors.mut, fontSize: 14.5, height: 1.35),
                     ),
-
-                    const SizedBox(height: 18),
-
-                    // ── CALL BUTTON ──
-                    GestureDetector(
-                      onTap: () async {
-                        final uri = Uri(scheme: 'tel', path: '9353094672');
-                        // ignore: deprecated_member_use
-                        await launchUrl(uri);
-                      },
-                      child: Container(
-                        height: 68,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFD4A017), Color(0xFFF5C842)],
-                          ),
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'CALL GARAGE',
-                            style: TextStyle(
-                              color: AppColors.onAccentDark,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                        ),
+                    if (price != null && price.trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        price,
+                        style: const TextStyle(color: _gold, fontSize: 18, fontWeight: FontWeight.w900),
                       ),
-                    ),
-
-                    const SizedBox(height: 40),
+                    ],
                   ],
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(color: _finished ? AppColors.mut : _green, shape: BoxShape.circle),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _plainStatus,
+                  style: TextStyle(color: AppColors.txt, fontSize: 18, fontWeight: FontWeight.w800, height: 1.3),
+                ),
+              ),
+            ],
+          ),
+          if (_status != 'Cancelled' && _status != 'Rejected') ...[
+            const SizedBox(height: 12),
+            Row(
+              children: List.generate(steps.length, (i) {
+                final done = i <= reached;
+                return Expanded(
+                  child: Container(
+                    height: 7,
+                    margin: EdgeInsets.only(right: i == steps.length - 1 ? 0 : 4),
+                    decoration: BoxDecoration(
+                      color: done ? _green : AppColors.line,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                );
+              }),
             ),
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: List.generate(steps.length, (i) {
+                final done = i <= reached;
+                return Expanded(
+                  child: Text(
+                    steps[i],
+                    textAlign: i == 0
+                        ? TextAlign.start
+                        : (i == steps.length - 1 ? TextAlign.end : TextAlign.center),
+                    maxLines: 2,
+                    style: TextStyle(
+                      color: done ? AppColors.txt : AppColors.mut,
+                      fontSize: 12,
+                      fontWeight: done ? FontWeight.w800 : FontWeight.w600,
+                      height: 1.2,
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ],
+          BookingSlotBadge(record: _booking),
+          // Add-ons the garage asked for (approve & pay / reject), and
+          // paid ones as sub-orders — same as on the dashboard card.
+          BookingAddons(booking: _booking),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUpdatesSection() {
+    final newestFirst = updates.reversed.toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Updates from the garage',
+                style: TextStyle(color: AppColors.txt, fontSize: 21, fontWeight: FontWeight.w900),
+              ),
+            ),
+            if (newestFirst.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceSunken,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.line),
+                ),
+                child: Text(
+                  '${newestFirst.length}',
+                  style: TextStyle(color: AppColors.txt, fontSize: 14, fontWeight: FontWeight.w900),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (newestFirst.isEmpty)
+          _buildEmptyUpdates()
+        else ...[
+          _buildUpdateCard(newestFirst.first as Map, latest: true),
+          if (newestFirst.length > 1) ...[
+            if (_showOlder)
+              ...newestFirst.skip(1).map((u) => _buildUpdateCard(u as Map, latest: false)),
+            Center(
+              child: TextButton.icon(
+                onPressed: () => setState(() => _showOlder = !_showOlder),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.txt,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+                icon: Icon(_showOlder ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 24),
+                label: Text(
+                  _showOlder ? 'Hide earlier updates' : 'See earlier updates (${newestFirst.length - 1})',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildEmptyUpdates() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(color: _gold.withOpacity(0.14), shape: BoxShape.circle),
+            child: const Icon(Icons.photo_camera_rounded, color: _gold, size: 30),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No updates yet',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.txt, fontSize: 19, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'The garage will post photos and notes here once work starts. '
+            "We'll notify you when they do.",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.mut, fontSize: 15, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUpdateCard(Map u, {required bool latest}) {
+    final image = (u['image_url'] ?? '').toString();
+    final description = (u['description'] ?? '').toString();
+    final stage = (u['stage'] ?? 'Update').toString();
+    final time = _formatTime(u['created_at']);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: latest ? _gold.withOpacity(0.6) : AppColors.line, width: latest ? 1.5 : 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      stage,
+                      style: TextStyle(color: AppColors.txt, fontSize: 19, fontWeight: FontWeight.w900, height: 1.25),
+                    ),
+                    if (time.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(time, style: TextStyle(color: AppColors.mut, fontSize: 14)),
+                    ],
+                  ],
+                ),
+              ),
+              if (latest) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: _gold, borderRadius: BorderRadius.circular(20)),
+                  child: const Text(
+                    'LATEST',
+                    style: TextStyle(color: Colors.black, fontSize: 11.5, fontWeight: FontWeight.w900, letterSpacing: 0.8),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (image.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _UpdatePhoto(
+              future: _resolveImageUrl(image),
+              title: stage,
+            ),
+          ],
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              description,
+              style: TextStyle(color: AppColors.txt.withOpacity(0.85), height: 1.5, fontSize: 16),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Chat and Call, always visible at the bottom.
+  Widget _buildActionBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        border: Border(top: BorderSide(color: AppColors.line)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 54,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: ElevatedButton.icon(
+                          onPressed: openChat,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.txt,
+                            foregroundColor: AppColors.ink,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          icon: const Icon(Icons.chat_bubble_outline_rounded, size: 22),
+                          label: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('Chat with garage', style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w900)),
+                          ),
+                        ),
+                      ),
+                      if (hasUnreadMessages)
+                        Positioned(
+                          top: -5,
+                          right: -5,
+                          child: Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              color: _red,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppColors.surfaceRaised, width: 2),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                height: 54,
+                child: OutlinedButton.icon(
+                  onPressed: _call,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.txt,
+                    side: BorderSide(color: AppColors.txt.withOpacity(0.3), width: 1.4),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  icon: const Icon(Icons.phone_rounded, size: 22),
+                  label: const Text('Call us', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeleton() {
+    Widget box(double h, {double r = 14, double? w}) => Container(
+          height: h,
+          width: w,
+          decoration: BoxDecoration(color: AppColors.line, borderRadius: BorderRadius.circular(r)),
+        );
+    return ListView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      children: [
+        box(170, r: 24),
+        const SizedBox(height: 22),
+        box(22, w: 200, r: 8),
+        const SizedBox(height: 12),
+        box(300, r: 24),
+      ],
+    );
+  }
+}
+
+/// One update photo: tap to open full screen with pinch-to-zoom.
+class _UpdatePhoto extends StatelessWidget {
+  const _UpdatePhoto({required this.future, required this.title});
+
+  final Future<String> future;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: FutureBuilder<String>(
+          future: future,
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return Container(
+                height: 230,
+                width: double.infinity,
+                color: AppColors.surfaceSunken,
+                child: const Center(
+                  child: CircularProgressIndicator(color: Color(0xFFD4A017), strokeWidth: 2),
+                ),
+              );
+            }
+            final url = snapshot.data!;
+            return GestureDetector(
+              onTap: () => _openFullScreen(context, url),
+              child: Stack(
+                children: [
+                  CachedNetworkImage(
+                    imageUrl: url,
+                    // Same photo across re-signed links → reuse the download.
+                    cacheKey: Uri.tryParse(url)?.path ?? url,
+                    height: 230,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    fadeInDuration: Duration.zero,
+                    fadeOutDuration: Duration.zero,
+                    useOldImageOnUrlChange: true,
+                    placeholder: (context, _) => Container(
+                      color: AppColors.surfaceSunken,
+                      child: const Center(
+                        child: CircularProgressIndicator(color: Color(0xFFD4A017), strokeWidth: 2),
+                      ),
+                    ),
+                    errorWidget: (context, _, __) => Container(
+                      color: AppColors.surfaceSunken,
+                      child: Icon(Icons.broken_image_rounded, color: AppColors.mut),
+                    ),
+                  ),
+                  Positioned(
+                    right: 10,
+                    bottom: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.55),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.zoom_in_rounded, color: Colors.white, size: 16),
+                          SizedBox(width: 4),
+                          Text('Tap to zoom', style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _openFullScreen(BuildContext context, String url) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black,
+        pageBuilder: (context, _, __) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+          body: InteractiveViewer(
+            minScale: 1,
+            maxScale: 5,
+            child: Center(
+              child: CachedNetworkImage(
+                imageUrl: url,
+                cacheKey: Uri.tryParse(url)?.path ?? url,
+                fit: BoxFit.contain,
+                errorWidget: (context, _, __) =>
+                    const Icon(Icons.broken_image_rounded, color: Colors.white54, size: 64),
+              ),
+            ),
+          ),
+        ),
+        transitionsBuilder: (context, animation, _, child) => FadeTransition(opacity: animation, child: child),
+      ),
     );
   }
 }

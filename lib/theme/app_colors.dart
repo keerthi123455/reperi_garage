@@ -40,10 +40,10 @@ class AppColors {
 
   /// Muted text — always derived from the current [txt], so it stays
   /// correct across a mode switch without needing its own field.
-  static Color get mut => txt.withOpacity(0.52);
+  static Color get mut => txt.withOpacity(_isDark ? 0.62 : 0.52);
 
   /// Hairline borders — same derivation as [mut].
-  static Color get line => txt.withOpacity(0.10);
+  static Color get line => txt.withOpacity(_isDark ? 0.12 : 0.10);
 
   static bool _isDark = false;
   static bool get isDark => _isDark;
@@ -54,15 +54,18 @@ class AppColors {
   static void applyMode({required bool isDark}) {
     _isDark = isDark;
     if (isDark) {
-      ink = const Color(0xFF08080A);
-      txt = const Color(0xFFF4F1EA);
-      surfaceRaised = const Color(0xFF101012);
-      surfaceSunken = const Color(0xFF0E0E10);
-      chipBg = const Color(0xFF131316);
-      photoPlaceholder = const Color(0xFF1D1D21);
-      toastBg = const Color(0xFF1B1B1F);
-      activeCardGradientStart = const Color(0xFF17171A);
-      activeCardGradientEnd = const Color(0xFF101012);
+      // Softer charcoal (was near-black #08080A with cards almost the same
+      // shade): the page is a dark grey, cards sit clearly lighter on it,
+      // and text is a warm off-white rather than bright white.
+      ink = const Color(0xFF17181C);
+      txt = const Color(0xFFEDEAE3);
+      surfaceRaised = const Color(0xFF23252B);
+      surfaceSunken = const Color(0xFF1C1E22);
+      chipBg = const Color(0xFF26282E);
+      photoPlaceholder = const Color(0xFF2C2E34);
+      toastBg = const Color(0xFF2A2C32);
+      activeCardGradientStart = const Color(0xFF2A2C32);
+      activeCardGradientEnd = const Color(0xFF23252B);
     } else {
       ink = const Color(0xFFEFEFED);
       txt = onAccentDark; // near-black, matches the brand's warm neutral.

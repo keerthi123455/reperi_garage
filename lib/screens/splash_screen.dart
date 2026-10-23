@@ -6,7 +6,7 @@ import 'admin_dashboard_screen.dart';
 import 'fleet_dashboard_screen.dart';
 import 'reset_password_screen.dart';
 import 'home_screen.dart';
-import 'login_screen.dart';
+import 'signup_screen.dart';
 import '../main.dart' show isPasswordRecoveryInProgress;
 import '../services/guest_mode.dart';
 
@@ -172,13 +172,15 @@ _navigate();
         return;
       }
     } catch (e) {
-      // Fall through to LoginScreen below.
+      // Fall through to SignupScreen below.
     }
 
     if (!mounted) return;
+    // Signed out and not a guest: open on "Create account" (it links to
+    // Log in, and has Continue as Guest).
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      MaterialPageRoute(builder: (_) => const SignupScreen()),
     );
   }
 
