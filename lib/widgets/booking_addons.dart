@@ -300,6 +300,9 @@ class _AddonReviewDialogState extends State<AddonReviewDialog> {
 
   Map<String, dynamic> get a => widget.addon;
 
+  /// Added by the washer (doorstep wash) or by the garage.
+  String get _who => a['washer_id'] != null ? 'washer' : 'garage';
+
   @override
   void initState() {
     super.initState();
@@ -417,7 +420,7 @@ class _AddonReviewDialogState extends State<AddonReviewDialog> {
   Future<void> _reject({required bool thenCall}) async {
     final typed = _reason.text.trim();
     if (!thenCall && typed.isEmpty) {
-      setState(() => _error = 'Tell the garage why, or choose "Reject & call".');
+      setState(() => _error = 'Tell the $_who why, or choose "Reject & call".');
       return;
     }
     setState(() {
@@ -490,14 +493,14 @@ class _AddonReviewDialogState extends State<AddonReviewDialog> {
           icon: Icons.check_circle_rounded,
           color: const Color(0xFF1FAA59),
           title: 'Approved & paid',
-          body: _error ?? 'Thanks! ${a['package_name'] ?? 'The add-on'} is added to your booking. The garage has been told to go ahead.',
+          body: _error ?? 'Thanks! ${a['package_name'] ?? 'The add-on'} is added to your booking. The $_who has been told to go ahead.',
         );
       case _View.rejected:
         return _result(
           icon: Icons.info_rounded,
           color: AppColors.mut,
           title: 'Add-on rejected',
-          body: 'We\'ve told the garage. Nothing was charged.',
+          body: 'We\'ve told the $_who. Nothing was charged.',
         );
       default:
         break;
@@ -571,7 +574,7 @@ class _AddonReviewDialogState extends State<AddonReviewDialog> {
         child: Row(
           children: [
             Expanded(
-              child: Text('Price agreed by the garage', style: TextStyle(color: AppColors.mut, fontSize: 13)),
+              child: Text('Price set by the $_who', style: TextStyle(color: AppColors.mut, fontSize: 13)),
             ),
             const SizedBox(width: 8),
             Text(

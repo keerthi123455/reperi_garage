@@ -25,6 +25,10 @@
 //   → makes the booking's bill now, or overrides it with the given lines
 //     [{name, amount (incl. GST), gst: 18|5, free?, note?}]. The old bill is
 //     kept as 'replaced'; the customer is notified and sees the new one.
+// POST { action: "qr_list" } / { action: "qr_add", label, image: data URL, activate? }
+//      { action: "qr_activate", id } / { action: "qr_delete", id }
+//   → the payment QR shown when garages / delivery partners / washers
+//     collect payment (supabase/payment_collection.sql). One is "in use".
 // POST { action: "me" }
 //   → { email } — used by the page to confirm access after sign-in.
 
@@ -493,6 +497,62 @@ async function signedDoc(client: SupabaseClient, body: Row) {
   return { url: data.signedUrl };
 }
 
+// ── Payment QR (UPI collection at the door / garage) ──────────────────
+const QR_BUCKET = "payment-qr";
+
+async function qrList(client: SupabaseClient) {
+  const { data, error } = await client.from("payment_qr_codes").select("*").order("created_at", { ascending: false });
+  if (error) throw error;
+  return { qrs: data ?? [] };
+}
+
+async function qrAdd(client: SupabaseClient, body: Row, user: User) {
+  const label = String(body.label ?? "").trim().slice(0, 80);
+  if (!label) throw new HttpError(400, "bad_request", "Give the QR a name, e.g. the bank account.");
+  const m = typeof body.image === "string" ? body.image.match(/^data:(image\/(png|jpeg|webp));base64,(.+)$/) : null;
+  if (!m) throw new HttpError(400, "bad_image", "Choose a PNG or JPG image of the QR.");
+  const bytes = Uint8Array.from(atob(m[3]), (c) => c.charCodeAt(0));
+  if (bytes.length > 5 * 1024 * 1024) throw new HttpError(400, "too_big", "Image is too large (max 5 MB).");
+  const path = `qr-${Date.now()}.${m[2] === "jpeg" ? "jpg" : m[2]}`;
+  const { error: upErr } = await client.storage.from(QR_BUCKET).upload(path, bytes, { contentType: m[1] });
+  if (upErr) throw upErr;
+  const url = client.storage.from(QR_BUCKET).getPublicUrl(path).data.publicUrl;
+
+  const { data: current } = await client.from("payment_qr_codes").select("id").eq("active", true).limit(1);
+  const makeActive = body.activate === true || !current?.length;
+  if (makeActive && current?.length) {
+    const { error } = await client.from("payment_qr_codes").update({ active: false }).eq("active", true);
+    if (error) throw error;
+  }
+  const { error } = await client.from("payment_qr_codes").insert({
+    label, image_path: path, image_url: url, active: makeActive, created_by: user.email ?? null,
+  });
+  if (error) throw error;
+  return await qrList(client);
+}
+
+async function qrActivate(client: SupabaseClient, body: Row) {
+  const id = String(body.id ?? "");
+  const { data: row } = await client.from("payment_qr_codes").select("id").eq("id", id).maybeSingle();
+  if (!row) throw new HttpError(404, "not_found", "QR not found.");
+  const { error: offErr } = await client.from("payment_qr_codes").update({ active: false }).eq("active", true);
+  if (offErr) throw offErr;
+  const { error } = await client.from("payment_qr_codes").update({ active: true }).eq("id", id);
+  if (error) throw error;
+  return await qrList(client);
+}
+
+async function qrDelete(client: SupabaseClient, body: Row) {
+  const id = String(body.id ?? "");
+  const { data: row } = await client.from("payment_qr_codes").select("*").eq("id", id).maybeSingle();
+  if (!row) throw new HttpError(404, "not_found", "QR not found.");
+  if (row.active) throw new HttpError(400, "in_use", "This QR is in use. Pick another one first.");
+  await client.storage.from(QR_BUCKET).remove([String(row.image_path)]);
+  const { error } = await client.from("payment_qr_codes").delete().eq("id", id);
+  if (error) throw error;
+  return await qrList(client);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -517,6 +577,14 @@ Deno.serve(async (req: Request) => {
         return json(await inspectionAssign(client, body));
       case "inspection_photos":
         return json(await inspectionPhotos(client, body));
+      case "qr_list":
+        return json(await qrList(client));
+      case "qr_add":
+        return json(await qrAdd(client, body, user));
+      case "qr_activate":
+        return json(await qrActivate(client, body));
+      case "qr_delete":
+        return json(await qrDelete(client, body));
       case "invoice_issue": {
         const table = String(body.table ?? "");
         const id = String(body.id ?? "");

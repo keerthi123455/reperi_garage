@@ -542,6 +542,35 @@
         .insp-action:disabled { opacity: .45; cursor: not-allowed; }
         .insp-note { text-align: center; font-size: 13px; color: #9aa4b5; margin-top: 8px; }
         .insp-done { margin-top: 14px; padding: 12px; border-radius: 14px; background: rgba(34,197,94,.15); color: #86efac; font-weight: 800; text-align: center; }
+
+        /* ── Collect payment (UPI QR / cash) ── */
+        .cp-dim { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 9999; display: flex; align-items: flex-end; justify-content: center; }
+        .cp-dim.center { align-items: center; padding: 20px; }
+        .cp-sheet { width: 100%; max-width: 520px; max-height: 94vh; overflow-y: auto; background: #fff; border-radius: 26px 26px 0 0;
+            padding: 14px 18px calc(22px + env(safe-area-inset-bottom)); box-sizing: border-box; font-family: inherit; color: #15171A; }
+        .cp-dialog { width: 100%; max-width: 380px; background: #fff; border-radius: 22px; padding: 22px; box-sizing: border-box; text-align: center; color: #15171A; }
+        .cp-handle { width: 40px; height: 4px; border-radius: 2px; background: #E3E0D8; margin: 0 auto 14px; }
+        .cp-h { font-size: 22px; font-weight: 900; }
+        .cp-sub { font-size: 16px; font-weight: 600; color: #63656B; margin-top: 4px; line-height: 1.4; }
+        .cp-amt { font-size: 40px; font-weight: 900; color: #022B57; margin: 10px 0 4px; word-break: break-word; }
+        .cp-opt { display: flex; align-items: center; gap: 14px; width: 100%; border: 2px solid #E3E0D8; border-radius: 18px; padding: 16px;
+            margin-top: 12px; background: #fff; text-align: left; cursor: pointer; font-family: inherit; box-sizing: border-box; }
+        .cp-opt:active { background: #F6F5F1; }
+        .cp-ic { width: 54px; height: 54px; border-radius: 14px; display: grid; place-items: center; font-size: 27px; flex-shrink: 0; }
+        .cp-opt b { display: block; font-size: 20px; font-weight: 900; color: #15171A; }
+        .cp-opt span { font-size: 15px; font-weight: 600; color: #63656B; }
+        .cp-qr { width: 270px; max-width: 100%; margin: 14px auto 0; border: 2px solid #022B57; border-radius: 20px; padding: 14px; box-sizing: border-box; text-align: center; background: #fff; }
+        .cp-qr img { width: 100%; aspect-ratio: 1; object-fit: contain; display: block; }
+        .cp-qr-name { font-size: 13px; font-weight: 800; color: #63656B; margin-top: 6px; word-break: break-word; }
+        .cp-note { background: #FFF4C2; color: #8A5A00; border-radius: 12px; padding: 10px 12px; font-size: 15px; font-weight: 700; margin-top: 14px; line-height: 1.4; }
+        .cp-err { background: #FDE8E8; color: #D93A3F; border-radius: 14px; padding: 16px; font-size: 16px; font-weight: 700; margin-top: 14px; line-height: 1.4; text-align: center; }
+        .cp-btn { display: block; width: 100%; min-height: 58px; border-radius: 16px; font-size: 18px; font-weight: 900; margin-top: 12px; cursor: pointer; font-family: inherit; }
+        .cp-green { background: #17803D; color: #fff; border: none; }
+        .cp-ghost { background: #fff; color: #63656B; border: 2px solid #E3E0D8; }
+        .cp-row { display: flex; gap: 10px; margin-top: 8px; }
+        .cp-row .cp-btn { flex: 1; }
+        .cp-spin { width: 40px; height: 40px; border: 4px solid #E3E0D8; border-top-color: #022B57; border-radius: 50%; margin: 110px auto; animation: cpspin 1s linear infinite; }
+        @keyframes cpspin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -1110,9 +1139,9 @@
                     return `
                         <div class="otp-verified">✅ Customer confirmed receiving the vehicle.</div>
                         <div class="cash-box">
-                            <div class="cash-box-title">💰 TAKE CASH${b.price ? `: ${escapeHtml(String(b.price))}` : ''}</div>
-                            <div class="cash-box-hint">This is a Cash on Pickup booking — collect payment from the customer before completing the trip.</div>
-                            <button class="advance-btn cash-confirm-btn" onclick="confirmCashAndDeliver('${keyFor(b)}')">Cash Collected — Complete Delivery</button>
+                            <div class="cash-box-title">💰 COLLECT PAYMENT${b.price ? `: ${escapeHtml(String(b.price))}` : ''}</div>
+                            <div class="cash-box-hint">This is a Cash on Pickup booking — take the payment by UPI (our QR) or cash before completing the trip.</div>
+                            <button class="advance-btn cash-confirm-btn" onclick="confirmCashAndDeliver('${keyFor(b)}')">Collect payment — Complete Delivery</button>
                         </div>
                     `;
                 }
@@ -1185,7 +1214,7 @@
                         </div>
                         <div>
                             ${b.price ? `<div class="booking-price">${escapeHtml(String(b.price))}</div>` : ''}
-                            ${b.isCod ? `<div class="cod-pill">💰 Collect Cash</div>` : ''}
+                            ${b.isCod ? `<div class="cod-pill">💰 Collect payment</div>` : ''}
                         </div>
                     </div>
                     ${renderSlotBanner(b)}
@@ -1279,13 +1308,113 @@
             const booking = bookingsIndex[key];
             if (!booking) return;
 
-            const confirmed = confirm(
-                `Confirm you have collected ${booking.price || 'the cash payment'} from the customer before completing this delivery.`
-            );
-            if (!confirmed) return;
+            // UPI (our QR) or cash — then complete the delivery and save
+            // which one it was.
+            const p = booking.price;
+            const amount = p == null || p === '' ? ''
+                : (/^\d+(\.\d+)?$/.test(String(p)) ? '₹' + Number(p).toLocaleString('en-IN') : String(p));
+            const method = await collectPayment(amount);
+            if (!method) return;
 
-            await advanceStage(booking);
+            await advanceStage(booking, method);
         }
+
+        // ── Collect payment: UPI (the QR picked in the CRM) or cash ─────
+        // Resolves 'upi' / 'cash' once confirmed, or null if cancelled.
+        // Same flow as the garage app (supabase/payment_collection.sql).
+        function cpEsc(v) {
+            return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function cpOverlay(html, center) {
+            const dim = document.createElement('div');
+            dim.className = 'cp-dim' + (center ? ' center' : '');
+            dim.innerHTML = html;
+            document.body.appendChild(dim);
+            return dim;
+        }
+        function collectPayment(amountText) {
+            const amt = cpEsc(amountText || '—');
+            return new Promise((resolve) => {
+                const choose = () => {
+                    const dim = cpOverlay(`<div class="cp-sheet" role="dialog" aria-label="Collect payment">
+                        <div class="cp-handle"></div>
+                        <div class="cp-h">Collect payment</div>
+                        <div class="cp-sub">How is the customer paying?</div>
+                        <div class="cp-amt">${amt}</div>
+                        <button class="cp-opt" data-m="upi"><div class="cp-ic" style="background:#E6EEFF">📱</div><div><b>UPI</b><span>Show our QR — the customer scans and pays</span></div></button>
+                        <button class="cp-opt" data-m="cash"><div class="cp-ic" style="background:#E3F6E8">💵</div><div><b>Cash</b><span>The customer pays you in cash</span></div></button>
+                        <button class="cp-btn cp-ghost" data-m="">Cancel</button>
+                    </div>`);
+                    dim.addEventListener('click', (e) => {
+                        const b = e.target.closest('[data-m]');
+                        if (!b && e.target !== dim) return;
+                        dim.remove();
+                        const m = b ? b.dataset.m : '';
+                        if (m === 'upi') upi();
+                        else if (m === 'cash') cash();
+                        else resolve(null);
+                    });
+                };
+                const cash = () => {
+                    const dim = cpOverlay(`<div class="cp-dialog" role="dialog" aria-label="Cash received?">
+                        <div style="font-size:42px">💵</div>
+                        <div class="cp-h" style="margin-top:6px">Cash received?</div>
+                        <div class="cp-sub">Did you collect <b style="color:#15171A">${amt}</b> in cash from the customer?</div>
+                        <div class="cp-row"><button class="cp-btn cp-ghost" data-a="no">No</button><button class="cp-btn cp-green" data-a="yes">Yes, received</button></div>
+                    </div>`, true);
+                    dim.addEventListener('click', (e) => {
+                        const b = e.target.closest('[data-a]');
+                        if (!b) return;
+                        dim.remove();
+                        resolve(b.dataset.a === 'yes' ? 'cash' : null);
+                    });
+                };
+                const upi = async () => {
+                    const dim = cpOverlay(`<div class="cp-sheet" role="dialog" aria-label="Scan to pay">
+                        <div class="cp-handle"></div>
+                        <div class="cp-h" style="text-align:center">Scan to pay</div>
+                        <div class="cp-amt" style="text-align:center">${amt}</div>
+                        <div data-qr><div class="cp-spin"></div></div>
+                        <div class="cp-note">Check the customer's phone shows <b>"Payment successful"</b> for ${amt} before tapping below.</div>
+                        <button class="cp-btn cp-green" data-u="done">✅ PAYMENT DONE</button>
+                        <button class="cp-btn cp-ghost" data-u="back">Back</button>
+                    </div>`);
+                    dim.addEventListener('click', (e) => {
+                        const b = e.target.closest('[data-u]');
+                        if (!b) return;
+                        dim.remove();
+                        if (b.dataset.u === 'done') resolve('upi'); else choose();
+                    });
+                    const box = dim.querySelector('[data-qr]');
+                    try {
+                        const { data, error } = await sbClient.rpc('active_payment_qr');
+                        if (error) throw error;
+                        const qr = Array.isArray(data) ? data[0] : data;
+                        box.innerHTML = qr && qr.image_url
+                            ? `<div class="cp-qr"><img src="${cpEsc(qr.image_url)}" alt="Payment QR"><div class="cp-qr-name">${cpEsc(qr.label)}</div></div>`
+                            : '<div class="cp-err">No payment QR is set up yet. Please take cash, or ask Reperi to add the QR in the CRM.</div>';
+                    } catch (err) {
+                        console.error('QR load failed:', err);
+                        box.innerHTML = '<div class="cp-err">Couldn\'t load the QR. Check the internet and try again, or take cash.</div>';
+                    }
+                };
+                choose();
+            });
+        }
+
+        // Saves how it was paid. Never blocks closing the job.
+        async function recordCollection(table, id, method) {
+            try {
+                const { error } = await sbClient.rpc('record_payment_collection', {
+                    p_table: table, p_id: String(id), p_method: method,
+                });
+                if (error) throw error;
+            } catch (err) {
+                console.warn('Could not save payment method:', err.message || err);
+            }
+        }
+
 
         // Generates a fresh 4-digit pickup code and saves it — the render
         // above then shows it big for the partner to read to the customer,
@@ -1331,7 +1460,7 @@
             await fetchAssignedBookings(currentPartnerId);
         }
 
-        async function advanceStage(booking) {
+        async function advanceStage(booking, collectedVia = null) {
             const next = nextStage(booking);
             if (!next) return; // already delivered — trip is closed
 
@@ -1376,6 +1505,10 @@
             if (error) {
                 alert('Failed to update stage: ' + error.message);
                 return;
+            }
+
+            if (collectedVia) {
+                await recordCollection(booking.sourceTable, booking.id, collectedVia);
             }
 
             if (next === 'delivered') {
@@ -1436,7 +1569,7 @@
                 </div>`).join('');
             const addTile = canPhoto ? `
                 <label class="insp-add">＋<br>TAP HERE<br>ADD PHOTO
-                    <input type="file" accept="image/*" capture="environment" multiple onchange="uploadInspPhotos('${escapeHtml(key)}', this)">
+                    <input type="file" accept="image/*" multiple onchange="uploadInspPhotos('${escapeHtml(key)}', this)">
                 </label>` : '';
 
             let action = '';
@@ -1462,7 +1595,7 @@
                         </div>
                         <div>
                             ${b.price ? `<div class="booking-price">${escapeHtml(String(b.price))}</div>` : ''}
-                            ${b.isCod ? `<div class="cod-pill">💰 Collect Cash</div>` : ''}
+                            ${b.isCod ? `<div class="cod-pill">💰 Collect payment</div>` : ''}
                         </div>
                     </div>
                     ${renderSlotBanner(b)}

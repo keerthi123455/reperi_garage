@@ -242,8 +242,9 @@ class _ReperiResolveScreenState extends State<ReperiResolveScreen> {
             children: [
               _sheetTile(ctx, Icons.photo_camera_rounded, 'Take a photo', 'camera'),
               _sheetTile(ctx, Icons.photo_library_rounded, 'Choose photos', 'photos'),
-              _sheetTile(ctx, Icons.videocam_rounded, 'Choose a video',
-                  'video', subtitle: 'Best for noises — record it with your camera first'),
+              _sheetTile(ctx, Icons.videocam_rounded, 'Record a video', 'record',
+                  subtitle: 'Best for noises — up to 1 minute'),
+              _sheetTile(ctx, Icons.video_library_rounded, 'Choose a video', 'video'),
             ],
           ),
         ),
@@ -259,6 +260,9 @@ class _ReperiResolveScreenState extends State<ReperiResolveScreen> {
         for (final f in files.take(_maxItems - _media.length)) {
           await _addFile(f, false);
         }
+      } else if (choice == 'record') {
+        final f = await _picker.pickVideo(source: ImageSource.camera, maxDuration: const Duration(minutes: 1));
+        if (f != null) await _addFile(f, true);
       } else {
         final f = await _picker.pickVideo(source: ImageSource.gallery);
         if (f != null) await _addFile(f, true);

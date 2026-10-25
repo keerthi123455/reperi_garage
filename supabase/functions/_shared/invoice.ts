@@ -139,9 +139,9 @@ async function collect(db: Db, table: InvoiceTable, id: string): Promise<Collect
         }
         if (String(row.payment_status ?? "").toLowerCase() === "paid") paidOnline = money(row.package_price);
       }
-      // Everything the garage added: paid add-ons, and ₹0 ones as FREE.
+      // Everything the garage / washer added: paid add-ons, and ₹0 ones as FREE.
       const { data: addons } = await db.from("addon_services")
-        .select("package_name,price,status,razorpay_payment_id,created_at")
+        .select("*")
         .eq("booking_id", id).in("status", ["Paid", "Free"]).order("created_at");
       for (const a of addons ?? []) {
         const amt = money(a.price);
@@ -149,7 +149,7 @@ async function collect(db: Db, table: InvoiceTable, id: string): Promise<Collect
           name: titleCase(a.package_name ?? "Add-on"),
           amount: amt,
           gst: GST_SERVICE,
-          note: "Added by garage",
+          note: a.washer_id ? "Added by your washer" : "Added by garage",
           free: amt === 0,
         });
         if (amt > 0 && a.razorpay_payment_id) paidOnline += amt;
@@ -282,6 +282,8 @@ export interface IssueOptions {
   /** Automatic runs do nothing if a bill already exists. */
   onlyIfMissing?: boolean;
   notify?: boolean;
+  /** Automatic remake (an add-on was paid later) → "Your updated bill is ready". */
+  updated?: boolean;
 }
 
 export async function issueInvoice(db: Db, o: IssueOptions): Promise<Row> {
@@ -357,7 +359,7 @@ export async function issueInvoice(db: Db, o: IssueOptions): Promise<Row> {
   }
 
   if (o.notify !== false && c.userId) {
-    const auto = o.createdBy === "auto";
+    const auto = o.createdBy === "auto" && !o.updated;
     const title = auto
       ? (o.table === "bookings" && c.garage ? "Service done ✅ — your bill is ready" : "Done ✅ — your bill is ready")
       : "Your updated bill is ready";

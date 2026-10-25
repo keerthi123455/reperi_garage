@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -11,6 +12,7 @@ import 'booking_tracking_screen.dart'; // imports ChatSheet
 import 'inspection_upload_screen.dart';
 import '../theme/garage_theme.dart';
 import '../utils/secure_storage_path.dart';
+import '../widgets/collect_payment_sheet.dart';
 import '../widgets/error_display.dart';
 import '../widgets/garage_addons.dart';
 
@@ -177,19 +179,38 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     );
   }
 
+  /// Take a photo or pick one from the gallery.
   Future<void> pickImage() async {
-    final picker = ImagePicker();
-    final image = await picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 70,
+    final from = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _sheet(
+        title: 'Add a photo',
+        children: [
+          _sheetOption(ctx, Icons.photo_camera_rounded, 'Take a photo', 'Open the camera', 'camera'),
+          _sheetOption(ctx, Icons.photo_library_rounded, 'Choose from gallery', 'A photo already on this phone', 'gallery'),
+        ],
+      ),
     );
-    if (image == null) return;
-    final bytes = await image.readAsBytes();
-    if (!mounted) return;
-    setState(() {
-      selectedImageBytes = bytes;
-      _videoBytes = null;
-    });
+    if (from == null) return;
+    try {
+      final image = await ImagePicker().pickImage(
+        source: from == 'camera' ? ImageSource.camera : ImageSource.gallery,
+        imageQuality: 70,
+        maxWidth: 2000,
+      );
+      if (image == null) return;
+      final bytes = await image.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        selectedImageBytes = bytes;
+        _videoBytes = null;
+      });
+    } catch (e) {
+      if (mounted) {
+        ErrorDisplay.showPremiumError(context, error: e, customMessage: 'Could not open the photo. Please try again.');
+      }
+    }
   }
 
   /// Record a video (up to 1 minute) or pick one from the gallery.
@@ -247,7 +268,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   Future<void> uploadUpdate() async {
     if (selectedImageBytes == null && _videoBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Take a photo or record a video first')),
+        const SnackBar(content: Text('Add a photo or a video first')),
       );
       return;
     }
@@ -439,39 +460,10 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   /// booking out — notify-on-db-change/index.ts's justDelivered case
   /// notifies the customer once this write lands.
   Future<void> _confirmPaymentReceived() async {
-    final price = widget.booking['package_price']?.toString();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: G.card,
-        title: const Text(
-          'COLLECT PAYMENT',
-          style: TextStyle(color: G.navy, fontWeight: FontWeight.w900),
-        ),
-        content: Text(
-          'This is a Cash on Pickup booking${price != null ? ' — $price' : ''}. '
-          'Confirm you have collected payment from the customer before closing this booking out.',
-          style: const TextStyle(color: G.mut, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCEL', style: TextStyle(color: G.mut)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: G.yellow),
-            child: const Text(
-              'PAYMENT RECEIVED',
-              style: TextStyle(color: G.navy, fontWeight: FontWeight.w900),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
+    final price = (widget.booking['package_price'] ?? '').toString();
+    // UPI (our QR from the CRM) or cash — see collect_payment_sheet.dart.
+    final method = await showCollectPayment(context, amountText: price);
+    if (method == null || !mounted) return;
 
     setState(() => confirmingPayment = true);
 
@@ -481,11 +473,21 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
           .update({'booking_status': 'Delivered'})
           .eq('id', widget.booking['id']);
 
+      // How it was paid (UPI / cash) — for matching against the bank.
+      final prefs = await SharedPreferences.getInstance();
+      await recordPaymentCollection(
+        table: 'bookings',
+        id: widget.booking['id'].toString(),
+        method: method,
+        adminId: prefs.getString('admin_id'),
+      );
+
       if (!mounted) return;
       widget.booking['booking_status'] = 'Delivered';
+      widget.booking['payment_collected_via'] = method;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Payment confirmed — booking closed out')),
+        SnackBar(content: Text(method == 'upi' ? 'UPI payment confirmed — booking closed out' : 'Cash received — booking closed out')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -759,7 +761,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                       : const FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
-                            'PAYMENT RECEIVED',
+                            'COLLECT PAYMENT · UPI OR CASH',
                             maxLines: 1,
                             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 0.6),
                           ),
@@ -1337,16 +1339,16 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     return _stepShell(
       eyebrow: _stageOverride != null ? 'SEND UPDATE' : 'NEXT STEP',
       title: stage,
-      body: 'Take a photo or a short video and send it. The customer sees it in their app right away.',
+      body: 'Add a photo or a short video (camera or gallery) and send it. The customer sees it in their app right away.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (selectedImageBytes == null && _videoBytes == null)
             Row(
               children: [
-                Expanded(child: _mediaChoice(Icons.photo_camera_rounded, 'Take photo', pickImage)),
+                Expanded(child: _mediaChoice(Icons.photo_camera_rounded, 'Add photo', pickImage)),
                 const SizedBox(width: 10),
-                Expanded(child: _mediaChoice(Icons.videocam_rounded, 'Record video', pickVideo)),
+                Expanded(child: _mediaChoice(Icons.videocam_rounded, 'Add video', pickVideo)),
               ],
             )
           else if (_videoBytes != null)
@@ -1409,7 +1411,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
-                        child: const Text('Retake', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                        child: const Text('Change', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                       ),
                     ),
                   ],

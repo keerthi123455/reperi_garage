@@ -198,37 +198,41 @@ Deno.serve(async (req) => {
         const data = { type: "addon", addonId: record.id, bookingId: record.booking_id };
         const status = String(record.status ?? "");
         const was = String(old_record?.status ?? "");
+        // Garage add-on, or one a washer added to a doorstep wash.
+        const washerId = record.washer_id ? String(record.washer_id) : "";
+        const who = washerId ? "washer" : "garage";
+        const team = washerId ? `washer_${washerId}` : "admin";
 
         if (type === "INSERT" && record.user_id && status === "Free") {
-          // ₹0 extra from the garage — nothing to approve or pay.
+          // ₹0 extra — nothing to approve or pay.
           await sendPush(
             `customer_${record.user_id}`,
-            "Free extra from your garage",
-            `Your garage is doing ${title} for free. It'll show as FREE on your bill.`,
+            `Free extra from your ${who}`,
+            `Your ${who} is doing ${title} for free. It'll show as FREE on your bill.`,
             data,
           );
         } else if (type === "INSERT" && record.user_id) {
           await sendPush(
             `customer_${record.user_id}`,
             "Add-on requested",
-            `Your garage suggests: ${title}${price ? ` (${price})` : ""}. Open your vehicle dashboard to approve or reject.`,
+            `Your ${who} suggests: ${title}${price ? ` (${price})` : ""}. Open your vehicle dashboard to approve or reject.`,
             data,
           );
         } else if (type === "UPDATE" && status !== was) {
-          const who = String(record.customer_name ?? "The customer");
+          const customer = String(record.customer_name ?? "The customer");
           if (status === "Rejected") {
             const reason = String(record.reject_reason ?? "").trim();
             await sendPush(
-              "admin",
+              team,
               "Add-on rejected",
-              `${who} rejected "${title}"${reason ? `: ${reason}` : "."}`,
+              `${customer} rejected "${title}"${reason ? `: ${reason}` : "."}`,
               data,
             );
           } else if (status === "Paid") {
             await sendPush(
-              "admin",
+              team,
               "Add-on approved & paid",
-              `${who} approved and paid ${price || "for"} "${title}". Go ahead with the work.`,
+              `${customer} approved and paid ${price || "for"} "${title}". Go ahead with the work.`,
               data,
             );
           }

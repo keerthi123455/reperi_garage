@@ -216,6 +216,37 @@
         .upload-status.success { display: block; color: var(--green); background: var(--green-soft); }
         .upload-status.error { display: block; color: var(--red); background: var(--red-soft); }
 
+        /* Add-on services (doorstep washes) */
+        .addon-list { display: grid; gap: 10px; margin: 4px 0 4px 0; }
+        .addon-item { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: #fff; }
+        .addon-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+        .addon-name { font-size: 19px; font-weight: 900; word-break: break-word; }
+        .addon-price { font-size: 19px; font-weight: 900; white-space: nowrap; }
+        .addon-pill { display: inline-block; margin-top: 6px; padding: 5px 10px; border-radius: 20px; font-size: 14px; font-weight: 900; }
+        .addon-pill.wait { background: var(--gold-soft); color: var(--gold); }
+        .addon-pill.paid { background: var(--green-soft); color: var(--green); }
+        .addon-pill.no { background: var(--red-soft); color: var(--red); }
+        .addon-reason { font-size: 15px; color: var(--ink2); margin-top: 6px; }
+        .addon-cancel { margin-top: 8px; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 2px solid var(--red);
+            background: #fff; color: var(--red); font-weight: 900; font-size: 15px; cursor: pointer; }
+        .addon-btn { width: 100%; min-height: 58px; margin-top: 12px; border: none; border-radius: 16px;
+            background: var(--blue); color: #fff; font-weight: 900; font-size: 19px; cursor: pointer; }
+        .addon-form { margin-top: 12px; display: grid; gap: 10px; }
+        .addon-form label { font-size: 15px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+        .addon-form input[type=text], .addon-form input[type=number], .addon-form textarea {
+            width: 100%; box-sizing: border-box; font-size: 19px; padding: 14px; border-radius: 12px;
+            border: 2px solid var(--line); font-family: inherit; color: var(--ink); background: #fff; }
+        .addon-form input:focus, .addon-form textarea:focus { outline: none; border-color: var(--blue); }
+        .addon-photo { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 54px; border-radius: 12px;
+            border: 2px dashed var(--blue); color: var(--blue); font-weight: 900; font-size: 17px; cursor: pointer; background: var(--blue-soft); }
+        .addon-actions { display: flex; gap: 10px; }
+        .addon-actions button { flex: 1; min-height: 56px; border-radius: 14px; font-weight: 900; font-size: 18px; cursor: pointer; }
+        .addon-send { border: none; background: var(--blue); color: #fff; }
+        .addon-send:disabled { opacity: .6; cursor: not-allowed; }
+        .addon-close { border: 2px solid var(--line); background: #fff; color: var(--ink2); }
+        .bill-wait { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--gold-soft); color: var(--gold);
+            font-weight: 800; font-size: 16px; }
+
         .done-note {
             margin-top: 16px; padding: 14px; border-radius: 14px; background: var(--green-soft); color: var(--green);
             font-weight: 900; font-size: 19px; text-align: center;
@@ -244,6 +275,35 @@
             .shot .tap { font-size: 13px; }
             .shot-label { font-size: 15px; }
         }
+
+        /* ── Collect payment (UPI QR / cash) ── */
+        .cp-dim { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 9999; display: flex; align-items: flex-end; justify-content: center; }
+        .cp-dim.center { align-items: center; padding: 20px; }
+        .cp-sheet { width: 100%; max-width: 520px; max-height: 94vh; overflow-y: auto; background: #fff; border-radius: 26px 26px 0 0;
+            padding: 14px 18px calc(22px + env(safe-area-inset-bottom)); box-sizing: border-box; font-family: inherit; color: #15171A; }
+        .cp-dialog { width: 100%; max-width: 380px; background: #fff; border-radius: 22px; padding: 22px; box-sizing: border-box; text-align: center; color: #15171A; }
+        .cp-handle { width: 40px; height: 4px; border-radius: 2px; background: #E3E0D8; margin: 0 auto 14px; }
+        .cp-h { font-size: 22px; font-weight: 900; }
+        .cp-sub { font-size: 16px; font-weight: 600; color: #63656B; margin-top: 4px; line-height: 1.4; }
+        .cp-amt { font-size: 40px; font-weight: 900; color: #022B57; margin: 10px 0 4px; word-break: break-word; }
+        .cp-opt { display: flex; align-items: center; gap: 14px; width: 100%; border: 2px solid #E3E0D8; border-radius: 18px; padding: 16px;
+            margin-top: 12px; background: #fff; text-align: left; cursor: pointer; font-family: inherit; box-sizing: border-box; }
+        .cp-opt:active { background: #F6F5F1; }
+        .cp-ic { width: 54px; height: 54px; border-radius: 14px; display: grid; place-items: center; font-size: 27px; flex-shrink: 0; }
+        .cp-opt b { display: block; font-size: 20px; font-weight: 900; color: #15171A; }
+        .cp-opt span { font-size: 15px; font-weight: 600; color: #63656B; }
+        .cp-qr { width: 270px; max-width: 100%; margin: 14px auto 0; border: 2px solid #022B57; border-radius: 20px; padding: 14px; box-sizing: border-box; text-align: center; background: #fff; }
+        .cp-qr img { width: 100%; aspect-ratio: 1; object-fit: contain; display: block; }
+        .cp-qr-name { font-size: 13px; font-weight: 800; color: #63656B; margin-top: 6px; word-break: break-word; }
+        .cp-note { background: #FFF4C2; color: #8A5A00; border-radius: 12px; padding: 10px 12px; font-size: 15px; font-weight: 700; margin-top: 14px; line-height: 1.4; }
+        .cp-err { background: #FDE8E8; color: #D93A3F; border-radius: 14px; padding: 16px; font-size: 16px; font-weight: 700; margin-top: 14px; line-height: 1.4; text-align: center; }
+        .cp-btn { display: block; width: 100%; min-height: 58px; border-radius: 16px; font-size: 18px; font-weight: 900; margin-top: 12px; cursor: pointer; font-family: inherit; }
+        .cp-green { background: #17803D; color: #fff; border: none; }
+        .cp-ghost { background: #fff; color: #63656B; border: 2px solid #E3E0D8; }
+        .cp-row { display: flex; gap: 10px; margin-top: 8px; }
+        .cp-row .cp-btn { flex: 1; }
+        .cp-spin { width: 40px; height: 40px; border: 4px solid #E3E0D8; border-top-color: #022B57; border-radius: 50%; margin: 110px auto; animation: cpspin 1s linear infinite; }
+        @keyframes cpspin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -498,7 +558,7 @@
                         <label for="${stage}-${sub.id}" class="shot ${stage === 'before' ? 'next' : ''}" id="sub-slot-${sub.id}-${stage}">
                             <span class="cam">📷</span><span class="tap">TAP HERE</span>
                         </label>
-                        <input type="file" id="${stage}-${sub.id}" accept="image/*" capture="environment" hidden
+                        <input type="file" id="${stage}-${sub.id}" accept="image/*" hidden
                                onchange="previewSubPhoto(this, ${sub.id}, '${stage}')">
                         <div class="shot-label">${n}. ${label}<small>${hint}</small></div>
                     </div>`;
@@ -524,7 +584,7 @@
                         <div class="subscription-expanded" id="expanded-${sub.id}">
                             <div class="photo-step">
                                 <div class="step-head"><div class="step-num">1</div><div class="step-title">Take 2 photos</div></div>
-                                <div class="step-hint">👇 Tap each blue box to open the camera</div>
+                                <div class="step-hint">👇 Tap each blue box — take a photo or pick one from the gallery</div>
                                 <div class="shots">
                                     ${shot('before', 1, 'Before', 'before washing')}
                                     ${shot('after', 2, 'After', 'after washing')}
@@ -640,11 +700,12 @@
                         ${infoRow('👤', 'Customer', escapeHtml(b.customer_name || '—') + (phone ? `<div style="font-size:18px;color:var(--ink2)">${escapeHtml(phone)}</div>` : ''))}
                         ${o.address ? infoRow('📍', 'Address', escapeHtml(o.address)) : ''}
                         ${infoRow('💰', 'Payment', o.cash
-                            ? `<span class="cash">${escapeHtml(o.price)} · COLLECT CASH</span>`
+                            ? `<span class="cash">${escapeHtml(o.price)} · COLLECT PAYMENT (UPI or cash)</span>`
                             : `${escapeHtml(o.price)} · <span style="color:var(--green)">Paid online</span>`)}
                     </div>
                     ${finished ? '' : actionButtons(phone, b.pickup_latitude, b.pickup_longitude)}
                     ${offerPhotosHtml(b, finished, kind)}
+                    ${kind === 'door' ? addonSectionHtml(b, finished) : ''}
                     ${finished ? '<div class="done-note">✅ Wash completed — thank you!</div>' : `
                     <div class="photo-step">
                         <div class="step-head"><div class="step-num">2</div><div class="step-title">Finish the wash</div></div>
@@ -697,7 +758,7 @@
                 return `<div class="shot-col">
                     ${finished
                         ? (url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="display:block">${boxHtml}</a>` : boxHtml)
-                        : `<label style="display:block;cursor:pointer">${boxHtml}<input type="file" accept="image/*" capture="environment" hidden onchange="uploadOfferPhoto('${id}','${stage}',this,'${kind}')"></label>`}
+                        : `<label style="display:block;cursor:pointer">${boxHtml}<input type="file" accept="image/*" hidden onchange="uploadOfferPhoto('${id}','${stage}',this,'${kind}')"></label>`}
                     <div class="shot-label">${i + 1}. ${label.replace(' wash', '')}<small>${STAGE_HINT[stage]}</small></div>
                 </div>`;
             }).join('');
@@ -705,7 +766,7 @@
                 ${finished
                     ? `<div class="step-head"><div class="step-num ok">✓</div><div class="step-title">Wash photos</div></div><div style="height:12px"></div>`
                     : `<div class="step-head"><div class="step-num ${have === 3 ? 'ok' : ''}">${have === 3 ? '✓' : '1'}</div><div class="step-title">Take 3 photos</div></div>
-                       <div class="step-hint">👇 Tap each blue box to open the camera. The customer sees these photos.</div>`}
+                       <div class="step-hint">👇 Tap each blue box — take a photo or pick one from the gallery. The customer sees these photos.</div>`}
                 <div class="shots">${slots}</div>
                 ${finished ? '' : `<div class="photo-progress">${have === 3 ? '✅ All 3 photos added' : `📷 ${have} of 3 photos added`}</div>`}
                 <div class="upload-status" id="offer-photo-status-${id}"></div>
@@ -774,7 +835,16 @@
             const row = offerRows[kind + ':' + String(id)] || {};
             const missing = OFFER_STAGES.filter(([stage]) => !row[stage + '_photo_url']).map(([, label]) => label);
             if (missing.length && !confirm(`Missing photos: ${missing.join(', ')}.\n\nComplete the wash anyway?`)) return;
-            if (!confirm('Mark this wash as completed? The customer will be notified.')) return;
+            // Cash wash: take the payment first — UPI (our QR) or cash.
+            const isCash = String(row.payment_status || '').toLowerCase() === 'cod';
+            let collectedVia = null;
+            if (isCash) {
+                const p = row.package_price;
+                const amount = p == null || p === '' ? ''
+                    : (/^\d+(\.\d+)?$/.test(String(p)) ? '₹' + Number(p).toLocaleString('en-IN') : String(p));
+                collectedVia = await collectPayment(amount);
+                if (!collectedVia) return;
+            } else if (!confirm('Mark this wash as completed? The customer will be notified.')) return;
             const btn = document.getElementById('offer-btn-' + id);
             const statusDiv = document.getElementById('offer-status-' + id);
             if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
@@ -783,6 +853,7 @@
                 // to can complete it (see offer_apartment_booking.sql).
                 const { error } = await sbClient.rpc(k.completeRpc, { p_id: String(id) });
                 if (error) throw error;
+                if (collectedVia) await recordCollection(kind === 'offer' ? 'offer_bookings' : 'bookings', id, collectedVia);
                 await k.reload();
             } catch (err) {
                 console.error('Error completing offer wash:', err);
@@ -791,11 +862,108 @@
             }
         }
 
+        // ── Collect payment: UPI (the QR picked in the CRM) or cash ─────
+        // Resolves 'upi' / 'cash' once confirmed, or null if cancelled.
+        // Same flow as the garage app (supabase/payment_collection.sql).
+        function cpEsc(v) {
+            return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function cpOverlay(html, center) {
+            const dim = document.createElement('div');
+            dim.className = 'cp-dim' + (center ? ' center' : '');
+            dim.innerHTML = html;
+            document.body.appendChild(dim);
+            return dim;
+        }
+        function collectPayment(amountText) {
+            const amt = cpEsc(amountText || '—');
+            return new Promise((resolve) => {
+                const choose = () => {
+                    const dim = cpOverlay(`<div class="cp-sheet" role="dialog" aria-label="Collect payment">
+                        <div class="cp-handle"></div>
+                        <div class="cp-h">Collect payment</div>
+                        <div class="cp-sub">How is the customer paying?</div>
+                        <div class="cp-amt">${amt}</div>
+                        <button class="cp-opt" data-m="upi"><div class="cp-ic" style="background:#E6EEFF">📱</div><div><b>UPI</b><span>Show our QR — the customer scans and pays</span></div></button>
+                        <button class="cp-opt" data-m="cash"><div class="cp-ic" style="background:#E3F6E8">💵</div><div><b>Cash</b><span>The customer pays you in cash</span></div></button>
+                        <button class="cp-btn cp-ghost" data-m="">Cancel</button>
+                    </div>`);
+                    dim.addEventListener('click', (e) => {
+                        const b = e.target.closest('[data-m]');
+                        if (!b && e.target !== dim) return;
+                        dim.remove();
+                        const m = b ? b.dataset.m : '';
+                        if (m === 'upi') upi();
+                        else if (m === 'cash') cash();
+                        else resolve(null);
+                    });
+                };
+                const cash = () => {
+                    const dim = cpOverlay(`<div class="cp-dialog" role="dialog" aria-label="Cash received?">
+                        <div style="font-size:42px">💵</div>
+                        <div class="cp-h" style="margin-top:6px">Cash received?</div>
+                        <div class="cp-sub">Did you collect <b style="color:#15171A">${amt}</b> in cash from the customer?</div>
+                        <div class="cp-row"><button class="cp-btn cp-ghost" data-a="no">No</button><button class="cp-btn cp-green" data-a="yes">Yes, received</button></div>
+                    </div>`, true);
+                    dim.addEventListener('click', (e) => {
+                        const b = e.target.closest('[data-a]');
+                        if (!b) return;
+                        dim.remove();
+                        resolve(b.dataset.a === 'yes' ? 'cash' : null);
+                    });
+                };
+                const upi = async () => {
+                    const dim = cpOverlay(`<div class="cp-sheet" role="dialog" aria-label="Scan to pay">
+                        <div class="cp-handle"></div>
+                        <div class="cp-h" style="text-align:center">Scan to pay</div>
+                        <div class="cp-amt" style="text-align:center">${amt}</div>
+                        <div data-qr><div class="cp-spin"></div></div>
+                        <div class="cp-note">Check the customer's phone shows <b>"Payment successful"</b> for ${amt} before tapping below.</div>
+                        <button class="cp-btn cp-green" data-u="done">✅ PAYMENT DONE</button>
+                        <button class="cp-btn cp-ghost" data-u="back">Back</button>
+                    </div>`);
+                    dim.addEventListener('click', (e) => {
+                        const b = e.target.closest('[data-u]');
+                        if (!b) return;
+                        dim.remove();
+                        if (b.dataset.u === 'done') resolve('upi'); else choose();
+                    });
+                    const box = dim.querySelector('[data-qr]');
+                    try {
+                        const { data, error } = await sbClient.rpc('active_payment_qr');
+                        if (error) throw error;
+                        const qr = Array.isArray(data) ? data[0] : data;
+                        box.innerHTML = qr && qr.image_url
+                            ? `<div class="cp-qr"><img src="${cpEsc(qr.image_url)}" alt="Payment QR"><div class="cp-qr-name">${cpEsc(qr.label)}</div></div>`
+                            : '<div class="cp-err">No payment QR is set up yet. Please take cash, or ask Reperi to add the QR in the CRM.</div>';
+                    } catch (err) {
+                        console.error('QR load failed:', err);
+                        box.innerHTML = '<div class="cp-err">Couldn\'t load the QR. Check the internet and try again, or take cash.</div>';
+                    }
+                };
+                choose();
+            });
+        }
+
+        // Saves how it was paid. Never blocks closing the job.
+        async function recordCollection(table, id, method) {
+            try {
+                const { error } = await sbClient.rpc('record_payment_collection', {
+                    p_table: table, p_id: String(id), p_method: method,
+                });
+                if (error) throw error;
+            } catch (err) {
+                console.warn('Could not save payment method:', err.message || err);
+            }
+        }
+
         // New offer / doorstep bookings show up without a manual refresh.
         setInterval(() => {
             if (!currentWasherId) return;
             fetchOfferBookings(currentWasherId);
-            fetchDoorstepBookings();
+            // Don't redraw while the washer is typing an add-on.
+            if (!addonDraft.id) fetchDoorstepBookings();
         }, 60000);
 
         // ── Doorstep washes (one-time car & bike washes) ────────────────
@@ -806,6 +974,7 @@
             try {
                 const { data, error } = await sbClient.rpc('washer_doorstep_bookings');
                 if (error) throw error;
+                await loadDoorAddons();
                 displayDoorstepBookings(data || []);
             } catch (err) {
                 // Never break the rest of the dashboard over this section.
@@ -852,6 +1021,165 @@
             });
             html += '</div>';
             box.innerHTML = html;
+        }
+
+
+        // ── Add-on services on doorstep washes ──────────────────────────
+        // The washer adds extra work with a price; the customer approves and
+        // pays in the app (₹0 = free). The bill waits for unpaid add-ons —
+        // see supabase/bills_everywhere.sql.
+        let doorAddons = {};
+        let addonDraft = {};
+
+        async function loadDoorAddons() {
+            try {
+                const { data, error } = await sbClient.from('addon_services')
+                    .select('id, booking_id, package_name, description, price, package_price, status, reject_reason, created_at')
+                    .neq('status', 'Cancelled')
+                    .order('created_at', { ascending: true });
+                if (error) throw error;
+                doorAddons = {};
+                (data || []).forEach((a) => {
+                    const k = String(a.booking_id);
+                    (doorAddons[k] = doorAddons[k] || []).push(a);
+                });
+            } catch (err) {
+                // Add-ons not set up yet — the rest of the card still works.
+                console.warn('⚠️ Could not load add-ons:', err.message || err);
+            }
+        }
+
+        function addonStatusHtml(a) {
+            switch (a.status) {
+                case 'Paid': return '<span class="addon-pill paid">✓ PAID</span>';
+                case 'Free': return '<span class="addon-pill paid">FREE</span>';
+                case 'Approved': return '<span class="addon-pill wait">⏳ Customer is paying</span>';
+                case 'Rejected': return '<span class="addon-pill no">✕ Rejected</span>';
+                default: return '<span class="addon-pill wait">⏳ Waiting for customer</span>';
+            }
+        }
+
+        function addonSectionHtml(b, finished) {
+            const id = escapeHtml(b.id);
+            const list = doorAddons[String(b.id)] || [];
+            const open = list.filter((a) => a.status === 'Requested' || a.status === 'Approved');
+            const formOpen = addonDraft.id === String(b.id);
+            const items = list.map((a) => `
+                <div class="addon-item">
+                    <div class="addon-top">
+                        <div class="addon-name">${escapeHtml(a.package_name || 'Add-on')}</div>
+                        <div class="addon-price">${a.status === 'Free' || Number(a.price) === 0 ? 'FREE' : escapeHtml(a.package_price || ('₹' + a.price))}</div>
+                    </div>
+                    ${addonStatusHtml(a)}
+                    ${a.status === 'Rejected' && a.reject_reason ? `<div class="addon-reason">Customer: “${escapeHtml(a.reject_reason)}”</div>` : ''}
+                    ${a.status === 'Requested' || a.status === 'Approved'
+                        ? `<div><button class="addon-cancel" onclick="cancelAddon('${escapeHtml(a.id)}')">Cancel this add-on</button></div>` : ''}
+                </div>`).join('');
+            if (finished && !list.length) return '';
+            const form = formOpen ? `
+                <div class="addon-form">
+                    <label for="addon-title-${id}">What is it?</label>
+                    <input type="text" id="addon-title-${id}" maxlength="120" placeholder="e.g. Interior vacuum"
+                           value="${escapeHtml(addonDraft.title || '')}" oninput="addonDraft.title=this.value">
+                    <label for="addon-price-${id}">Price ₹ (0 = free)</label>
+                    <input type="number" id="addon-price-${id}" inputmode="numeric" min="0" max="500000" step="1" placeholder="e.g. 199"
+                           value="${escapeHtml(addonDraft.price ?? '')}" oninput="addonDraft.price=this.value">
+                    <label for="addon-note-${id}">Note for the customer (optional)</label>
+                    <textarea id="addon-note-${id}" rows="2" maxlength="500" placeholder="Why it's needed"
+                              oninput="addonDraft.note=this.value">${escapeHtml(addonDraft.note || '')}</textarea>
+                    <label class="addon-photo">
+                        ${addonDraft.file ? '✅ Photo added — tap to change' : '📷 Add a photo (optional)'}
+                        <input type="file" accept="image/*" hidden onchange="pickAddonPhoto('${id}', this)">
+                    </label>
+                    <div class="addon-actions">
+                        <button class="addon-close" onclick="closeAddonForm()">Close</button>
+                        <button class="addon-send" id="addon-send-${id}" onclick="sendAddon('${id}')">SEND</button>
+                    </div>
+                </div>` : (finished ? '' : `<button class="addon-btn" onclick="openAddonForm('${id}')">➕ ADD-ON SERVICE</button>`);
+            return `<div class="photo-step">
+                <div class="step-head"><div class="step-num">＋</div><div class="step-title">Extra work</div></div>
+                ${finished ? '' : '<div class="step-hint">Found extra work? Add it with a price. The customer approves and pays in their app.</div>'}
+                ${list.length ? `<div class="addon-list">${items}</div>` : ''}
+                ${form}
+                ${open.length ? `<div class="bill-wait">⏳ ${finished ? 'The bill' : "The customer's bill"} will be made once the customer pays or you cancel the unpaid add-on.</div>` : ''}
+                <div class="upload-status" id="addon-status-${id}"></div>
+            </div>`;
+        }
+
+        function openAddonForm(id) {
+            addonDraft = { id: String(id) };
+            fetchDoorstepBookings().then(() => {
+                const el = document.getElementById('addon-title-' + id);
+                if (el) { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+            });
+        }
+
+        function closeAddonForm() {
+            addonDraft = {};
+            fetchDoorstepBookings();
+        }
+
+        function pickAddonPhoto(id, input) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            addonDraft.file = file;
+            fetchDoorstepBookings();
+        }
+
+        async function sendAddon(id) {
+            const statusDiv = () => document.getElementById('addon-status-' + id);
+            const title = (addonDraft.title || '').trim();
+            const priceText = String(addonDraft.price ?? '').trim();
+            const price = Number(priceText);
+            if (!title) { showUploadStatus(statusDiv(), 'error', '❌ Write what the add-on is'); return; }
+            if (priceText === '' || !Number.isInteger(price) || price < 0 || price > 500000) {
+                showUploadStatus(statusDiv(), 'error', '❌ Enter the price in rupees (0 for free)');
+                return;
+            }
+            const ask = price === 0
+                ? `Add "${title}" as FREE?`
+                : `Send "${title}" for ₹${price.toLocaleString('en-IN')}?\n\nThe customer approves and pays in their app.`;
+            if (!confirm(ask)) return;
+            const btn = document.getElementById('addon-send-' + id);
+            if (btn) { btn.disabled = true; btn.textContent = 'SENDING…'; }
+            try {
+                let path = null;
+                if (addonDraft.file) {
+                    const blob = await shrinkImage(addonDraft.file);
+                    path = `washer-photos/${id}/addon-${Date.now()}.jpg`;
+                    const { error: upErr } = await sbClient.storage.from('booking-images')
+                        .upload(path, blob, { contentType: 'image/jpeg' });
+                    if (upErr) throw upErr;
+                }
+                const { error } = await sbClient.rpc('washer_request_addon', {
+                    p_booking_id: String(id),
+                    p_title: title,
+                    p_description: (addonDraft.note || '').trim(),
+                    p_price: price,
+                    p_image_path: path,
+                });
+                if (error) throw error;
+                addonDraft = {};
+                await fetchDoorstepBookings();
+                showUploadStatus(statusDiv(), 'success', price === 0
+                    ? '✅ Added as FREE'
+                    : '✅ Sent — the customer will approve and pay in their app');
+            } catch (err) {
+                console.error('Add-on failed:', err);
+                if (btn) { btn.disabled = false; btn.textContent = 'SEND'; }
+                showUploadStatus(statusDiv(), 'error', '❌ ' + (err.message || 'Could not send'));
+            }
+        }
+
+        async function cancelAddon(addonId) {
+            if (!confirm('Cancel this add-on? The customer won\'t be able to pay for it.')) return;
+            try {
+                const { error } = await sbClient.rpc('washer_cancel_addon', { p_id: addonId });
+                if (error) throw error;
+            } catch (err) {
+                alert(err.message || 'Could not cancel');
+            }
+            await fetchDoorstepBookings();
         }
 
         function toggleSubscription(subscriptionId) {

@@ -782,7 +782,7 @@ function startAutoRefresh() {
 function stopAutoRefresh() { if (state.timer) clearInterval(state.timer); state.timer = null; }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state.model && !editingResolve()) load(true); });
 // Don't wipe a half-typed price by auto-refreshing.
-function editingResolve() { return !!document.querySelector('[data-resolve-form][data-dirty]'); }
+function editingResolve() { return !!document.querySelector('[data-resolve-form][data-dirty], [data-qr-form][data-dirty]'); }
 
 // ─────────────────────────────── Chrome ───────────────────────────────
 const TABS = [
@@ -790,6 +790,7 @@ const TABS = [
   ['washes', 'Washes'], ['claims', 'Claims'], ['fleet', 'Fleet'], ['customers', 'Customers'],
   ['partners', 'Partners'], ['payments', 'Payments'], ['cancellations', 'Cancellations'],
   ['resolve', 'After service issue'], ['addons', 'Add-ons'], ['inspections', 'Inspections'],
+  ['payqr', 'Payment QR'],
 ];
 function buildChrome() {
   document.querySelectorAll('#rangeSeg button').forEach((b) => {
@@ -836,6 +837,93 @@ function go(tab, filters) {
   render(); window.scrollTo({ top: 0 });
 }
 
+
+// ── Payment QR ──
+// The UPI QR garages, delivery partners and washers show when a customer
+// pays at the door / garage. Upload new ones here and pick the one in use —
+// the apps and dashboards always show the one in use.
+let qrState = { list: null, error: '' };
+function payqr() {
+  afterRender.push(() => { if (!qrState.list && !qrState.error) loadQrs(); else bindQr(); });
+  return `<div class="card pad" style="max-width:880px">
+      <h3 style="margin:0 0 4px">Payment QR</h3>
+      <div class="secondary">Shown when a garage, delivery partner or washer taps <b>Collect payment → UPI</b>. Upload your bank's UPI QR, then tap <b>Use this</b>. Changing it here changes it everywhere straight away — no app update needed.</div>
+      <div id="qrBody" style="margin-top:16px">${qrBodyHtml()}</div>
+    </div>`;
+}
+function qrBodyHtml() {
+  if (qrState.error) return `<div class="banner">${esc(qrState.error)}</div><button class="btn" data-qr-retry>Try again</button>`;
+  if (!qrState.list) return '<div class="secondary">Loading…</div>';
+  const list = qrState.list;
+  const cards = list.map((q) => `
+      <div class="card pad" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;${q.active ? 'border:2px solid var(--green)' : ''}">
+        <a href="${esc(q.image_url)}" target="_blank" rel="noopener"><img src="${esc(q.image_url)}" alt="${esc(q.label)}" style="width:110px;height:110px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:10px"></a>
+        <div style="flex:1;min-width:180px">
+          <div style="font-weight:800;font-size:16px">${esc(q.label)} ${q.active ? pill('In use', 'green') : ''}</div>
+          <div class="secondary">Added ${fmtDT(q.created_at)}${q.created_by ? ' by ' + esc(q.created_by) : ''}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          ${q.active ? '' : `<button class="btn btn-primary" data-qr-use="${esc(q.id)}">Use this</button>
+          <button class="btn" data-qr-del="${esc(q.id)}" style="color:var(--red)">Delete</button>`}
+        </div>
+      </div>`).join('');
+  return `${list.length ? '' : '<div class="banner">No QR yet — garages and partners can only take cash until you add one.</div>'}
+    <div style="display:grid;gap:10px">${cards}</div>
+    <form data-qr-form class="card pad" style="margin-top:16px;display:grid;gap:10px">
+      <b>Add a QR</b>
+      <input class="input" name="label" maxlength="80" placeholder="Name, e.g. HDFC current account" required>
+      <label class="btn" style="cursor:pointer;justify-self:start">🖼 Choose QR image<input name="image" type="file" accept="image/png,image/jpeg,image/webp" hidden></label>
+      <div data-qr-preview class="secondary">PNG or JPG, max 5 MB. A clear, straight photo or the image from your bank app.</div>
+      <label class="secondary" style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="activate" checked> Use this one everywhere now</label>
+      <div><button class="btn btn-primary" type="submit">Upload</button> <span data-qr-msg class="secondary"></span></div>
+    </form>`;
+}
+async function loadQrs() {
+  try { qrState = { list: (await api('qr_list')).qrs || [], error: '' }; }
+  catch (e) { if (e.message !== 'signed_out' && e.message !== 'forbidden') qrState = { list: null, error: e.message || 'Could not load the QR codes.' }; }
+  const box = $('qrBody'); if (box) { box.innerHTML = qrBodyHtml(); bindQr(); }
+}
+function bindQr() {
+  const box = $('qrBody'); if (!box) return;
+  box.querySelector('[data-qr-retry]')?.addEventListener('click', () => { qrState = { list: null, error: '' }; box.innerHTML = qrBodyHtml(); loadQrs(); });
+  box.querySelectorAll('[data-qr-use]').forEach((b) => b.onclick = async () => {
+    if (!confirm('Show this QR everywhere from now on?')) return;
+    b.disabled = true;
+    try { qrState.list = (await api('qr_activate', { id: b.dataset.qrUse })).qrs; } catch (e) { alert(e.message); }
+    box.innerHTML = qrBodyHtml(); bindQr();
+  });
+  box.querySelectorAll('[data-qr-del]').forEach((b) => b.onclick = async () => {
+    if (!confirm('Delete this QR?')) return;
+    b.disabled = true;
+    try { qrState.list = (await api('qr_delete', { id: b.dataset.qrDel })).qrs; } catch (e) { alert(e.message); }
+    box.innerHTML = qrBodyHtml(); bindQr();
+  });
+  const form = box.querySelector('[data-qr-form]'); if (!form) return;
+  let dataUrl = '';
+  form.addEventListener('input', () => form.setAttribute('data-dirty', '1'));
+  form.querySelector('input[name="image"]').onchange = (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    const prev = form.querySelector('[data-qr-preview]');
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { prev.textContent = 'That image is too large (max 5 MB).'; dataUrl = ''; return; }
+    const rd = new FileReader();
+    rd.onload = () => { dataUrl = String(rd.result); prev.innerHTML = `<img src="${dataUrl}" alt="QR preview" style="width:140px;height:140px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:#fff">`; };
+    rd.readAsDataURL(f);
+  };
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const msg = form.querySelector('[data-qr-msg]');
+    const label = form.label.value.trim();
+    if (!label) { msg.textContent = 'Give it a name.'; return; }
+    if (!dataUrl) { msg.textContent = 'Choose the QR image.'; return; }
+    const btn = form.querySelector('button[type="submit"]'); btn.disabled = true; msg.textContent = 'Uploading…';
+    try {
+      qrState.list = (await api('qr_add', { label, image: dataUrl, activate: form.activate.checked })).qrs;
+      box.innerHTML = qrBodyHtml(); bindQr();
+    } catch (e) { btn.disabled = false; msg.textContent = e.message; }
+  };
+}
+
 // ─────────────────────────────── Render ───────────────────────────────
 const charts = [];
 function render() {
@@ -846,7 +934,7 @@ function render() {
   $('pageTitle').textContent = label;
   const errs = Object.keys(state.data.errors || {});
   const banner = errs.length ? `<div class="banner">Some data couldn't be loaded (${esc(errs.join(', '))}). Everything else is accurate.</div>` : '';
-  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons, inspections }[state.tab] || overview;
+  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons, inspections, payqr }[state.tab] || overview;
   $('content').innerHTML = banner + view();
   bindRows();
   afterRender.splice(0).forEach((fn) => fn());
@@ -1804,6 +1892,8 @@ function summaryHtml(j) {
     ['Garage', esc(j.garage || '—')], ['Delivery partner', esc(j.deliveryName || '—')], ['Washer', esc(j.washerName || '—')],
     ['Pickup & drop', j.pickup ? 'Yes' : 'No'], ['Address', esc(j.address || '—')],
   ];
+  const via = j.raw && j.raw.payment_collected_via;
+  if (via) rows.push(['Collected by', pill(via === 'upi' ? 'UPI (our QR)' : 'Cash', via === 'upi' ? 'blue' : 'green') + (j.raw.payment_collected_at ? ` <span class="secondary">${fmtDT(j.raw.payment_collected_at)}</span>` : '')]);
   if (j.coupon) rows.push(['Coupon', '<b>' + esc(j.coupon) + '</b>' + (j.couponOff ? ' · ₹' + esc(j.couponOff) + ' off (amount shown is after discount)' : '')]);
   if (j.slot) rows.push(['Slot', esc(j.slot) + (j.slotMode ? ' · <b>' + esc(j.slotMode) + '</b>' : '')]);
   if (j.table === 'monthlywash_table') rows.push(['Plan period', `${fmtD(j.start)} → ${fmtD(j.end)}`], ['Washes done', num(j.washes)]);
