@@ -1694,6 +1694,90 @@ const STAGE_TIMES = [
   ['return_otp_verified_at', 'Return OTP verified'], ['stage_delivered_at', 'Delivered'],
 ];
 
+// ── Bills (tax invoices) ──
+// Made automatically when a job is done. Here staff can download the
+// current bill, make one now, or override it with their own items (the old
+// one is kept as "replaced"; the customer is notified and sees the new one).
+const INVOICE_TABLES = new Set(['bookings', 'offer_bookings', 'pollution_booking', 'inspection_booking', 'claim_table', 'monthlywash_table', 'fleet_pickup_requests']);
+function billSection(j, d) {
+  const list = d.invoices || [];
+  const cur = list.find((i) => i.status === 'issued');
+  const old = list.filter((i) => i.status !== 'issued');
+  const seed = cur && Array.isArray(cur.lines) && cur.lines.length
+    ? cur.lines
+    : [{ name: j.title || 'Service', amount: Number(j.amount) || 0, gst: 18 }];
+  const rowHtml = (l) => `<div data-bill-row style="display:grid;grid-template-columns:minmax(120px,1fr) 110px 74px 60px 28px;gap:6px;align-items:center;margin-top:6px">
+      <input class="input" data-k="name" value="${esc(l.name || '')}" placeholder="Item" style="height:36px">
+      <input class="input" data-k="amount" type="number" step="0.01" value="${l.free ? 0 : esc(l.amount ?? '')}" placeholder="₹ incl. GST" style="height:36px">
+      <select class="select" data-k="gst" style="height:36px"><option value="18" ${Number(l.gst) !== 5 ? 'selected' : ''}>18%</option><option value="5" ${Number(l.gst) === 5 ? 'selected' : ''}>5%</option></select>
+      <label class="secondary" style="display:flex;gap:4px;align-items:center"><input type="checkbox" data-k="free" ${l.free || Number(l.amount) === 0 ? 'checked' : ''}>Free</label>
+      <button type="button" class="btn-link" data-bill-del title="Remove" style="color:var(--red);font-size:16px">✕</button>
+    </div>`;
+  return `<h4>Bill</h4>
+    <div class="card" style="padding:14px">
+      ${cur ? `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">
+          <div><div class="mono" style="font-weight:800;word-break:break-all">${esc(cur.invoice_no)}</div>
+            <div class="secondary">${fmtDT(cur.created_at)} · ${cur.created_by === 'auto' ? 'made automatically' : 'by ' + esc(cur.created_by)}${cur.reason ? ' · “' + esc(cur.reason) + '”' : ''}</div></div>
+          <b style="font-size:18px">${inr(cur.total)}</b></div>`
+        : `<div class="secondary">No bill yet — it's made automatically when the job is done. You can make it now.</div>`}
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+        ${cur ? `<button class="btn" data-doc="${esc(cur.pdf_path)}" data-bucket="invoices">⬇ Download PDF</button>` : `<button class="btn btn-primary" data-bill-now>Make bill now</button>`}
+        <button class="btn" data-bill-edit>✎ ${cur ? 'Override bill' : 'Make with my own items'}</button>
+      </div>
+      <form data-bill-form class="hidden" style="margin-top:12px">
+        <div class="secondary">Prices include GST. 18% for services and parts, 5% for pickup &amp; drop. Tick Free (or price 0) to show FREE. Use a negative price for a discount.</div>
+        <div data-bill-rows>${seed.map(rowHtml).join('')}</div>
+        <button type="button" class="btn-link" data-bill-add style="color:var(--blue);margin-top:8px">＋ Add item</button>
+        <input class="input" name="reason" placeholder="Reason (e.g. goodwill discount, wrong add-on price)" style="margin-top:8px">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px">
+          <b data-bill-total></b><span style="flex:1"></span><span class="secondary" data-bill-status></span>
+          <button class="btn btn-primary" type="submit">Issue new bill &amp; notify customer</button>
+        </div>
+      </form>
+      ${old.length ? `<div class="secondary" style="margin-top:12px">Replaced bills: ${old.map((o) => `<button class="btn-link" style="color:var(--blue);margin-right:8px" data-doc="${esc(o.pdf_path)}" data-bucket="invoices">${esc(o.invoice_no)}</button>`).join('')}</div>` : ''}
+    </div>
+    <template data-bill-row-tpl>${rowHtml({ name: '', amount: '', gst: 18 })}</template>`;
+}
+function bindBill(j) {
+  const body = $('dBody');
+  const form = body.querySelector('[data-bill-form]');
+  if (!form) return;
+  const rows = form.querySelector('[data-bill-rows]');
+  const readLines = () => [...rows.querySelectorAll('[data-bill-row]')].map((r) => ({
+    name: r.querySelector('[data-k="name"]').value.trim(),
+    amount: r.querySelector('[data-k="free"]').checked ? 0 : Number(r.querySelector('[data-k="amount"]').value || 0),
+    gst: Number(r.querySelector('[data-k="gst"]').value),
+    free: r.querySelector('[data-k="free"]').checked,
+  })).filter((l) => l.name);
+  const total = () => { form.querySelector('[data-bill-total]').textContent = 'New total ' + inr(readLines().reduce((s, l) => s + (l.amount || 0), 0)); };
+  const wire = () => rows.querySelectorAll('[data-bill-del]').forEach((b) => b.onclick = () => { b.closest('[data-bill-row]').remove(); total(); });
+  wire(); total();
+  form.addEventListener('input', total); form.addEventListener('change', total);
+  body.querySelector('[data-bill-edit]').onclick = () => form.classList.toggle('hidden');
+  form.querySelector('[data-bill-add]').onclick = () => {
+    rows.insertAdjacentHTML('beforeend', body.querySelector('[data-bill-row-tpl]').innerHTML); wire(); total();
+  };
+  const issue = async (payload, statusEl, btn) => {
+    btn.disabled = true; statusEl.style.color = ''; statusEl.textContent = 'Making the bill…';
+    try {
+      await api('invoice_issue', { table: j.table, id: j.id, ...payload });
+      statusEl.style.color = 'var(--green)'; statusEl.textContent = 'Done ✓ — customer notified';
+      await openJob(j.table, j.id);
+    } catch (e) {
+      statusEl.style.color = 'var(--red)'; statusEl.textContent = e.message || "Couldn't make the bill";
+      btn.disabled = false;
+    }
+  };
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const lines = readLines();
+    if (!lines.length) { form.querySelector('[data-bill-status]').textContent = 'Add at least one item.'; return; }
+    issue({ lines, reason: form.reason.value }, form.querySelector('[data-bill-status]'), form.querySelector('button[type="submit"]'));
+  };
+  const now = body.querySelector('[data-bill-now]');
+  if (now) now.onclick = () => issue({}, form.querySelector('[data-bill-status]'), now);
+}
+
 async function openJob(table, id) {
   const j = state.model.jobs.find((x) => x.table === table && String(x.id) === String(id));
   if (!j) return;
@@ -1704,7 +1788,8 @@ async function openJob(table, id) {
   $('drawer').classList.add('on'); $('scrim').classList.add('on'); $('drawer').setAttribute('aria-hidden', 'false');
   try {
     const d = await api('detail', { table, id });
-    $('dBody').innerHTML = summaryHtml(j) + detailHtml(j, d);
+    $('dBody').innerHTML = summaryHtml(j) + detailHtml(j, d) + (INVOICE_TABLES.has(table) ? billSection(j, d) : '');
+    if (INVOICE_TABLES.has(table)) bindBill(j);
     $('dBody').querySelectorAll('[data-doc]').forEach((el) => el.addEventListener('click', () => openDoc(el.dataset.doc, el.dataset.bucket)));
   } catch (e) {
     if (e.message !== 'signed_out') $('dBody').insertAdjacentHTML('beforeend', `<div class="banner">${esc(e.message)}</div>`);
@@ -1735,7 +1820,7 @@ function detailHtml(j, d) {
       + `<div class="secondary">Assigned ${fmtDT(r.inspection_assigned_at)} · On the way ${fmtDT(r.inspection_on_the_way_at)} · Analyzing ${fmtDT(r.inspection_analyzing_at)} · Completed ${fmtDT(r.inspection_completed_at)}</div>`
       + (ph.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${ph.map((p, i) => `<button class="btn" data-doc="${esc(p)}" data-bucket="inspection-photos">📷 Photo ${i + 1}</button>`).join('')}</div>` : '');
   }
-  if (d.updates?.length) html += `<h4>Garage updates</h4><ul class="timeline">${d.updates.map((u) => `<li><div><b>${esc(u.stage || 'Update')}</b></div>${u.description ? `<div>${esc(u.description)}</div>` : ''}<div class="when">${fmtDT(u.created_at)}${u.image_url || u.photo_url ? ` · <button class="btn-link" style="color:var(--blue)" data-doc="${esc(u.image_url || u.photo_url)}" data-bucket="booking-images">Photo</button>` : ''}</div></li>`).join('')}</ul>`;
+  if (d.updates?.length) html += `<h4>Garage updates</h4><ul class="timeline">${d.updates.map((u) => `<li><div><b>${esc(u.stage || 'Update')}</b></div>${u.description ? `<div>${esc(u.description)}</div>` : ''}<div class="when">${fmtDT(u.created_at)}${u.image_url || u.photo_url ? ` · <button class="btn-link" style="color:var(--blue)" data-doc="${esc(u.image_url || u.photo_url)}" data-bucket="booking-images">${/\.(mp4|mov|m4v|webm|3gp)$/i.test(u.image_url || u.photo_url || '') ? '▶ Video' : 'Photo'}</button>` : ''}</div></li>`).join('')}</ul>`;
   if (d.addons?.length) {
     const paidSum = d.addons.filter((a) => a.status === 'Paid').reduce((s, a) => s + Number(a.price || 0), 0);
     html += `<h4>Add-ons (${d.addons.length})${paidSum ? ` · ${inr(paidSum)} paid` : ''}</h4><ul class="timeline">${d.addons.map((a) => `<li><div><b>${esc(a.package_name || 'Add-on')}</b> · <b>${inr(Number(a.price || 0))}</b> ${addonPill(a)}</div>${a.description ? `<div>${esc(a.description)}</div>` : ''}${a.status === 'Rejected' && a.reject_reason ? `<div style="color:var(--red)">Customer: “${esc(a.reject_reason)}”</div>` : ''}<div class="when">${fmtDT(a.created_at)}${a.razorpay_payment_id ? ` · <span class="mono">${esc(a.razorpay_payment_id)}</span>` : ''}${a.image_path ? ` · <button class="btn-link" style="color:var(--blue)" data-doc="${esc(a.image_path)}" data-bucket="booking-images">Photo</button>` : ''}</div></li>`).join('')}</ul>`;

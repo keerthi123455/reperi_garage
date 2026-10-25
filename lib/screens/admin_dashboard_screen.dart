@@ -12,7 +12,9 @@ import 'garage_resolve_screen.dart';
 import 'login_screen.dart';
 import '../services/apple_review_assignment_override.dart';
 import '../services/push_notification_service.dart';
+import '../theme/garage_theme.dart';
 import '../widgets/error_display.dart';
+import '../widgets/reperi_logo.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   final String adminId;
@@ -31,6 +33,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List resolveRequests = [];
   Set<String> unreadBookingIds = {};
   String adminUsername = '';
+
+  /// Shown at the top ("Haya Autogears"); from the admin row.
+  String garageName = '';
+
+  /// Car details for the claims list, by vehicle id.
+  Map<String, Map> claimVehicles = {};
 
   bool loading = true;
 
@@ -98,11 +106,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     // Get current admin's username
     final adminData = await supabase
         .from('admin')
-        .select('username')
+        .select('*')
         .eq('id', widget.adminId)
         .single();
 
     final adminUsername = adminData['username'] ?? '';
+    final garageName = _garageNameFrom(adminData, adminUsername.toString());
 
     final isReviewAdmin = AppleReviewAssignmentOverride.enabled &&
         adminUsername == AppleReviewAssignmentOverride.adminUsername;
@@ -146,6 +155,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             .order('created_at', ascending: false)
         : [];
 
+    // Number plate / brand / model for the claims (claims only store the
+    // vehicle id). Not fatal — the tile falls back to the id.
+    final claimVehicles = <String, Map>{};
+    final claimVehicleIds = (claimsResponse as List)
+        .map((c) => c['vehicle_id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    if (claimVehicleIds.isNotEmpty) {
+      try {
+        final rows = await supabase
+            .from('vehicles')
+            .select('id, car_brand, car_model, car_number')
+            .inFilter('id', claimVehicleIds);
+        for (final v in rows as List) {
+          claimVehicles['${v['id']}'] = v as Map;
+        }
+      } catch (e) {
+        debugPrint('Claim vehicles not loaded: $e');
+      }
+    }
+
     // fetch all unread consumer messages in one query
     final unreadChats = await supabase
         .from('booking_chats')
@@ -165,34 +197,51 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       claims = claimsResponse;
       unreadBookingIds = unreadIds;
       this.adminUsername = adminUsername;
+      this.garageName = garageName;
+      this.claimVehicles = claimVehicles;
       loading = false;
     });
+  }
+
+  /// A readable garage name from the admin row: its name column if it has
+  /// one, otherwise the username ("haya_autogears" → "Haya Autogears").
+  static String _garageNameFrom(Map row, String username) {
+    for (final k in const ['garage_name', 'name', 'display_name']) {
+      final v = (row[k] ?? '').toString().trim();
+      if (v.isNotEmpty) return v;
+    }
+    return username
+        .split(RegExp(r'[_\s.]+'))
+        .where((w) => w.isNotEmpty)
+        .map((w) => w[0].toUpperCase() + w.substring(1))
+        .join(' ');
   }
 
   Future<void> _logout() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1C),
+        backgroundColor: G.card,
+        surfaceTintColor: G.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
-          'Log Out',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          'Log out',
+          style: TextStyle(color: G.txt, fontWeight: FontWeight.w800),
         ),
         content: const Text(
-          'Are you sure you want to logout?',
-          style: TextStyle(color: Colors.white70),
+          'Are you sure you want to log out?',
+          style: TextStyle(color: G.mut),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('NO', style: TextStyle(color: Colors.white54)),
+            child: const Text('NO', style: TextStyle(color: G.mut, fontWeight: FontWeight.w700)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text(
               'YES',
-              style: TextStyle(color: Color(0xFFD4A017), fontWeight: FontWeight.bold),
+              style: TextStyle(color: G.red, fontWeight: FontWeight.w900),
             ),
           ),
         ],
@@ -236,61 +285,80 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-  String _getStatusEmoji(String status) {
-    switch (status) {
-      case 'submitted':
-        return '🟡';
-      case 'inspection_scheduled':
-        return '🔵';
-      case 'inspection_completed':
-        return '🟢';
-      case 'approved':
-        return '✅';
-      case 'rejected':
-        return '❌';
-      default:
-        return '⚪';
-    }
+  // ── Search ──────────────────────────────────────────────────────────
+  /// Does any of [fields] contain what's typed? Spaces and dashes don't
+  /// matter, so "ka01", "KA 01" and "ka-01-ab" all find "KA 01 AB 1234".
+  bool _matches(List<dynamic> fields) {
+    final q = G.squash(searchText);
+    if (q.isEmpty) return true;
+    return fields.any((f) => G.squash(f?.toString()).contains(q));
+  }
+
+  List<dynamic> _vehicleFields(Map? v) =>
+      [v?['car_number'], v?['car_brand'], v?['car_model'], '${v?['car_brand'] ?? ''} ${v?['car_model'] ?? ''}'];
+
+  /// "Hyundai Creta · KA01AB1234" (how ReperiResolve stores the vehicle)
+  /// → (number, "Hyundai Creta").
+  (String, String) _splitVehicleLabel(String? label) {
+    final parts = (label ?? '').split('·').map((p) => p.trim()).where((p) => p.isNotEmpty).toList();
+    if (parts.length >= 2) return (parts.last, parts.sublist(0, parts.length - 1).join(' · '));
+    return ('', parts.isEmpty ? 'Vehicle' : parts.first);
+  }
+
+  String _carName(Map? v) {
+    final s = '${v?['car_brand'] ?? ''} ${v?['car_model'] ?? ''}'.trim();
+    return s.isEmpty ? 'Vehicle details unavailable' : s;
   }
 
   @override
   Widget build(BuildContext context) {
     final filteredBookings = bookings.where((booking) {
-      final vehicle = booking['vehicles'];
-      final query = searchText.toLowerCase();
-      
-      // Handle null vehicle safely
-      if (vehicle == null) {
-        return (booking['booking_status'] ?? '').toString().toLowerCase().contains(query);
-      }
-      
-      return (vehicle['car_number'] ?? '').toString().toLowerCase().contains(query) ||
-          (vehicle['car_model'] ?? '').toString().toLowerCase().contains(query) ||
-          (booking['booking_status'] ?? '').toString().toLowerCase().contains(query);
+      final vehicle = booking['vehicles'] as Map?;
+      return _matches([
+        ..._vehicleFields(vehicle),
+        booking['booking_status'],
+        booking['service_type'],
+        booking['package_name'],
+      ]);
     }).toList();
 
     final filteredFleet = fleetRequests.where((fleet) {
-      final query = searchText.toLowerCase();
-      return (fleet['car_number'] ?? '').toString().toLowerCase().contains(query) ||
-          (fleet['company_name'] ?? '').toString().toLowerCase().contains(query) ||
-          (fleet['status'] ?? '').toString().toLowerCase().contains(query);
+      return _matches([
+        fleet['car_number'],
+        fleet['vehicle_model'],
+        fleet['company_name'],
+        fleet['status'],
+      ]);
     }).toList();
 
-    final filteredClaims = claims;
+    final filteredClaims = claims.where((claim) {
+      return _matches([
+        ..._vehicleFields(claimVehicles['${claim['vehicle_id']}']),
+        claim['vehicle_id'],
+        claim['claim_status'],
+      ]);
+    }).toList();
 
     // Roadside Assistance bookings, assigned to this admin (see
     // PaymentScreen — they're stored in `bookings` under this prefix).
-    final emergencyBookings =
-        bookings.where((b) => _isEmergencyBooking(b)).toList();
+    final emergencyBookings = bookings
+        .where((b) => _isEmergencyBooking(b))
+        .where((b) => _matches([
+              ..._vehicleFields(b['vehicles'] as Map?),
+              b['package_name'],
+              b['booking_status'],
+            ]))
+        .toList();
 
-    // ReperiResolve requests sit on top of the CLIENT tab — open ones first.
+    // ReperiResolve requests sit on top of the bookings tab — open ones first.
     final filteredResolve = resolveRequests.where((r) {
-      final query = searchText.toLowerCase();
       final s = (r['status'] ?? '').toString();
       if (s == 'Closed') return false;
-      return (r['vehicle_label'] ?? '').toString().toLowerCase().contains(query) ||
-          ((r['categories'] as List?) ?? const []).join(' ').toLowerCase().contains(query) ||
-          s.toLowerCase().contains(query);
+      return _matches([
+        r['vehicle_label'],
+        ((r['categories'] as List?) ?? const []).join(' '),
+        s,
+      ]);
     }).toList()
       ..sort((a, b) {
         int rank(Map r) => const {'Submitted': 0, 'Accepted': 1, 'Quoted': 2}[r['status']] ?? 3;
@@ -305,131 +373,670 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ? filteredClaims
                 : emergencyBookings;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF262626),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1C1C1C),
-        elevation: 0,
-        title: const Text(
-          'GARAGE ADMIN',
-          style: TextStyle(
-            color: Color(0xFFD4A017),
-            fontWeight: FontWeight.w900,
-            letterSpacing: 2,
+    final unreadCount = bookings.where((b) => unreadBookingIds.contains(b['id'].toString())).length;
+    final fleetUnread = fleetRequests.where((f) => f['has_unread_update'] == true).length;
+    final emergencyOpen = bookings
+        .where((b) => _isEmergencyBooking(b) && b['return_otp_verified_at'] == null)
+        .length;
+
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Scaffold(
+        backgroundColor: G.bg,
+        bottomNavigationBar: _bottomNav(
+          badges: [unreadCount, fleetUnread, 0, emergencyOpen],
+        ),
+        body: SafeArea(
+          bottom: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _header(),
+                  _searchBar(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                    child: Text(
+                      _countLine(activeList.length, unreadCount),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: G.mut, fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  Expanded(
+                    child: loading
+                        ? const Center(child: CircularProgressIndicator(color: G.navy))
+                        : RefreshIndicator(
+                            color: G.navy,
+                            onRefresh: fetchBookings,
+                            child: activeList.isEmpty
+                                ? ListView(
+                                    physics: const AlwaysScrollableScrollPhysics(),
+                                    children: [_emptyState()],
+                                  )
+                                : ListView.builder(
+                                    physics: const AlwaysScrollableScrollPhysics(),
+                                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                                    itemCount: activeList.length,
+                                    itemBuilder: (context, index) {
+                                      if (selectedTab == 0) {
+                                        if (index < filteredResolve.length) {
+                                          return _buildResolveCard(activeList[index]);
+                                        }
+                                        return _buildClientCard(activeList[index]);
+                                      } else if (selectedTab == 1) {
+                                        return _buildFleetCard(activeList[index]);
+                                      } else if (selectedTab == 2) {
+                                        return _buildClaimCard(activeList[index]);
+                                      } else {
+                                        return _buildEmergencyCard(activeList[index]);
+                                      }
+                                    },
+                                  ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Color(0xFFD4A017)),
-            onPressed: _logout,
-            tooltip: 'Log out',
+      ),
+    );
+  }
+
+  static const _tabNames = ['bookings', 'fleet requests', 'claims', 'emergency bookings'];
+
+  String _countLine(int shown, int unread) {
+    final what = _tabNames[selectedTab];
+    if (searchText.trim().isNotEmpty) {
+      return '$shown found for “${searchText.trim()}”';
+    }
+    final base = '$shown $what';
+    if (selectedTab == 0 && unread > 0) return '$base · $unread new message${unread == 1 ? '' : 's'}';
+    return base;
+  }
+
+  Widget _header() {
+    final name = garageName.isNotEmpty ? garageName : 'Your garage';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 10, 12, 10),
+      child: Row(
+        children: [
+          const ReperiLogoMark(size: 38),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: G.txt, fontSize: 19, fontWeight: FontWeight.w800),
+                ),
+                const Text(
+                  'Garage dashboard',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: G.mut, fontSize: 12.5, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+          _headerButton(
+            Icons.storefront_rounded,
+            'Update garage info',
+            () => _launchURL('https://reperi.in/garage-info.html?admin_id=${widget.adminId}'),
+          ),
+          const SizedBox(width: 8),
+          _headerButton(Icons.logout_rounded, 'Log out', _logout),
+        ],
+      ),
+    );
+  }
+
+  Widget _headerButton(IconData icon, String tooltip, VoidCallback onTap) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: G.card,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: G.line),
+            ),
+            child: Icon(icon, color: G.navy, size: 22),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _searchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (v) => setState(() => searchText = v),
+        textInputAction: TextInputAction.search,
+        style: const TextStyle(color: G.txt, fontSize: 16, fontWeight: FontWeight.w700),
+        cursorColor: G.navy,
+        decoration: InputDecoration(
+          hintText: 'Search car number, brand or model',
+          hintStyle: const TextStyle(color: G.faint, fontSize: 15, fontWeight: FontWeight.w600),
+          prefixIcon: const Icon(Icons.search_rounded, color: G.navy),
+          suffixIcon: searchText.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear',
+                  icon: const Icon(Icons.close_rounded, color: G.mut),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => searchText = '');
+                  },
+                ),
+          filled: true,
+          fillColor: G.card,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: G.navy, width: 1.8),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: G.navy, width: 1.8),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: G.navy, width: 2.4),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyState() {
+    final searching = searchText.trim().isNotEmpty;
+    final what = _tabNames[selectedTab];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 70, 32, 32),
+      child: Column(
+        children: [
+          Icon(searching ? Icons.search_off_rounded : Icons.inbox_rounded, color: G.faint, size: 52),
+          const SizedBox(height: 12),
+          Text(
+            searching ? 'Nothing matches “${searchText.trim()}”' : 'No $what yet',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: G.txt, fontSize: 17, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            searching ? 'Try the car number, brand or model.' : 'Pull down to refresh.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: G.mut, fontSize: 14, fontWeight: FontWeight.w600),
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: const Color(0xFF1C1C1C),
-        type: BottomNavigationBarType.fixed,
-        currentIndex: selectedTab,
-        selectedItemColor: const Color(0xFFD4A017),
-        unselectedItemColor: Colors.white54,
-        onTap: (index) {
-          setState(() {
-            selectedTab = index;
-            searchText = '';
-            _searchController.clear();
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'CLIENT'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.local_shipping), label: 'FLEET'),
-          BottomNavigationBarItem(icon: Icon(Icons.shield), label: 'CLAIMS'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.emergency), label: 'EMERGENCY'),
-        ],
+    );
+  }
+
+  Widget _bottomNav({required List<int> badges}) {
+    const items = [
+      (Icons.directions_car_rounded, 'Bookings'),
+      (Icons.local_shipping_rounded, 'Fleet'),
+      (Icons.shield_rounded, 'Claims'),
+      (Icons.emergency_rounded, 'Emergency'),
+    ];
+    return Container(
+      decoration: const BoxDecoration(
+        color: G.card,
+        border: Border(top: BorderSide(color: G.line)),
       ),
-      body: loading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFFD4A017)),
-            )
-          : Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: activeList.isEmpty
-                          ? Center(
-                              child: Text(
-                                selectedTab == 0
-                                    ? 'No Bookings Found'
-                                    : selectedTab == 1
-                                        ? 'No Fleet Requests Found'
-                                        : selectedTab == 2
-                                            ? 'No Claims Found'
-                                            : 'No Emergency Bookings Found',
-                                style: const TextStyle(
-                                    color: Colors.white54, fontSize: 18),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 68,
+          child: Row(
+            children: [
+              for (var i = 0; i < items.length; i++)
+                Expanded(
+                  child: InkWell(
+                    onTap: () {
+                      setState(() {
+                        selectedTab = i;
+                        searchText = '';
+                        _searchController.clear();
+                      });
+                    },
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              width: 54,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                color: selectedTab == i ? G.yellow : Colors.transparent,
+                                borderRadius: BorderRadius.circular(16),
                               ),
-                            )
-                          : RefreshIndicator(
-                              onRefresh: fetchBookings,
-                              child: ListView.builder(
-                                padding: const EdgeInsets.all(20),
-                                itemCount: activeList.length,
-                                itemBuilder: (context, index) {
-                                  if (selectedTab == 0) {
-                                    if (index < filteredResolve.length) {
-                                      return _buildResolveCard(activeList[index]);
-                                    }
-                                    return _buildClientCard(activeList[index]);
-                                  } else if (selectedTab == 1) {
-                                    return _buildFleetCard(activeList[index]);
-                                  } else if (selectedTab == 2) {
-                                    return _buildClaimCard(activeList[index]);
-                                  } else {
-                                    return _buildEmergencyCard(activeList[index]);
-                                  }
-                                },
-                              ),
+                              child: Icon(items[i].$1, size: 22, color: selectedTab == i ? G.navy : G.faint),
                             ),
-                    ),
-                    // ── UPDATE GARAGE INFO BUTTON ──
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                      child: GestureDetector(
-                        onTap: () {
-                          final garageInfoUrl = 'https://reperi.in/garage-info.html?admin_id=${widget.adminId}';
-                          _launchURL(garageInfoUrl);
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 18, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD4A017),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.info, color: Colors.black),
-                              SizedBox(width: 8),
-                              Text(
-                                'Update Garage Info',
-                                style: TextStyle(
-                                  color: Colors.black,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w900,
+                            if (badges[i] > 0)
+                              Positioned(
+                                right: -4,
+                                top: -5,
+                                child: Container(
+                                  constraints: const BoxConstraints(minWidth: 18),
+                                  height: 18,
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  decoration: BoxDecoration(
+                                    color: G.red,
+                                    borderRadius: BorderRadius.circular(9),
+                                    border: Border.all(color: G.card, width: 1.5),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    badges[i] > 9 ? '9+' : '${badges[i]}',
+                                    style: const TextStyle(
+                                        color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, height: 1),
+                                  ),
                                 ),
                               ),
-                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              items[i].$2,
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: selectedTab == i ? G.navy : G.faint,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Tiles ───────────────────────────────────────────────────────────
+  /// One tile: number plate first, then the car, then what's being done,
+  /// then status. Same shape on every tab.
+  Widget _tile({
+    required String? plate,
+    required String title,
+    String? subtitle,
+    Widget? top,
+    List<Widget> tags = const [],
+    required Widget status,
+    String action = 'Open',
+    VoidCallback? onTap,
+    Color? border,
+    List<Widget> extra = const [],
+  }) {
+    final content = Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: G.cardBox(border: border, width: border == null ? 1 : 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (top != null) ...[top, const SizedBox(height: 10)],
+          if (plate != null) GaragePlate(plate),
+          const SizedBox(height: 10),
+          garageHighlight(
+            title,
+            searchText,
+            const TextStyle(color: G.txt, fontSize: 17, fontWeight: FontWeight.w800, height: 1.25),
+            maxLines: 2,
+          ),
+          if (subtitle != null && subtitle.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: G.mut, fontSize: 14, fontWeight: FontWeight.w600, height: 1.3),
+            ),
+          ],
+          ...extra,
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Flexible(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [status, ...tags],
                 ),
               ),
+              if (onTap != null) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '$action ›',
+                  maxLines: 1,
+                  style: const TextStyle(color: G.navy, fontSize: 14.5, fontWeight: FontWeight.w800),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+    if (onTap == null) return content;
+    return _TappableScale(onTap: onTap, child: content);
+  }
+
+  String _serviceName(Map booking) {
+    final type = (booking['service_type'] ?? '').toString().trim();
+    final pkg = (booking['package_name'] ?? '').toString().trim();
+    final name = pkg.isNotEmpty ? pkg : (type.isNotEmpty ? G.sentence(type) : 'Service');
+    final when = G.when(booking['created_at']);
+    return when.isEmpty ? name : '$name · $when';
+  }
+
+  Widget _buildClientCard(Map booking) {
+    final status = (booking['booking_status'] ?? 'Pending').toString();
+    final hasUnread = unreadBookingIds.contains(booking['id'].toString());
+    // The vehicle a booking points to can be gone (deleted since the
+    // booking was made) — the tile has to cope with that.
+    final vehicle = booking['vehicles'] as Map?;
+
+    return _tile(
+      plate: vehicle?['car_number']?.toString(),
+      title: _carName(vehicle),
+      subtitle: _serviceName(booking),
+      status: GarageStatusPill(status, label: status.toLowerCase() == 'pending' ? 'New booking' : null),
+      tags: [
+        if (hasUnread) const GarageTag('New message', icon: Icons.chat_bubble_rounded),
+      ],
+      border: hasUnread ? G.red : null,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => BookingDetailsScreen(booking: booking),
+          ),
+        ).then((_) => fetchBookings());
+      },
+    );
+  }
+
+  /// A ReperiResolve request assigned to this garage from the CRM.
+  Widget _buildResolveCard(Map r) {
+    final status = (r['status'] ?? 'Submitted').toString();
+    final label = switch (status) {
+      'Quoted' => 'Price sent',
+      'Accepted' => 'Accepted — repair booking made',
+      'Cancelled' => 'Cancelled',
+      _ => 'Needs your price',
+    };
+    final cats = ((r['categories'] as List?) ?? const []).whereType<String>().toList();
+    final files = ((r['media'] as List?) ?? const []).length;
+    final (plate, car) = _splitVehicleLabel(r['vehicle_label']?.toString());
+    return _tile(
+      top: const GarageTag('REPERIRESOLVE', color: Color(0xFF1E5EFF), textColor: Color(0xFFFFE36A)),
+      plate: plate.isEmpty ? null : plate,
+      title: car,
+      subtitle: [
+        cats.isNotEmpty ? cats.join(' · ') : 'Problem reported',
+        if (files > 0) '$files file${files == 1 ? '' : 's'} from customer',
+      ].join(' · '),
+      status: GarageStatusPill(status == 'Submitted' ? 'pending' : status, label: label),
+      border: status == 'Submitted' ? G.navy : null,
+      action: 'See photos',
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => GarageResolveScreen(request: r, adminId: widget.adminId)),
+        ).then((_) => fetchBookings());
+      },
+    );
+  }
+
+  Widget _buildFleetCard(Map fleet) {
+    final status = (fleet['status'] ?? 'Pending').toString();
+    final unread = fleet['has_unread_update'] == true;
+    final model = (fleet['vehicle_model'] ?? '').toString().trim();
+    final company = (fleet['company_name'] ?? '').toString().trim();
+    final when = G.when(fleet['created_at']);
+    return _tile(
+      plate: fleet['car_number']?.toString(),
+      title: model.isNotEmpty ? model : 'Fleet vehicle',
+      subtitle: [if (company.isNotEmpty) company, if (when.isNotEmpty) when].join(' · '),
+      status: GarageStatusPill(status),
+      tags: [
+        if (unread) GarageTag((fleet['latest_update_type'] ?? 'New update').toString(), icon: Icons.notifications_rounded),
+      ],
+      border: unread ? G.red : null,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => FleetRequestDetailsScreen(fleetRequest: fleet),
+          ),
+        ).then((_) => fetchBookings());
+      },
+    );
+  }
+
+  Widget _buildClaimCard(Map claim) {
+    final status = (claim['claim_status'] ?? 'submitted').toString();
+    final vehicle = claimVehicles['${claim['vehicle_id']}'];
+    final when = G.when(claim['created_at']);
+    return _tile(
+      plate: vehicle?['car_number']?.toString(),
+      title: vehicle != null ? _carName(vehicle) : 'Vehicle ID: ${claim['vehicle_id'] ?? 'Unknown'}',
+      subtitle: ['Claim assistance', if (when.isNotEmpty) 'Submitted $when'].join(' · '),
+      status: GarageStatusPill(status),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ClaimDetailsScreen(
+              claimId: claim['id'],
+              adminUsername: adminUsername,
+            ),
+          ),
+        ).then((_) => fetchBookings());
+      },
+    );
+  }
+
+  /// Emergency (Roadside Assistance) tile — deliberately not tappable as a
+  /// whole; the buttons on it do the work.
+  Widget _buildEmergencyCard(Map booking) {
+    final verified = booking['return_otp_verified_at'] != null;
+    final otpCode = booking['return_otp_code']?.toString();
+    final otpPending = !verified && booking['return_otp_generated_at'] != null && otpCode != null;
+    final status = verified ? 'Done' : (booking['booking_status'] ?? 'Pending').toString();
+    final name = (booking['customer_name'] ?? 'Unknown').toString();
+    final phone = _customerPhone(booking);
+    final address = (booking['pickup_address'] ?? 'Not specified').toString();
+    final title = (booking['package_name'] ?? 'Roadside Assistance')
+        .toString()
+        .replaceFirst('Roadside Assistance - ', '');
+    final vehicle = booking['vehicles'] as Map?;
+    final when = G.when(booking['created_at']);
+
+    return _tile(
+      top: const GarageTag('EMERGENCY', icon: Icons.emergency_rounded),
+      plate: vehicle?['car_number']?.toString(),
+      title: title,
+      subtitle: [if (vehicle != null) _carName(vehicle), if (when.isNotEmpty) when].join(' · '),
+      status: verified
+          ? const GarageStatusPill('done', label: 'Done — confirmed by customer')
+          : GarageStatusPill(status, label: status.toLowerCase() == 'pending' ? 'New — go now' : null),
+      border: verified ? null : G.red,
+      extra: [
+        const SizedBox(height: 12),
+        _infoLine(Icons.person_rounded, name),
+        const SizedBox(height: 6),
+        _infoLine(Icons.location_on_rounded, address, maxLines: 3),
+        if (!verified) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              if (phone != null) ...[
+                Expanded(
+                  child: _actionButton(
+                    icon: Icons.call_rounded,
+                    label: 'Call',
+                    outlined: true,
+                    color: G.navy,
+                    onTap: () => _callCustomer(phone),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: _actionButton(
+                  icon: Icons.navigation_rounded,
+                  label: 'Navigate',
+                  color: G.red,
+                  onTap: () => _navigateToEmergency(booking),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (otpPending)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+              decoration: BoxDecoration(
+                color: G.amberBg,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: G.amber.withOpacity(0.4)),
+              ),
+              child: Column(
+                children: [
+                  const Text(
+                    'OTP — customer must enter it in their app',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: G.txt, fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      otpCode,
+                      style: const TextStyle(
+                        color: G.navy,
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 8,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Pull down to refresh once they confirm',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: G.mut, fontSize: 12),
+                  ),
+                ],
+              ),
+            )
+          else
+            _actionButton(
+              icon: Icons.check_circle_rounded,
+              label: 'Mark as done',
+              color: G.green,
+              onTap: () => _markEmergencyDone(booking),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _infoLine(IconData icon, String text, {int maxLines = 1}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: G.mut, size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: maxLines,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: G.txt, fontSize: 14, fontWeight: FontWeight.w600, height: 1.3),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _actionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    bool outlined = false,
+  }) {
+    final child = Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+        ),
+      ],
+    );
+    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
+    return SizedBox(
+      height: 50,
+      width: double.infinity,
+      child: outlined
+          ? OutlinedButton(
+              onPressed: onTap,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: color,
+                side: BorderSide(color: color, width: 1.5),
+                shape: shape,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: child,
+            )
+          : ElevatedButton(
+              onPressed: onTap,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: shape,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: child,
             ),
     );
   }
@@ -506,27 +1113,31 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1C),
+        backgroundColor: G.card,
+        surfaceTintColor: G.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
           'Completion OTP',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          style: TextStyle(color: G.txt, fontWeight: FontWeight.w800),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
               'Ask the customer to enter this code on their home screen to confirm the service is done.',
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(color: G.mut, height: 1.4),
             ),
             const SizedBox(height: 18),
-            Text(
-              otp,
-              style: const TextStyle(
-                color: Color(0xFFE5323B),
-                fontSize: 40,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 12,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                otp,
+                style: const TextStyle(
+                  color: G.navy,
+                  fontSize: 40,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 12,
+                ),
               ),
             ),
           ],
@@ -536,409 +1147,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text(
               'OK',
-              style: TextStyle(
-                  color: Color(0xFFD4A017), fontWeight: FontWeight.bold),
+              style: TextStyle(color: G.navy, fontWeight: FontWeight.w900),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  /// Emergency (Roadside Assistance) tile — deliberately not tappable as a
-  /// whole; the only interactive element is the NAVIGATE button.
-  Widget _buildEmergencyCard(Map booking) {
-    const red = Color(0xFFE5323B);
-    final verified = booking['return_otp_verified_at'] != null;
-    final otpCode = booking['return_otp_code']?.toString();
-    final otpPending =
-        !verified && booking['return_otp_generated_at'] != null && otpCode != null;
-    final status = verified
-        ? 'DONE'
-        : (booking['booking_status'] ?? 'PENDING').toString().toUpperCase();
-    final name = (booking['customer_name'] ?? 'Unknown').toString();
-    final phone = (booking['customer_phone'] ?? 'Not provided').toString();
-    final address = (booking['pickup_address'] ?? 'Not specified').toString();
-    final title = (booking['package_name'] ?? 'Roadside Assistance')
-        .toString()
-        .replaceFirst('Roadside Assistance - ', '');
-    final created = booking['created_at'] != null
-        ? DateTime.tryParse(booking['created_at'].toString())
-            ?.toLocal()
-            .toString()
-            .split('.')[0]
-        : null;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1C),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: red.withOpacity(0.55), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: red.withOpacity(0.18),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.emergency, color: red, size: 22),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: (verified ? Colors.greenAccent : red).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  status,
-                  style: TextStyle(
-                    color: verified ? Colors.greenAccent : red,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _emergencyRow(Icons.person, name),
-          const SizedBox(height: 8),
-          InkWell(
-            onTap: phone == 'Not provided' ? null : () => _callCustomer(phone),
-            borderRadius: BorderRadius.circular(8),
-            child: Row(
-              children: [
-                const Icon(Icons.phone, color: Colors.white54, size: 18),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    phone,
-                    style: const TextStyle(
-                      color: Color(0xFFD4A017),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                if (phone != 'Not provided')
-                  const Text(
-                    'CALL',
-                    style: TextStyle(
-                      color: Color(0xFFD4A017),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          _emergencyRow(Icons.location_on, address),
-          if (created != null) ...[
-            const SizedBox(height: 8),
-            _emergencyRow(Icons.schedule, created),
-          ],
-          const SizedBox(height: 16),
-          if (verified)
-            const Center(
-              child: Text(
-                'DONE — confirmed by customer',
-                style: TextStyle(
-                  color: Colors.greenAccent,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            )
-          else ...[
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => _navigateToEmergency(booking),
-              icon: const Icon(Icons.navigation, size: 20),
-              label: const Text(
-                'NAVIGATE',
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: red,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (otpPending)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF262626),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFD4A017)),
-              ),
-              child: Column(
-                children: [
-                  const Text(
-                    'OTP — customer must enter it in their app',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    otpCode!,
-                    style: const TextStyle(
-                      color: Color(0xFFD4A017),
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 8,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'Pull down to refresh once they confirm',
-                    style: TextStyle(color: Colors.white38, fontSize: 11),
-                  ),
-                ],
-              ),
-            )
-          else
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _markEmergencyDone(booking),
-                icon: const Icon(Icons.check_circle_outline, size: 20),
-                label: const Text(
-                  'MARK AS DONE',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.greenAccent,
-                  side: const BorderSide(color: Colors.greenAccent),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _emergencyRow(IconData icon, String text) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: Colors.white54, size: 18),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildClientCard(Map booking) {
-    final status = (booking['booking_status'] ?? 'PENDING').toString().toUpperCase();
-    final hasUnread = unreadBookingIds.contains(booking['id'].toString());
-    // The vehicle a booking points to can be gone (deleted since the
-    // booking was made) — the search filter above already accounts for
-    // that, so this card has to as well instead of assuming it's there.
-    final vehicle = booking['vehicles'] as Map?;
-
-    Color statusColor;
-    switch (status) {
-      case 'PENDING':
-        statusColor = const Color(0xFFD4A017);
-        break;
-      case 'ACCEPTED':
-        statusColor = Colors.blueAccent;
-        break;
-      case 'IN GARAGE':
-        statusColor = Colors.orangeAccent;
-        break;
-      case 'COMPLETED':
-        statusColor = Colors.greenAccent;
-        break;
-      case 'CANCELLED':
-        statusColor = Colors.redAccent;
-        break;
-      default:
-        statusColor = const Color(0xFFD4A017);
-    }
-
-    return _TappableScale(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => BookingDetailsScreen(booking: booking),
-          ),
-        ).then((_) => fetchBookings());
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 20),
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1C),
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: const Color(0xFF3A3A3A)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.25),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Icon(Icons.build_rounded,
-                      color: statusColor, size: 36),
-                ),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        vehicle != null
-                            ? '${vehicle['car_brand']} ${vehicle['car_model']}'
-                            : 'Vehicle unavailable',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        booking['service_type']?.toString().replaceAll('_', ' ').toUpperCase() ?? 'SERVICE',
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 14),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  (vehicle?['car_number'] ?? '—').toString().toUpperCase(),
-                  style: const TextStyle(
-                    color: Color(0xFFD4A017),
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
-                  ),
-                ),
-                if (hasUnread) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text(
-                      'NEW MESSAGE',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 20),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Row(
-                  children: [
-                    Text(
-                      'Tap to update',
-                      style:
-                          TextStyle(color: Colors.white38, fontSize: 13),
-                    ),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward_ios,
-                        size: 14, color: Colors.white38),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -970,348 +1182,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-  /// A ReperiResolve request assigned to this garage from the CRM.
-  Widget _buildResolveCard(Map r) {
-    final status = (r['status'] ?? 'Submitted').toString();
-    final (String label, Color color) = switch (status) {
-      'Quoted' => ('PRICE SENT', const Color(0xFF4D8DFF)),
-      'Accepted' => ('ACCEPTED — REPAIR BOOKING CREATED', Colors.greenAccent),
-      'Cancelled' => ('CANCELLED', Colors.white54),
-      _ => ('NEEDS YOUR PRICE', const Color(0xFFD4A017)),
-    };
-    final cats = ((r['categories'] as List?) ?? const []).whereType<String>().toList();
-    final files = ((r['media'] as List?) ?? const []).length;
-    return _TappableScale(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => GarageResolveScreen(request: r, adminId: widget.adminId)),
-        ).then((_) => fetchBookings());
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 20),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1C),
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: color.withOpacity(0.6), width: 1.4),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 8))],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(color: const Color(0xFF1E5EFF), borderRadius: BorderRadius.circular(20)),
-              child: const Text('REPERIRESOLVE',
-                  style: TextStyle(color: Color(0xFFFFD23F), fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1)),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              cats.isNotEmpty ? cats.join(' · ') : 'Problem reported',
-              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.2),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              [
-                (r['vehicle_label'] ?? 'Vehicle').toString(),
-                if (files > 0) '$files file${files == 1 ? '' : 's'} from customer',
-              ].join(' · '),
-              style: const TextStyle(color: Colors.white54, fontSize: 14, height: 1.3),
-            ),
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(14)),
-              child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
-            ),
-            const SizedBox(height: 8),
-            const Row(
-              children: [
-                Text("Tap to see the customer's photos", style: TextStyle(color: Colors.white38, fontSize: 13)),
-                SizedBox(width: 8),
-                Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white38),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFleetCard(Map fleet) {
-    final status = (fleet['status'] ?? 'PENDING').toString().toUpperCase();
-
-    Color statusColor;
-    switch (status) {
-      case 'PICKED UP':
-        statusColor = Colors.blueAccent;
-        break;
-      case 'IN GARAGE':
-        statusColor = Colors.orangeAccent;
-        break;
-      case 'COMPLETED':
-        statusColor = Colors.greenAccent;
-        break;
-      default:
-        statusColor = const Color(0xFFD4A017);
-    }
-
-    return _TappableScale(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => FleetRequestDetailsScreen(fleetRequest: fleet),
-          ),
-        ).then((_) => fetchBookings());
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 20),
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1C),
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: const Color(0xFF3A3A3A)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.25),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Icon(Icons.local_shipping_rounded,
-                      color: statusColor, size: 36),
-                ),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        fleet['company_name'] ?? '',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        fleet['vehicle_model'] ?? '',
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 14),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  fleet['car_number'] ?? '',
-                  style: const TextStyle(
-                    color: Color(0xFFD4A017),
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
-                  ),
-                ),
-                if (fleet['has_unread_update'] == true) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      fleet['latest_update_type'] ?? 'NEW UPDATE',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ),
-                const Row(
-                  children: [
-                    Text(
-                      'Tap to manage',
-                      style:
-                          TextStyle(color: Colors.white38, fontSize: 13),
-                    ),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward_ios,
-                        size: 14, color: Colors.white38),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildClaimCard(Map claim) {
-    final status = (claim['claim_status'] ?? 'SUBMITTED').toString().toUpperCase();
-    final emoji = _getStatusEmoji((claim['claim_status'] ?? 'submitted').toString());
-    final vehicleId = claim['vehicle_id'] ?? 'Unknown';
-
-    return _TappableScale(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ClaimDetailsScreen(
-              claimId: claim['id'],
-              adminUsername: adminUsername,
-            ),
-          ),
-        ).then((_) => fetchBookings());
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 20),
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1C),
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: const Color(0xFF3A3A3A)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.25),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Claim Assistance',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Vehicle ID: $vehicleId',
-                        style: const TextStyle(
-                          color: Color(0xFFD4A017),
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Text(
-                  emoji,
-                  style: const TextStyle(fontSize: 32),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 6,
-              ),
-              decoration: BoxDecoration(
-                color: const Color(0xFFD4A017).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: const Color(0xFFD4A017).withOpacity(0.3),
-                ),
-              ),
-              child: Text(
-                status.replaceAll('_', ' '),
-                style: const TextStyle(
-                  color: Color(0xFFD4A017),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Submitted: ${claim['created_at'] != null ? DateTime.tryParse(claim['created_at'].toString())?.toString().split('.')[0] ?? 'Unknown' : 'Unknown'}',
-              style: TextStyle(
-                color: Colors.grey.withOpacity(0.7),
-                fontSize: 10,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Text(
-                  'Tap to view details',
-                  style: TextStyle(color: Colors.white38, fontSize: 12),
-                ),
-                SizedBox(width: 8),
-                Icon(Icons.arrow_forward_ios,
-                    size: 12, color: Colors.white38),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ── Reusable tap feedback wrapper ─────────────────────────────

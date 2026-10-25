@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme/app_colors.dart';
+import 'bill_download_button.dart';
 import 'guest_sheets.dart';
 import 'slot_picker.dart';
 
@@ -244,6 +245,12 @@ class _OfferBookingsSectionState extends State<OfferBookingsSection> {
             style: TextStyle(color: AppColors.mut, fontSize: 13, height: 1.4),
           ),
           _photos(b),
+          // Bill (PDF) — appears once the wash is completed.
+          BillDownloadButton(
+            key: ValueKey('bill-offer_bookings-${b['id']}-$status'),
+            table: 'offer_bookings',
+            id: b['id'].toString(),
+          ),
         ],
       ),
     );

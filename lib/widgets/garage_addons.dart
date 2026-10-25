@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../theme/garage_theme.dart';
 import '../utils/secure_storage_path.dart';
 
 /// Garage side of add-on services, for the booking details screen:
@@ -27,7 +28,7 @@ class GarageAddonsSection extends StatefulWidget {
 const Color _kBlue = Color(0xFF1E5EFF);
 const Color _kBlueDark = Color(0xFF123A9E);
 const Color _kYellow = Color(0xFFFFD23F);
-const Color _kCard = Color(0xFF1C1C1C);
+const Color _kCard = G.card;
 const Color _kGreen = Color(0xFF2FB36A);
 const Color _kRed = Color(0xFFE5484D);
 
@@ -168,12 +169,12 @@ class _GarageAddonsSectionState extends State<GarageAddonsSection> {
       decoration: BoxDecoration(
         color: _kCard,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: G.line),
       ),
       child: Column(
         children: [
           for (var i = 0; i < _addons.length; i++) ...[
-            if (i > 0) const Divider(height: 1, color: Colors.white10),
+            if (i > 0) const Divider(height: 1, color: G.line),
             _row(_addons[i]),
           ],
         ],
@@ -185,9 +186,10 @@ class _GarageAddonsSectionState extends State<GarageAddonsSection> {
     final status = (a['status'] ?? '').toString();
     final (String pill, Color color) = switch (status) {
       'Paid' => ('PAID', _kGreen),
+      'Free' => ('FREE', _kGreen),
       'Rejected' => ('REJECTED', _kRed),
-      'Approved' => ('PAYING…', _kYellow),
-      _ => ('WAITING', _kYellow),
+      'Approved' => ('PAYING…', G.amber),
+      _ => ('WAITING', G.amber),
     };
     final price = (a['package_price'] ?? '₹${a['price'] ?? ''}').toString();
     final reason = (a['reject_reason'] ?? '').toString().trim();
@@ -202,11 +204,11 @@ class _GarageAddonsSectionState extends State<GarageAddonsSection> {
               Expanded(
                 child: Text(
                   (a['package_name'] ?? '').toString(),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, height: 1.3),
+                  style: const TextStyle(color: G.txt, fontWeight: FontWeight.w800, height: 1.3),
                 ),
               ),
               const SizedBox(width: 8),
-              Text(price, style: const TextStyle(color: Color(0xFFD4A017), fontWeight: FontWeight.w900)),
+              Text(price, style: const TextStyle(color: G.navy, fontWeight: FontWeight.w900)),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -218,13 +220,13 @@ class _GarageAddonsSectionState extends State<GarageAddonsSection> {
           ),
           if (status == 'Rejected' && reason.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text('Customer: "$reason"', style: const TextStyle(color: Colors.white60, fontSize: 12.5, height: 1.35)),
+            Text('Customer: "$reason"', style: const TextStyle(color: G.mut, fontSize: 12.5, height: 1.35)),
           ] else if ((a['description'] ?? '').toString().trim().isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(a['description'].toString(),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white54, fontSize: 12.5, height: 1.35)),
+                style: const TextStyle(color: G.mut, fontSize: 12.5, height: 1.35)),
           ],
         ],
       ),
@@ -310,8 +312,8 @@ class _AddonSheetState extends State<_AddonSheet> {
     final price = int.tryParse(_price.text.trim());
     final problem = title.isEmpty
         ? 'Say what the add-on is.'
-        : (price == null || price <= 0)
-            ? 'Enter the price in rupees.'
+        : (price == null || price < 0)
+            ? 'Enter the price in rupees (0 if it\'s free).'
             : _photo == null
                 ? 'Add a photo so the customer can see it.'
                 : null;
@@ -358,20 +360,20 @@ class _AddonSheetState extends State<_AddonSheet> {
         labelText: label,
         hintText: hint,
         prefixText: prefix,
-        labelStyle: const TextStyle(color: Colors.white60),
-        hintStyle: const TextStyle(color: Colors.white30),
-        prefixStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        labelStyle: const TextStyle(color: G.mut),
+        hintStyle: const TextStyle(color: G.faint),
+        prefixStyle: const TextStyle(color: G.txt, fontWeight: FontWeight.w800),
         filled: true,
-        fillColor: Colors.white.withOpacity(0.05),
-        counterStyle: const TextStyle(color: Colors.white38),
+        fillColor: G.sunken,
+        counterStyle: const TextStyle(color: G.faint),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.12)),
+          borderSide: BorderSide(color: G.line),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _kYellow),
+          borderSide: const BorderSide(color: G.navy),
         ),
       );
 
@@ -400,16 +402,16 @@ class _AddonSheetState extends State<_AddonSheet> {
                   child: Container(
                     width: 40,
                     height: 4,
-                    decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                    decoration: BoxDecoration(color: G.line, borderRadius: BorderRadius.circular(2)),
                   ),
                 ),
                 const SizedBox(height: 14),
                 const Text('ADD-ON SERVICE',
-                    style: TextStyle(color: _kYellow, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                    style: TextStyle(color: G.navy, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1)),
                 const SizedBox(height: 4),
                 const Text(
                   'The customer gets a notification and approves & pays this amount in the app.',
-                  style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.4),
+                  style: TextStyle(color: G.mut, fontSize: 13, height: 1.4),
                 ),
                 const SizedBox(height: 14),
                 _photoBox(),
@@ -421,7 +423,7 @@ class _AddonSheetState extends State<_AddonSheet> {
                   enabled: !_sending,
                   maxLength: 120,
                   textCapitalization: TextCapitalization.sentences,
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: G.txt),
                   decoration: _dec('What\'s needed', hint: 'e.g. Front brake pads replacement'),
                 ),
                 const SizedBox(height: 6),
@@ -434,7 +436,7 @@ class _AddonSheetState extends State<_AddonSheet> {
                   maxLines: 4,
                   maxLength: 500,
                   textCapitalization: TextCapitalization.sentences,
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: G.txt),
                   decoration: _dec('Description', hint: 'Why it\'s needed, what you\'ll do'),
                 ),
                 const SizedBox(height: 6),
@@ -445,8 +447,9 @@ class _AddonSheetState extends State<_AddonSheet> {
                   enabled: !_sending,
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
-                  decoration: _dec('Price (total, incl. parts & labour)', prefix: '₹ '),
+                  style: const TextStyle(color: G.txt, fontSize: 18, fontWeight: FontWeight.w800),
+                  // 0 = done for free: no approval needed, shows as FREE on the bill.
+                  decoration: _dec('Price (total, incl. parts & labour) — 0 = free', prefix: '₹ '),
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 10),
@@ -513,20 +516,20 @@ class _AddonSheetState extends State<_AddonSheet> {
             child: Container(
               height: 96,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.04),
+                color: G.sunken,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: _kYellow.withOpacity(0.35)),
+                border: Border.all(color: G.navy.withOpacity(0.35)),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(icon, color: _kYellow, size: 26),
+                  Icon(icon, color: G.navy, size: 26),
                   const SizedBox(height: 6),
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(label,
                         maxLines: 1,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+                        style: const TextStyle(color: G.txt, fontWeight: FontWeight.w800, fontSize: 13)),
                   ),
                 ],
               ),

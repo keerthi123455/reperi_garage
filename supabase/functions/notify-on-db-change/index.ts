@@ -199,7 +199,15 @@ Deno.serve(async (req) => {
         const status = String(record.status ?? "");
         const was = String(old_record?.status ?? "");
 
-        if (type === "INSERT" && record.user_id) {
+        if (type === "INSERT" && record.user_id && status === "Free") {
+          // ₹0 extra from the garage — nothing to approve or pay.
+          await sendPush(
+            `customer_${record.user_id}`,
+            "Free extra from your garage",
+            `Your garage is doing ${title} for free. It'll show as FREE on your bill.`,
+            data,
+          );
+        } else if (type === "INSERT" && record.user_id) {
           await sendPush(
             `customer_${record.user_id}`,
             "Add-on requested",
@@ -240,9 +248,10 @@ Deno.serve(async (req) => {
           if (booking?.user_id) {
             const stage = String(record.stage ?? "");
             const isDone = stage === "Delivered";
+            const isVideo = /\.(mp4|mov|m4v|webm|3gp)$/i.test(String(record.image_url ?? ""));
             await sendPush(
               `customer_${booking.user_id}`,
-              isDone ? "Booking complete!" : "Booking update",
+              isDone ? "Booking complete!" : isVideo ? "New video from your garage 🎥" : "Booking update",
               isDone
                 ? `Your ${booking.package_name} service is complete and ready.`
                 : `${stage}: ${booking.package_name}`,

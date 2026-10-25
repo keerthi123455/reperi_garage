@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'booking_details_screen.dart';
+import '../theme/garage_theme.dart';
 
 /// Garage app: a ReperiResolve request whose price (sent from the CRM) the
 /// customer has accepted. Shows what the customer sent (photos, videos,
@@ -19,10 +20,10 @@ class GarageResolveScreen extends StatefulWidget {
 }
 
 class _GarageResolveScreenState extends State<GarageResolveScreen> {
-  static const Color _bg = Color(0xFF141414);
-  static const Color _card = Color(0xFF1C1C1C);
-  static const Color _gold = Color(0xFFD4A017);
-  static const Color _green = Color(0xFF2FB36A);
+  static const Color _bg = G.bg;
+  static const Color _card = G.card;
+  static const Color _gold = G.navy;
+  static const Color _green = G.green;
 
   late Map r = Map.of(widget.request);
 
@@ -59,7 +60,7 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
     final id = (r['booking_id'] ?? '').toString();
     if (id.isEmpty) return;
     try {
-      final b = await Supabase.instance.client.from('bookings').select('*').eq('id', id).maybeSingle();
+      final b = await Supabase.instance.client.from('bookings').select('*, vehicles(car_brand, car_model, car_number)').eq('id', id).maybeSingle();
       if (!mounted) return;
       if (b == null) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking not found — pull to refresh.')));
@@ -114,15 +115,13 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
     final garagePhotos = ((r['garage_photos'] as List?) ?? const []).map((e) => '$e').toList();
     final phone = (r['customer_phone'] ?? '').toString().trim();
     final bottom = MediaQuery.viewPaddingOf(context).bottom;
+    // vehicle_label is "Hyundai Creta · KA01AB1234" — the number goes on a plate.
+    final labelParts = (r['vehicle_label'] ?? '').toString().split('·').map((p) => p.trim()).toList();
+    final plate = labelParts.length >= 2 ? labelParts.last : '';
 
     return Scaffold(
       backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: _bg,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text('ReperiResolve', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-      ),
+      appBar: garageAppBar('ReperiResolve'),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600),
@@ -138,13 +137,17 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (plate.isNotEmpty) ...[
+                        GaragePlate(plate, fontSize: 26),
+                        const SizedBox(height: 12),
+                      ],
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
                             child: Text(
                               cats.isNotEmpty ? cats.join(' · ') : 'Problem reported',
-                              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.2),
+                              style: const TextStyle(color: G.txt, fontSize: 20, fontWeight: FontWeight.w900, height: 1.2),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -177,13 +180,13 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
                 ),
                 if (desc.isNotEmpty) ...[
                   _label('CUSTOMER SAYS'),
-                  _box(child: Text(desc, style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.45))),
+                  _box(child: Text(desc, style: const TextStyle(color: G.txt, fontSize: 15, height: 1.45))),
                 ],
 
                 // ── Customer files ──
                 _label('PHOTOS & VIDEOS FROM THE CUSTOMER'),
                 if (media.isEmpty && (r['dealer_quote_path'] ?? '').toString().isEmpty)
-                  _box(child: const Text('No files sent', style: TextStyle(color: Colors.white54)))
+                  _box(child: const Text('No files sent', style: TextStyle(color: G.mut)))
                 else
                   _grid([
                     for (final m in media)
@@ -203,11 +206,11 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
                             style: const TextStyle(color: _gold, fontSize: 28, fontWeight: FontWeight.w900)),
                         Text(
                           'Customer pays ₹${_plain((num.tryParse('${r['quoted_price']}') ?? 0) + (num.tryParse('${r['pickup_fee'] ?? 100}') ?? 100))} incl. pickup & drop',
-                          style: const TextStyle(color: Colors.white54, fontSize: 12.5),
+                          style: const TextStyle(color: G.mut, fontSize: 12.5),
                         ),
                         if ((r['quote_note'] ?? '').toString().isNotEmpty) ...[
                           const SizedBox(height: 6),
-                          Text('${r['quote_note']}', style: const TextStyle(color: Colors.white70, height: 1.4)),
+                          Text('${r['quote_note']}', style: const TextStyle(color: G.mut, height: 1.4)),
                         ],
                         if (garagePhotos.isNotEmpty) ...[
                           const SizedBox(height: 12),
@@ -222,7 +225,7 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
                             child: Text(
                               (r['booking_id'] ?? '').toString().isEmpty
                                   ? '✅ Customer accepted this price — call them to fix a time.'
-                                  : '✅ Customer accepted — a pickup & drop repair booking is now in your CLIENT list. Our delivery partner brings the car; then photos, stages and Work done like any booking.',
+                                  : '✅ Customer accepted — a pickup & drop repair booking is now in your Bookings list. Our delivery partner brings the car; then photos, stages and Work done like any booking.',
                               style: const TextStyle(color: _green, fontWeight: FontWeight.w800, height: 1.35),
                             ),
                           ),
@@ -266,10 +269,10 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
   // ── pieces ──
   Widget _statusPill() {
     final (String t, Color c) = switch (_status) {
-      'Quoted' => ('PRICE SENT', const Color(0xFF4D8DFF)),
+      'Quoted' => ('PRICE SENT', G.orange),
       'Accepted' => ('ACCEPTED', _green),
-      'Closed' => ('CLOSED', Colors.white54),
-      'Cancelled' => ('CANCELLED', Colors.white54),
+      'Closed' => ('CLOSED', G.mut),
+      'Cancelled' => ('CANCELLED', G.mut),
       _ => ('NEEDS PRICE', _gold),
     };
     return Container(
@@ -285,7 +288,7 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
         decoration: BoxDecoration(
           color: _card,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withOpacity(0.06)),
+          border: Border.all(color: G.line),
         ),
         child: child,
       );
@@ -293,7 +296,7 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
   Widget _label(String t) => Padding(
         padding: const EdgeInsets.fromLTRB(4, 22, 4, 10),
         child: Text(t,
-            style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+            style: const TextStyle(color: G.mut, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
       );
 
   Widget _info(IconData icon, String text) => Padding(
@@ -303,7 +306,7 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
           children: [
             Icon(icon, size: 17, color: _gold),
             const SizedBox(width: 8),
-            Expanded(child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.3))),
+            Expanded(child: Text(text, style: const TextStyle(color: G.mut, fontSize: 14, height: 1.3))),
           ],
         ),
       );
@@ -328,7 +331,7 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
         Widget inner;
         if (isVideo) {
           inner = Container(
-            color: Colors.white10,
+            color: G.navy,
             alignment: Alignment.center,
             child: const Column(
               mainAxisSize: MainAxisSize.min,
@@ -341,14 +344,14 @@ class _GarageResolveScreenState extends State<GarageResolveScreen> {
           );
         } else if (url == null) {
           inner = Container(
-            color: Colors.white10,
+            color: G.sunken,
             alignment: Alignment.center,
             child: snap.connectionState == ConnectionState.done
-                ? const Icon(Icons.broken_image_outlined, color: Colors.white38)
+                ? const Icon(Icons.broken_image_outlined, color: G.faint)
                 : const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: _gold)),
           );
         } else {
-          inner = Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.white10));
+          inner = Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: G.sunken));
         }
         return GestureDetector(
           onTap: url == null ? null : () => isVideo ? _openUrl(url) : _viewImage(url),

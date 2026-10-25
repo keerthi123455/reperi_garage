@@ -23,6 +23,7 @@ import '../widgets/resolve_requests_list.dart';
 import '../widgets/slot_picker.dart';
 import '../widgets/subscription_renewal.dart';
 import '../widgets/vehicle_card.dart' show VehicleCartoonAvatar;
+import '../widgets/bill_download_button.dart';
 import 'booking_tracking_screen.dart';
 
 // Same brand catalog as profile_screen.dart's "Add/Edit Vehicle" sheet —
@@ -1856,6 +1857,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
             title: title,
             price: price,
           ),
+        BillDownloadButton(
+          key: ValueKey('bill-$table-${booking['id']}-$stage'),
+          table: table,
+          id: booking['id'].toString(),
+        ),
       ],
     );
   }
@@ -2485,6 +2491,13 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                 ),
               ],
             ),
+            // Bill for this plan (each renewal has its own).
+            if (subscription['id'] != null)
+              BillDownloadButton(
+                key: ValueKey('bill-monthlywash_table-${subscription['id']}'),
+                table: 'monthlywash_table',
+                id: subscription['id'].toString(),
+              ),
             if (!_subscriptionExpanded) ...[
               const SizedBox(height: 12),
               Text(
@@ -3097,6 +3110,12 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
                 onVerified: fetchBookings,
               ),
           ],
+          // Bill (PDF) — appears once the garage marks the job done.
+          BillDownloadButton(
+            key: ValueKey('bill-bookings-$bookingId-$currentStatus'),
+            table: 'bookings',
+            id: bookingId,
+          ),
         ],
         primaryLabel: finished ? 'See details' : 'See live updates',
         onPrimary: () => _openTracking(booking),
@@ -3265,6 +3284,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
             title: title,
             price: price,
           ),
+        BillDownloadButton(
+          key: ValueKey('bill-$table-${booking['id']}-$status-${booking['delivery_stage']}-${booking['inspection_stage']}'),
+          table: table,
+          id: booking['id'].toString(),
+        ),
       ],
     );
   }
@@ -3328,6 +3352,11 @@ class _VehicleBookingsScreenState extends State<VehicleBookingsScreen> {
             onVerified: fetchClaims,
           ),
         // Claims have no cancel option — see _anyCancellable.
+        BillDownloadButton(
+          key: ValueKey('bill-claim_table-${claim['id']}-${claim['claim_status']}-${claim['delivery_stage']}'),
+          table: 'claim_table',
+          id: claim['id'].toString(),
+        ),
       ],
     );
   }

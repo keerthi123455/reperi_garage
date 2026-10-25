@@ -77,7 +77,8 @@ class _BookingAddonsState extends State<BookingAddons> {
     if (_isRoadside || _addons.isEmpty) return const SizedBox.shrink();
 
     final open = _addons.where((a) => a['status'] == 'Requested' || a['status'] == 'Approved').toList();
-    final paid = _addons.where((a) => a['status'] == 'Paid').toList();
+    // Paid add-ons and ₹0 ones the garage did for free.
+    final paid = _addons.where((a) => a['status'] == 'Paid' || a['status'] == 'Free').toList();
     final rejected = _addons.where((a) => a['status'] == 'Rejected').toList();
 
     return Padding(
@@ -114,6 +115,7 @@ class _BookingAddonsState extends State<BookingAddons> {
 }
 
 String _price(Map<String, dynamic> a) {
+  if (a['status'] == 'Free' || a['price'] == 0) return 'FREE';
   final p = (a['package_price'] ?? '').toString();
   if (p.isNotEmpty) return p;
   return '₹${a['price'] ?? ''}';
@@ -258,9 +260,9 @@ class _SubOrders extends StatelessWidget {
                         color: const Color(0xFF1FAA59).withOpacity(0.15),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text(
-                        'PAID',
-                        style: TextStyle(color: Color(0xFF1FAA59), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.8),
+                      child: Text(
+                        a['status'] == 'Free' ? 'FREE' : 'PAID',
+                        style: const TextStyle(color: Color(0xFF1FAA59), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.8),
                       ),
                     ),
                   ],

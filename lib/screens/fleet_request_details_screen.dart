@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../theme/garage_theme.dart';
 import '../utils/secure_storage_path.dart';
 import '../widgets/error_display.dart';
 
@@ -458,12 +459,12 @@ class _FleetRequestDetailsScreenState
     return Container(
       height: MediaQuery.of(sheetCtx).size.height * 0.72 + viewInsets.bottom,
       decoration: const BoxDecoration(
-        color: Color(0xFF0F0F0F),
+        color: G.card,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         border: Border(
-          top: BorderSide(color: Color(0xFF3A3A3A)),
-          left: BorderSide(color: Color(0xFF3A3A3A)),
-          right: BorderSide(color: Color(0xFF3A3A3A)),
+          top: BorderSide(color: G.line),
+          left: BorderSide(color: G.line),
+          right: BorderSide(color: G.line),
         ),
       ),
       child: Column(
@@ -474,7 +475,7 @@ class _FleetRequestDetailsScreenState
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white24,
+                color: G.line,
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
@@ -491,11 +492,11 @@ class _FleetRequestDetailsScreenState
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFD4A017).withOpacity(0.12),
+                          color: G.navy.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Icon(Icons.chat_bubble_rounded,
-                            color: Color(0xFFD4A017), size: 18),
+                            color: G.navy, size: 18),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -505,7 +506,7 @@ class _FleetRequestDetailsScreenState
                             Text(
                               widget.fleetRequest['company_name'] ?? 'Fleet Chat',
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: G.txt,
                                 fontWeight: FontWeight.w800,
                                 fontSize: 15,
                               ),
@@ -513,7 +514,7 @@ class _FleetRequestDetailsScreenState
                             const Text(
                               'Real-time conversation',
                               style:
-                                  TextStyle(color: Colors.white38, fontSize: 11),
+                                  TextStyle(color: G.faint, fontSize: 11),
                             ),
                           ],
                         ),
@@ -524,26 +525,26 @@ class _FleetRequestDetailsScreenState
                 // 🔒 MENU & CLOSE BUTTONS
                 if (blockingLoaded)
                   IconButton(
-                    icon: const Icon(Icons.more_vert, color: Colors.white54),
+                    icon: const Icon(Icons.more_vert, color: G.mut),
                     onPressed: () {
                       _showFleetDetailsSafetyMenu();
                     },
                   ),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                  icon: const Icon(Icons.close_rounded, color: G.mut),
                   tooltip: 'Close',
                   onPressed: () => Navigator.pop(sheetCtx),
                 ),
               ],
             ),
           ),
-          const Divider(color: Color(0xFF1E1E1E), height: 20),
+          const Divider(color: G.line, height: 20),
 
           Expanded(
             child: _chatLoading
                 ? const Center(
                     child: CircularProgressIndicator(
-                      color: Color(0xFFD4A017),
+                      color: G.navy,
                       strokeWidth: 2,
                     ),
                   )
@@ -557,7 +558,7 @@ class _FleetRequestDetailsScreenState
                             const Text(
                               'You are blocked',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: G.txt,
                                 fontSize: 18,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -567,7 +568,7 @@ class _FleetRequestDetailsScreenState
                               'You cannot send or receive messages',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: Colors.white54,
+                                color: G.mut,
                                 fontSize: 14,
                               ),
                             ),
@@ -580,7 +581,7 @@ class _FleetRequestDetailsScreenState
                               'No messages yet.\nStart the conversation.',
                               textAlign: TextAlign.center,
                               style:
-                                  TextStyle(color: Colors.white24, fontSize: 13),
+                                  TextStyle(color: G.faint, fontSize: 13),
                             ),
                           )
                         : ListView.builder(
@@ -616,14 +617,14 @@ class _FleetRequestDetailsScreenState
                     height: 12,
                     child: CircularProgressIndicator(
                       strokeWidth: 1.5,
-                      color: Color(0xFFD4A017),
+                      color: G.navy,
                     ),
                   ),
                   SizedBox(width: 8),
                   Text(
                     'Fleet operator is typing…',
                     style: TextStyle(
-                      color: Colors.white38,
+                      color: G.faint,
                       fontSize: 12,
                       fontStyle: FontStyle.italic,
                     ),
@@ -640,22 +641,22 @@ class _FleetRequestDetailsScreenState
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF262626),
+                      color: G.sunken,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFF3A3A3A)),
+                      border: Border.all(color: G.line),
                     ),
                     child: TextField(
                       controller: _chatController,
                       onChanged: _handleChatTyping,
                       enabled: !isBlockedByOther && blockingLoaded,
                       style:
-                          const TextStyle(color: Colors.white, fontSize: 14),
+                          const TextStyle(color: G.txt, fontSize: 14),
                       maxLines: null,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _sendChatMessage(),
                       decoration: InputDecoration(
                         hintText: isBlockedByOther ? 'You are blocked' : 'Type a message…',
-                        hintStyle: const TextStyle(color: Colors.white54),
+                        hintStyle: const TextStyle(color: G.mut),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 12),
@@ -670,19 +671,19 @@ class _FleetRequestDetailsScreenState
                     width: 46,
                     height: 46,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFD4A017),
+                      color: G.yellow,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: _chatSending
                         ? const Padding(
                             padding: EdgeInsets.all(13),
                             child: CircularProgressIndicator(
-                              color: Colors.black,
+                              color: G.navy,
                               strokeWidth: 2,
                             ),
                           )
                         : const Icon(Icons.send_rounded,
-                            color: Colors.black, size: 20),
+                            color: G.navy, size: 20),
                   ),
                 ),
               ],
@@ -707,8 +708,8 @@ class _FleetRequestDetailsScreenState
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: isAdmin
-                  ? const Color(0xFFD4A017).withOpacity(0.15)
-                  : const Color(0xFF1E1E1E),
+                  ? G.navy.withOpacity(0.15)
+                  : G.sunken,
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(16),
                 topRight: const Radius.circular(16),
@@ -717,13 +718,13 @@ class _FleetRequestDetailsScreenState
               ),
               border: isAdmin
                   ? Border.all(
-                      color: const Color(0xFFD4A017).withOpacity(0.25))
-                  : Border.all(color: const Color(0xFF3A3A3A)),
+                      color: G.navy.withOpacity(0.25))
+                  : Border.all(color: G.line),
             ),
             child: Text(
               message,
               style: TextStyle(
-                color: isAdmin ? const Color(0xFFE8C84A) : Colors.white,
+                color: isAdmin ? G.navy : G.txt,
                 fontSize: 13.5,
               ),
             ),
@@ -737,14 +738,14 @@ class _FleetRequestDetailsScreenState
                   Icon(
                     seen ? Icons.remove_red_eye : Icons.remove_red_eye_outlined,
                     size: 11,
-                    color: seen ? const Color(0xFFD4A017) : Colors.white24,
+                    color: seen ? G.navy : G.faint,
                   ),
                   const SizedBox(width: 4),
                   Text(
                     seen ? 'Seen' : 'Sent',
                     style: TextStyle(
                       fontSize: 10,
-                      color: seen ? const Color(0xFFD4A017) : Colors.white24,
+                      color: seen ? G.navy : G.faint,
                     ),
                   ),
                 ],
@@ -786,7 +787,7 @@ class _FleetRequestDetailsScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Status updated to $_pendingStatus'),
-          backgroundColor: const Color(0xFFD4A017),
+          backgroundColor: G.navy,
         ),
       );
     } catch (e) {
@@ -826,7 +827,7 @@ class _FleetRequestDetailsScreenState
                 maxHeight: MediaQuery.of(context).size.height * 0.85,
               ),
               decoration: const BoxDecoration(
-                color: Color(0xFF1C1C1C),
+                color: G.card,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
               ),
               child: Padding(
@@ -847,7 +848,7 @@ class _FleetRequestDetailsScreenState
                           height: 4,
                           margin: const EdgeInsets.only(bottom: 20),
                           decoration: BoxDecoration(
-                            color: Colors.white24,
+                            color: G.line,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -855,7 +856,7 @@ class _FleetRequestDetailsScreenState
                       const Text(
                         'Charge Fleet',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: G.txt,
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
                         ),
@@ -863,7 +864,7 @@ class _FleetRequestDetailsScreenState
                       const SizedBox(height: 4),
                       const Text(
                         'Add each billable item and its price.',
-                        style: TextStyle(color: Colors.white54, fontSize: 13),
+                        style: TextStyle(color: G.mut, fontSize: 13),
                       ),
                       const SizedBox(height: 20),
 
@@ -878,12 +879,12 @@ class _FleetRequestDetailsScreenState
                                 flex: 3,
                                 child: TextField(
                                   controller: item['name'],
-                                  style: const TextStyle(color: Colors.white),
+                                  style: const TextStyle(color: G.txt),
                                   decoration: InputDecoration(
                                     labelText: 'Item ${index + 1}',
-                                    labelStyle: const TextStyle(color: Colors.white54),
+                                    labelStyle: const TextStyle(color: G.mut),
                                     filled: true,
-                                    fillColor: const Color(0xFF262626),
+                                    fillColor: G.sunken,
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
                                       borderSide: BorderSide.none,
@@ -897,13 +898,13 @@ class _FleetRequestDetailsScreenState
                                 child: TextField(
                                   controller: item['price'],
                                   keyboardType: TextInputType.number,
-                                  style: const TextStyle(color: Colors.white),
+                                  style: const TextStyle(color: G.txt),
                                   onChanged: (_) => setSheetState(() {}),
                                   decoration: InputDecoration(
                                     labelText: '₹ Price',
-                                    labelStyle: const TextStyle(color: Colors.white54),
+                                    labelStyle: const TextStyle(color: G.mut),
                                     filled: true,
-                                    fillColor: const Color(0xFF262626),
+                                    fillColor: G.sunken,
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
                                       borderSide: BorderSide.none,
@@ -913,7 +914,7 @@ class _FleetRequestDetailsScreenState
                               ),
                               if (items.length > 1)
                                 IconButton(
-                                  icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                                  icon: const Icon(Icons.close, color: G.mut, size: 20),
                                   onPressed: () => setSheetState(() => items.removeAt(index)),
                                 ),
                             ],
@@ -928,26 +929,26 @@ class _FleetRequestDetailsScreenState
                             'price': TextEditingController(),
                           });
                         }),
-                        icon: const Icon(Icons.add, color: Color(0xFFD4A017)),
-                        label: const Text('Add Item', style: TextStyle(color: Color(0xFFD4A017))),
+                        icon: const Icon(Icons.add, color: G.navy),
+                        label: const Text('Add Item', style: TextStyle(color: G.navy)),
                       ),
 
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF262626),
+                          color: G.sunken,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text('TOTAL',
-                                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                                style: TextStyle(color: G.mut, fontWeight: FontWeight.w700, letterSpacing: 1)),
                             Text(
                               '₹${total.toStringAsFixed(0)}',
                               style: const TextStyle(
-                                color: Color(0xFFD4A017),
+                                color: G.navy,
                                 fontSize: 22,
                                 fontWeight: FontWeight.w900,
                               ),
@@ -962,7 +963,7 @@ class _FleetRequestDetailsScreenState
                         height: 56,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFD4A017),
+                            backgroundColor: G.yellow,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           ),
                           onPressed: total <= 0
@@ -983,7 +984,7 @@ class _FleetRequestDetailsScreenState
                           child: Text(
                             'CHARGE ₹${total.toStringAsFixed(0)}',
                             style: const TextStyle(
-                              color: Colors.black,
+                              color: G.navy,
                               fontWeight: FontWeight.w900,
                               fontSize: 15,
                               letterSpacing: 0.5,
@@ -1025,7 +1026,7 @@ class _FleetRequestDetailsScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Fleet charged ₹${total.toStringAsFixed(0)}'),
-          backgroundColor: const Color(0xFFD4A017),
+          backgroundColor: G.navy,
         ),
       );
     } catch (e) {
@@ -1065,7 +1066,7 @@ class _FleetRequestDetailsScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('Comment saved'),
-            backgroundColor: Color(0xFFD4A017)),
+            backgroundColor: G.navy),
       );
     } catch (e) {
       if (!mounted) return;
@@ -1093,7 +1094,7 @@ class _FleetRequestDetailsScreenState
   Future<ImageSource?> _showImageSourceSheet() {
     return showModalBottomSheet<ImageSource>(
       context: context,
-      backgroundColor: const Color(0xFF262626),
+      backgroundColor: G.card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1107,7 +1108,7 @@ class _FleetRequestDetailsScreenState
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white24,
+                  color: G.line,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -1115,24 +1116,24 @@ class _FleetRequestDetailsScreenState
               const Text(
                 'Add Garage Photo',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: G.txt,
                     fontSize: 16,
                     fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 20),
               ListTile(
                 leading: const Icon(Icons.camera_alt_rounded,
-                    color: Color(0xFFD4A017)),
+                    color: G.navy),
                 title: const Text('Take Photo',
-                    style: TextStyle(color: Colors.white)),
+                    style: TextStyle(color: G.txt)),
                 onTap: () =>
                     Navigator.pop(sheetContext, ImageSource.camera),
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library_rounded,
-                    color: Color(0xFFD4A017)),
+                    color: G.navy),
                 title: const Text('Choose from Gallery',
-                    style: TextStyle(color: Colors.white)),
+                    style: TextStyle(color: G.txt)),
                 onTap: () =>
                     Navigator.pop(sheetContext, ImageSource.gallery),
               ),
@@ -1200,13 +1201,13 @@ class _FleetRequestDetailsScreenState
   Color _statusColor(String status) {
     switch (status) {
       case 'Picked Up':
-        return Colors.blueAccent;
+        return G.blue;
       case 'In Garage':
-        return Colors.orangeAccent;
+        return G.orange;
       case 'Completed':
-        return Colors.greenAccent;
+        return G.green;
       default:
-        return const Color(0xFFD4A017);
+        return G.amber;
     }
   }
 
@@ -1215,20 +1216,20 @@ class _FleetRequestDetailsScreenState
     final fleet = widget.fleetRequest;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF262626),
+      backgroundColor: G.bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1C1C1C),
+        backgroundColor: G.bg,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new,
-              color: Color(0xFFD4A017)),
+              color: G.navy),
           tooltip: 'Back',
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           'FLEET REQUEST',
           style: TextStyle(
-            color: Color(0xFFD4A017),
+            color: G.navy,
             fontWeight: FontWeight.w900,
             letterSpacing: 2,
           ),
@@ -1241,7 +1242,7 @@ class _FleetRequestDetailsScreenState
               children: [
                 IconButton(
                   icon: const Icon(Icons.chat_bubble_rounded,
-                      color: Color(0xFFD4A017)),
+                      color: G.navy),
                   onPressed: _openChatPopup,
                 ),
                 if (_hasUnreadChat)
@@ -1275,10 +1276,10 @@ class _FleetRequestDetailsScreenState
                   width: double.infinity,
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1C1C1C),
+                    color: G.card,
                     borderRadius: BorderRadius.circular(28),
                     border:
-                        Border.all(color: const Color(0xFF3A3A3A)),
+                        Border.all(color: G.line),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1288,13 +1289,13 @@ class _FleetRequestDetailsScreenState
                           Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFD4A017)
+                              color: G.navy
                                   .withOpacity(0.12),
                               borderRadius: BorderRadius.circular(18),
                             ),
                             child: const Icon(
                               Icons.local_shipping_rounded,
-                              color: Color(0xFFD4A017),
+                              color: G.navy,
                               size: 32,
                             ),
                           ),
@@ -1307,7 +1308,7 @@ class _FleetRequestDetailsScreenState
                                 Text(
                                   fleet['company_name'] ?? '',
                                   style: const TextStyle(
-                                    color: Colors.white,
+                                    color: G.txt,
                                     fontSize: 22,
                                     fontWeight: FontWeight.w900,
                                   ),
@@ -1315,7 +1316,7 @@ class _FleetRequestDetailsScreenState
                                 Text(
                                   fleet['vehicle_model'] ?? '',
                                   style: const TextStyle(
-                                      color: Colors.white54,
+                                      color: G.mut,
                                       fontSize: 14),
                                 ),
                               ],
@@ -1338,7 +1339,7 @@ class _FleetRequestDetailsScreenState
                             const Text(
                               'VEHICLE PHOTO UPLOADED BY FLEET',
                               style: TextStyle(
-                                  color: Colors.white70,
+                                  color: G.mut,
                                   fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 12),
@@ -1352,10 +1353,10 @@ class _FleetRequestDetailsScreenState
                                     return Container(
                                       height: 220,
                                       width: double.infinity,
-                                      color: const Color(0xFF141414),
+                                      color: G.sunken,
                                       child: const Center(
                                         child: CircularProgressIndicator(
-                                          color: Color(0xFFD4A017),
+                                          color: G.navy,
                                           strokeWidth: 2,
                                         ),
                                       ),
@@ -1376,7 +1377,7 @@ class _FleetRequestDetailsScreenState
                       const Text(
                         'CUSTOMER RESPONSE',
                         style: TextStyle(
-                            color: Colors.white70,
+                            color: G.mut,
                             fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 10),
@@ -1384,7 +1385,7 @@ class _FleetRequestDetailsScreenState
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF262626),
+                          color: G.sunken,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
@@ -1393,11 +1394,11 @@ class _FleetRequestDetailsScreenState
                           style: TextStyle(
                             color: fleet['customer_approval'] ==
                                     'Approved'
-                                ? Colors.green
+                                ? G.green
                                 : fleet['customer_approval'] ==
                                         'Rejected'
                                     ? Colors.red
-                                    : Colors.white,
+                                    : G.txt,
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                           ),
@@ -1413,7 +1414,7 @@ class _FleetRequestDetailsScreenState
                 const Text(
                   'UPDATE STATUS',
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: G.mut,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.5,
@@ -1425,21 +1426,21 @@ class _FleetRequestDetailsScreenState
                   padding:
                       const EdgeInsets.symmetric(horizontal: 18),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF262626),
+                    color: G.sunken,
                     borderRadius: BorderRadius.circular(16),
                     border:
-                        Border.all(color: const Color(0xFF3A3A3A)),
+                        Border.all(color: G.line),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: _pendingStatus,
                       isExpanded: true,
-                      dropdownColor: const Color(0xFF262626),
+                      dropdownColor: G.card,
                       icon: const Icon(
                           Icons.keyboard_arrow_down_rounded,
-                          color: Color(0xFFD4A017)),
+                          color: G.navy),
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: G.txt,
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1481,7 +1482,7 @@ class _FleetRequestDetailsScreenState
                           height: 50,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFD4A017),
+                              backgroundColor: G.yellow,
                               shape: RoundedRectangleBorder(
                                 borderRadius:
                                     BorderRadius.circular(14),
@@ -1495,7 +1496,7 @@ class _FleetRequestDetailsScreenState
                                     height: 18,
                                     width: 18,
                                     child: CircularProgressIndicator(
-                                      color: Colors.black,
+                                      color: G.navy,
                                       strokeWidth: 2,
                                     ),
                                   )
@@ -1503,7 +1504,7 @@ class _FleetRequestDetailsScreenState
                                     'CONFIRM: $_currentStatus → $_pendingStatus'
                                         .toUpperCase(),
                                     style: const TextStyle(
-                                      color: Colors.black,
+                                      color: G.navy,
                                       fontWeight: FontWeight.w900,
                                       fontSize: 12,
                                       letterSpacing: 0.5,
@@ -1525,13 +1526,13 @@ class _FleetRequestDetailsScreenState
                     child: ElevatedButton.icon(
                       onPressed: _showChargeFleetSheet,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFD4A017),
+                        backgroundColor: G.yellow,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
-                      icon: const Icon(Icons.receipt_long_rounded, color: Colors.black),
+                      icon: const Icon(Icons.receipt_long_rounded, color: G.navy),
                       label: const Text(
                         'CHARGE FLEET',
-                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 1),
+                        style: TextStyle(color: G.navy, fontWeight: FontWeight.w900, letterSpacing: 1),
                       ),
                     ),
                   )
@@ -1540,17 +1541,17 @@ class _FleetRequestDetailsScreenState
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFD4A017).withOpacity(0.1),
+                      color: G.navy.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+                      border: Border.all(color: G.navy.withOpacity(0.4)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.hourglass_top_rounded, color: Color(0xFFD4A017), size: 18),
+                        const Icon(Icons.hourglass_top_rounded, color: G.navy, size: 18),
                         const SizedBox(width: 10),
                         Text(
                           'Charged ₹${_totalAmount?.toStringAsFixed(0) ?? ''} — awaiting fleet payment',
-                          style: const TextStyle(color: Color(0xFFD4A017), fontWeight: FontWeight.w700, fontSize: 13),
+                          style: const TextStyle(color: G.navy, fontWeight: FontWeight.w700, fontSize: 13),
                         ),
                       ],
                     ),
@@ -1560,17 +1561,17 @@ class _FleetRequestDetailsScreenState
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
+                      color: G.green.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.green.withOpacity(0.4)),
+                      border: Border.all(color: G.green.withOpacity(0.4)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.check_circle_rounded, color: Colors.green, size: 18),
+                        const Icon(Icons.check_circle_rounded, color: G.green, size: 18),
                         const SizedBox(width: 10),
                         Text(
                           'Paid ₹${_totalAmount?.toStringAsFixed(0) ?? ''}',
-                          style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 13),
+                          style: const TextStyle(color: G.green, fontWeight: FontWeight.w700, fontSize: 13),
                         ),
                       ],
                     ),
@@ -1582,7 +1583,7 @@ class _FleetRequestDetailsScreenState
                 const Text(
                   'ADMIN COMMENT',
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: G.mut,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.5,
@@ -1592,25 +1593,25 @@ class _FleetRequestDetailsScreenState
                 const Text(
                   'A formal note/log saved with this request — not a live chat.',
                   style:
-                      TextStyle(color: Colors.white38, fontSize: 12),
+                      TextStyle(color: G.faint, fontSize: 12),
                 ),
                 const SizedBox(height: 14),
 
                 Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF262626),
+                    color: G.sunken,
                     borderRadius: BorderRadius.circular(16),
                     border:
-                        Border.all(color: const Color(0xFF3A3A3A)),
+                        Border.all(color: G.line),
                   ),
                   child: TextField(
                     controller: _commentController,
                     maxLines: 4,
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(color: G.txt),
                     decoration: const InputDecoration(
                       hintText: 'Add a comment or note…',
                       hintStyle:
-                          TextStyle(color: Colors.white54),
+                          TextStyle(color: G.mut),
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.all(16),
                     ),
@@ -1624,7 +1625,7 @@ class _FleetRequestDetailsScreenState
                   height: 54,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFD4A017),
+                      backgroundColor: G.yellow,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
@@ -1635,14 +1636,14 @@ class _FleetRequestDetailsScreenState
                             height: 20,
                             width: 20,
                             child: CircularProgressIndicator(
-                              color: Colors.black,
+                              color: G.navy,
                               strokeWidth: 2,
                             ),
                           )
                         : const Text(
                             'SAVE COMMENT',
                             style: TextStyle(
-                              color: Colors.black,
+                              color: G.navy,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 1.2,
                             ),
@@ -1660,10 +1661,10 @@ class _FleetRequestDetailsScreenState
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
                       color:
-                          const Color(0xFFD4A017).withOpacity(0.08),
+                          G.navy.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                          color: const Color(0xFFD4A017)
+                          color: G.navy
                               .withOpacity(0.3)),
                     ),
                     child: Row(
@@ -1671,13 +1672,13 @@ class _FleetRequestDetailsScreenState
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFD4A017)
+                            color: G.navy
                                 .withOpacity(0.15),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Icon(
                               Icons.chat_bubble_rounded,
-                              color: Color(0xFFD4A017),
+                              color: G.navy,
                               size: 22),
                         ),
                         const SizedBox(width: 14),
@@ -1689,7 +1690,7 @@ class _FleetRequestDetailsScreenState
                               Text(
                                 'Chat with Fleet',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: G.txt,
                                   fontWeight: FontWeight.w800,
                                   fontSize: 15,
                                 ),
@@ -1698,7 +1699,7 @@ class _FleetRequestDetailsScreenState
                               Text(
                                 'Real-time messaging for quick updates',
                                 style: TextStyle(
-                                    color: Colors.white54,
+                                    color: G.mut,
                                     fontSize: 12),
                               ),
                             ],
@@ -1725,7 +1726,7 @@ class _FleetRequestDetailsScreenState
                         else
                           const Icon(
                               Icons.arrow_forward_ios_rounded,
-                              color: Color(0xFFD4A017),
+                              color: G.navy,
                               size: 14),
                       ],
                     ),
@@ -1738,7 +1739,7 @@ class _FleetRequestDetailsScreenState
                 const Text(
                   'GARAGE PHOTO UPDATE',
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: G.mut,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.5,
@@ -1753,17 +1754,17 @@ class _FleetRequestDetailsScreenState
                     height: 220,
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF262626),
+                      color: G.sunken,
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                          color: const Color(0xFF3A3A3A)),
+                          color: G.line),
                     ),
                     child: _adminImageBytes == null
                         ? const Center(
                             child: Text(
                               'UPLOAD GARAGE PHOTO',
                               style:
-                                  TextStyle(color: Colors.white54),
+                                  TextStyle(color: G.mut),
                             ),
                           )
                         : ClipRRect(
@@ -1784,14 +1785,14 @@ class _FleetRequestDetailsScreenState
                   height: 54,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFD4A017),
+                      backgroundColor: G.yellow,
                     ),
                     onPressed:
                         _updating ? null : _uploadAdminPhoto,
                     child: const Text(
                       'UPLOAD PHOTO',
                       style: TextStyle(
-                          color: Colors.black,
+                          color: G.navy,
                           fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -1817,14 +1818,14 @@ class _FleetRequestDetailsScreenState
             child: Text(
               label,
               style: const TextStyle(
-                  color: Colors.white38, fontSize: 13),
+                  color: G.faint, fontSize: 13),
             ),
           ),
           Expanded(
             child: Text(
               value.isEmpty ? '—' : value,
               style: const TextStyle(
-                color: Colors.white,
+                color: G.txt,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
@@ -1842,7 +1843,7 @@ class _FleetRequestDetailsScreenState
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF1E1E1E),
+          color: G.card,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
@@ -1853,7 +1854,7 @@ class _FleetRequestDetailsScreenState
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFF333333),
+                color: G.line,
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
@@ -1874,11 +1875,11 @@ class _FleetRequestDetailsScreenState
             ),
             if (blockedSenders.contains('fleet'))
               ListTile(
-                leading: const Icon(Icons.person_add, color: Colors.green),
+                leading: const Icon(Icons.person_add, color: G.green),
                 title: const Text(
                   'Unblock Fleet',
                   style: TextStyle(
-                    color: Colors.green,
+                    color: G.green,
                     fontWeight: FontWeight.w600,
                     fontSize: 16,
                   ),
@@ -1889,11 +1890,11 @@ class _FleetRequestDetailsScreenState
                 },
               ),
             ListTile(
-              leading: const Icon(Icons.flag, color: Colors.orange),
+              leading: const Icon(Icons.flag, color: G.orange),
               title: const Text(
                 'Report',
                 style: TextStyle(
-                  color: Colors.orange,
+                  color: G.orange,
                   fontWeight: FontWeight.w600,
                   fontSize: 16,
                 ),
@@ -1904,7 +1905,7 @@ class _FleetRequestDetailsScreenState
               },
             ),
             ListTile(
-              title: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              title: const Text('Cancel', style: TextStyle(color: G.mut)),
               onTap: () => Navigator.pop(context),
             ),
             const SizedBox(height: 16),
@@ -1931,7 +1932,7 @@ class _FleetRequestDetailsScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Blocked $sender'),
-            backgroundColor: Colors.red.shade700,
+            backgroundColor: G.red,
             duration: const Duration(seconds: 2),
           ),
         );
@@ -1988,12 +1989,12 @@ class _FleetRequestDetailsScreenState
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: G.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Report Fleet',
           style: TextStyle(
-            color: Colors.white,
+            color: G.txt,
             fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
@@ -2005,13 +2006,13 @@ class _FleetRequestDetailsScreenState
                 title: Text(
                   reason,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: G.txt,
                     fontSize: 15,
                   ),
                 ),
                 value: reason,
                 groupValue: selectedReason,
-                activeColor: const Color(0xFFD4A017),
+                activeColor: G.navy,
                 onChanged: (value) {
                   Navigator.pop(context);
                   selectedReason = value;
@@ -2044,7 +2045,7 @@ class _FleetRequestDetailsScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Report submitted. Thank you!'),
-            backgroundColor: Colors.green,
+            backgroundColor: G.green,
             duration: Duration(seconds: 3),
           ),
         );

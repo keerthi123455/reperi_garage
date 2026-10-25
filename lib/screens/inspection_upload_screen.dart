@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../theme/garage_theme.dart';
 import '../widgets/error_display.dart';
 
 class InspectionUploadScreen extends StatefulWidget {
@@ -213,14 +214,8 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF262626),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1C1C1C),
-        title: Text(
-          inspectionTitle,
-          style: const TextStyle(color: Color(0xFFD4A017)),
-        ),
-      ),
+      backgroundColor: G.bg,
+      appBar: garageAppBar(inspectionTitle),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600),
@@ -233,10 +228,10 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1C1C1C),
+                    color: G.card,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: const Color(0xFFD4A017).withOpacity(0.3),
+                      color: G.line,
                     ),
                   ),
                   child: Column(
@@ -248,7 +243,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                             widget.type == 'pickup'
                                 ? Icons.directions_car_rounded
                                 : Icons.local_shipping_rounded,
-                            color: const Color(0xFFD4A017),
+                            color: G.navy,
                             size: 24,
                           ),
                           const SizedBox(width: 12),
@@ -259,7 +254,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                                 Text(
                                   inspectionTitle,
                                   style: const TextStyle(
-                                    color: Color(0xFFD4A017),
+                                    color: G.navy,
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                     letterSpacing: 1,
@@ -269,7 +264,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                                 Text(
                                   inspectionSubtitle,
                                   style: const TextStyle(
-                                    color: Colors.white54,
+                                    color: G.mut,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -282,7 +277,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                       Text(
                         widget.booking['package_name'] ?? 'Inspection',
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: G.txt,
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                         ),
@@ -291,7 +286,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                       Text(
                         '${(widget.booking['vehicles'] as Map?)?['car_number'] ?? 'N/A'}',
                         style: const TextStyle(
-                          color: Color(0xFFD4A017),
+                          color: G.navy,
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1,
@@ -310,7 +305,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                     const Text(
                       'Upload Photos',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: G.txt,
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                       ),
@@ -319,16 +314,16 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFD4A017).withOpacity(0.15),
+                        color: G.navy.withOpacity(0.08),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: const Color(0xFFD4A017).withOpacity(0.3),
+                          color: G.line,
                         ),
                       ),
                       child: Text(
                         '${selectedImages.length}/30',
                         style: const TextStyle(
-                          color: Color(0xFFD4A017),
+                          color: G.navy,
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
                         ),
@@ -349,8 +344,8 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                           height: 56,
                           decoration: BoxDecoration(
                             color: loading
-                                ? Colors.grey.withOpacity(0.3)
-                                : const Color(0xFFD4A017),
+                                ? G.mut.withOpacity(0.3)
+                                : G.yellow,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Center(
@@ -358,14 +353,14 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 const Icon(Icons.image_rounded,
-                                    color: Colors.black, size: 18),
+                                    color: G.navy, size: 18),
                                 const SizedBox(width: 8),
                                 Text(
                                   'Gallery',
                                   style: TextStyle(
                                     color: loading
-                                        ? Colors.white38
-                                        : Colors.black,
+                                        ? G.faint
+                                        : G.navy,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -383,11 +378,11 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                           height: 56,
                           decoration: BoxDecoration(
                             color: loading
-                                ? Colors.grey.withOpacity(0.3)
+                                ? G.mut.withOpacity(0.3)
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: const Color(0xFFD4A017).withOpacity(0.5),
+                              color: G.navy.withOpacity(0.5),
                             ),
                           ),
                           child: Center(
@@ -396,15 +391,15 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                               children: [
                                 Icon(Icons.camera_alt_outlined,
                                     color: loading
-                                        ? Colors.white38
-                                        : const Color(0xFFD4A017)),
+                                        ? G.faint
+                                        : G.navy),
                                 const SizedBox(width: 8),
                                 Text(
                                   'Camera',
                                   style: TextStyle(
                                     color: loading
-                                        ? Colors.white38
-                                        : const Color(0xFFD4A017),
+                                        ? G.faint
+                                        : G.navy,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -430,14 +425,14 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                           const Text(
                             'Uploading...',
                             style: TextStyle(
-                              color: Colors.white70,
+                              color: G.mut,
                               fontSize: 13,
                             ),
                           ),
                           Text(
                             '$uploadProgress%',
                             style: const TextStyle(
-                              color: Color(0xFFD4A017),
+                              color: G.navy,
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
                             ),
@@ -450,9 +445,9 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                         child: LinearProgressIndicator(
                           value: uploadProgress / 100,
                           minHeight: 6,
-                          backgroundColor: const Color(0xFF333333),
+                          backgroundColor: G.line,
                           valueColor: const AlwaysStoppedAnimation<Color>(
-                            Color(0xFFD4A017),
+                            G.navy,
                           ),
                         ),
                       ),
@@ -468,7 +463,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                       const Text(
                         'Selected Photos',
                         style: TextStyle(
-                          color: Colors.white70,
+                          color: G.mut,
                           fontSize: 13,
                         ),
                       ),
@@ -526,7 +521,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                 const Text(
                   'Inspection Description',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: G.txt,
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                   ),
@@ -535,28 +530,28 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                 TextField(
                   controller: descController,
                   maxLines: 6,
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: G.txt),
                   decoration: InputDecoration(
                     hintText: widget.type == 'pickup'
                         ? 'Describe the car condition upon pickup, any pre-existing damages, etc.'
                         : 'Describe the car condition after service completion, work done, etc.',
-                    hintStyle: const TextStyle(color: Colors.white38),
+                    hintStyle: const TextStyle(color: G.faint),
                     filled: true,
-                    fillColor: const Color(0xFF1C1C1C),
+                    fillColor: G.sunken,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide:
-                          const BorderSide(color: Color(0xFF333333)),
+                          const BorderSide(color: G.line),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide:
-                          const BorderSide(color: Color(0xFF333333)),
+                          const BorderSide(color: G.line),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: const BorderSide(
-                        color: Color(0xFFD4A017),
+                        color: G.navy,
                       ),
                     ),
                   ),
@@ -574,14 +569,14 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                       gradient: loading
                           ? LinearGradient(
                               colors: [
-                                Colors.grey.withOpacity(0.5),
-                                Colors.grey.withOpacity(0.5),
+                                G.mut.withOpacity(0.5),
+                                G.mut.withOpacity(0.5),
                               ],
                             )
                           : const LinearGradient(
                               colors: [
-                                Color(0xFFD4A017),
-                                Color(0xFFF5C842),
+                                G.yellow,
+                                G.yellow,
                               ],
                             ),
                       borderRadius: BorderRadius.circular(14),
@@ -601,7 +596,7 @@ class _InspectionUploadScreenState extends State<InspectionUploadScreen> {
                           : Text(
                               'UPLOAD ${inspectionTitle.toUpperCase()}',
                               style: const TextStyle(
-                                color: Colors.black,
+                                color: G.navy,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 1,
                               ),

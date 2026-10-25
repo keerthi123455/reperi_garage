@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'booking_tracking_screen.dart'; // imports ChatSheet
 import 'inspection_upload_screen.dart';
+import '../theme/garage_theme.dart';
 import '../utils/secure_storage_path.dart';
 import '../widgets/error_display.dart';
 import '../widgets/garage_addons.dart';
@@ -32,6 +33,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
 
   String selectedStage = 'Car Picked Up';
   Uint8List? selectedImageBytes;
+
+  // A short video instead of a photo (same update, same bucket — the
+  // customer's app plays it; see booking_tracking_screen.dart).
+  Uint8List? _videoBytes;
+  String _videoExt = 'mp4';
+  static const int _maxVideoBytes = 50 * 1024 * 1024; // 50 MB ≈ 1 minute
   bool loading = false;
   bool hasUnreadMessages = false;
   bool markingDone = false;
@@ -179,16 +186,72 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     if (image == null) return;
     final bytes = await image.readAsBytes();
     if (!mounted) return;
-    setState(() => selectedImageBytes = bytes);
+    setState(() {
+      selectedImageBytes = bytes;
+      _videoBytes = null;
+    });
   }
 
+  /// Record a video (up to 1 minute) or pick one from the gallery.
+  Future<void> pickVideo() async {
+    final from = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _sheet(
+        title: 'Add a video',
+        children: [
+          _sheetOption(ctx, Icons.videocam_rounded, 'Record a video', 'Up to 1 minute', 'camera'),
+          _sheetOption(ctx, Icons.video_library_rounded, 'Choose from gallery', 'Keep it under 1 minute', 'gallery'),
+        ],
+      ),
+    );
+    if (from == null) return;
+    try {
+      final video = await ImagePicker().pickVideo(
+        source: from == 'camera' ? ImageSource.camera : ImageSource.gallery,
+        maxDuration: const Duration(minutes: 1),
+      );
+      if (video == null) return;
+      if (await video.length() > _maxVideoBytes) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('That video is too big. Please keep it under 1 minute.')),
+          );
+        }
+        return;
+      }
+      final bytes = await video.readAsBytes();
+      final name = (video.name.isNotEmpty ? video.name : video.path).toLowerCase();
+      final ext = RegExp(r'\.(mp4|mov|m4v|webm|3gp)$').firstMatch(name)?.group(1) ?? 'mp4';
+      if (!mounted) return;
+      setState(() {
+        _videoBytes = bytes;
+        _videoExt = ext;
+        selectedImageBytes = null;
+      });
+    } catch (e) {
+      if (mounted) {
+        ErrorDisplay.showPremiumError(context, error: e, customMessage: 'Could not open the video. Please try again.');
+      }
+    }
+  }
+
+  static String _videoMime(String ext) => switch (ext) {
+        'mov' => 'video/quicktime',
+        'webm' => 'video/webm',
+        '3gp' => 'video/3gpp',
+        'm4v' => 'video/x-m4v',
+        _ => 'video/mp4',
+      };
+
   Future<void> uploadUpdate() async {
-    if (selectedImageBytes == null) {
+    if (selectedImageBytes == null && _videoBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please upload image')),
+        const SnackBar(content: Text('Take a photo or record a video first')),
       );
       return;
     }
+    final isVideo = _videoBytes != null;
 
     setState(() => loading = true);
 
@@ -196,11 +259,13 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       final supabase = Supabase.instance.client;
 
       final fileName =
-          '${DateTime.now().millisecondsSinceEpoch}-${secureStorageToken()}';
+          '${DateTime.now().millisecondsSinceEpoch}-${secureStorageToken()}${isVideo ? '.$_videoExt' : ''}';
 
-      await supabase.storage
-          .from('booking-images')
-          .uploadBinary(fileName, selectedImageBytes!);
+      await supabase.storage.from('booking-images').uploadBinary(
+            fileName,
+            isVideo ? _videoBytes! : selectedImageBytes!,
+            fileOptions: isVideo ? FileOptions(contentType: _videoMime(_videoExt)) : const FileOptions(),
+          );
 
       // Store the storage PATH, not a permanent public URL — the
       // booking-images bucket is private, so the display side mints a
@@ -223,6 +288,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       setState(() {
         widget.booking['booking_status'] = selectedStage;
         selectedImageBytes = null;
+        _videoBytes = null;
         descController.clear();
         _stageOverride = null;
       });
@@ -378,27 +444,27 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1C),
+        backgroundColor: G.card,
         title: const Text(
           'COLLECT PAYMENT',
-          style: TextStyle(color: Color(0xFFD4A017), fontWeight: FontWeight.w900),
+          style: TextStyle(color: G.navy, fontWeight: FontWeight.w900),
         ),
         content: Text(
           'This is a Cash on Pickup booking${price != null ? ' — $price' : ''}. '
           'Confirm you have collected payment from the customer before closing this booking out.',
-          style: const TextStyle(color: Colors.white70, height: 1.4),
+          style: const TextStyle(color: G.mut, height: 1.4),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
+            child: const Text('CANCEL', style: TextStyle(color: G.mut)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD4A017)),
+            style: ElevatedButton.styleFrom(backgroundColor: G.yellow),
             child: const Text(
               'PAYMENT RECEIVED',
-              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900),
+              style: TextStyle(color: G.navy, fontWeight: FontWeight.w900),
             ),
           ),
         ],
@@ -504,21 +570,21 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
         decoration: BoxDecoration(
-          color: Colors.green.withOpacity(0.12),
+          color: G.green.withOpacity(0.12),
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.green.withOpacity(0.4)),
+          border: Border.all(color: G.green.withOpacity(0.4)),
         ),
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
+            Icon(Icons.check_circle_rounded, color: G.green, size: 22),
             SizedBox(width: 10),
             Flexible(
               child: Text(
                 'VEHICLE CHECKED IN',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.green,
+                  color: G.green,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.8,
                   fontSize: 15,
@@ -534,16 +600,16 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1C),
+          color: G.card,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+          border: Border.all(color: G.navy.withOpacity(0.4)),
         ),
         child: Column(
           children: [
             const Text(
               'Customer at the counter? Generate a code and read it to them before checking their vehicle in.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+              style: TextStyle(color: G.mut, fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 14),
             SizedBox(
@@ -552,21 +618,21 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
               child: ElevatedButton(
                 onPressed: generatingPickupOtp ? null : _generatePickupOtpNow,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD4A017),
+                  backgroundColor: G.yellow,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 child: generatingPickupOtp
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: G.navy),
                       )
                     : const FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
                           'GENERATE DROP-OFF CODE',
                           maxLines: 1,
-                          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                          style: TextStyle(color: G.navy, fontWeight: FontWeight.w900, letterSpacing: 0.6),
                         ),
                       ),
               ),
@@ -579,22 +645,22 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1C),
+        color: G.card,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+        border: Border.all(color: G.navy.withOpacity(0.4)),
       ),
       child: Column(
         children: [
           const Text(
             'Read this code to the customer before checking their vehicle in:',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+            style: TextStyle(color: G.mut, fontSize: 13, height: 1.4),
           ),
           const SizedBox(height: 12),
           Text(
             code,
             style: const TextStyle(
-              color: Color(0xFFD4A017),
+              color: G.navy,
               fontSize: 34,
               fontWeight: FontWeight.w900,
               letterSpacing: 10,
@@ -604,7 +670,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
           const Text(
             'Waiting for the customer to enter it in their app…',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white54, fontSize: 12),
+            style: TextStyle(color: G.mut, fontSize: 12),
           ),
           const SizedBox(height: 14),
           TextButton(
@@ -614,12 +680,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Color(0xFFD4A017)),
+                        strokeWidth: 2, color: G.navy),
                   )
                 : const Text(
                     'CHECK AGAIN',
                     style: TextStyle(
-                      color: Color(0xFFD4A017),
+                      color: G.navy,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.6,
                     ),
@@ -650,18 +716,18 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
         return Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.orange.withOpacity(0.12),
+            color: G.orange.withOpacity(0.12),
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.orange.withOpacity(0.4)),
+            border: Border.all(color: G.orange.withOpacity(0.4)),
           ),
           child: Column(
             children: [
-              const Icon(Icons.currency_rupee_rounded, color: Colors.orange, size: 28),
+              const Icon(Icons.currency_rupee_rounded, color: G.orange, size: 28),
               const SizedBox(height: 8),
               const Text(
                 'COLLECT PAYMENT',
                 style: TextStyle(
-                  color: Colors.orange,
+                  color: G.orange,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.8,
                   fontSize: 16,
@@ -672,7 +738,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                 'Customer confirmed pickup — collect '
                 '${widget.booking['package_price'] ?? 'the cash payment'} before closing this booking out.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.4),
+                style: const TextStyle(color: G.mut, fontSize: 12.5, height: 1.4),
               ),
               const SizedBox(height: 14),
               SizedBox(
@@ -681,21 +747,21 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                 child: ElevatedButton(
                   onPressed: confirmingPayment ? null : _confirmPaymentReceived,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
+                    backgroundColor: G.orange,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
                   child: confirmingPayment
                       ? const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
                       : const FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
                             'PAYMENT RECEIVED',
                             maxLines: 1,
-                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 0.6),
                           ),
                         ),
                 ),
@@ -708,21 +774,21 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
         decoration: BoxDecoration(
-          color: Colors.green.withOpacity(0.12),
+          color: G.green.withOpacity(0.12),
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.green.withOpacity(0.4)),
+          border: Border.all(color: G.green.withOpacity(0.4)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
+            const Icon(Icons.check_circle_rounded, color: G.green, size: 22),
             const SizedBox(width: 10),
             Flexible(
               child: Text(
                 isCod ? 'PAYMENT RECEIVED — BOOKING COMPLETE' : 'CUSTOMER CONFIRMED PICKUP',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: Colors.green,
+                  color: G.green,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.8,
                   fontSize: 15,
@@ -742,16 +808,16 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1C),
+          color: G.card,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+          border: Border.all(color: G.navy.withOpacity(0.4)),
         ),
         child: Column(
           children: [
             const Text(
               'No return code has been generated for this booking yet.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+              style: TextStyle(color: G.mut, fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 14),
             SizedBox(
@@ -760,21 +826,21 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
               child: ElevatedButton(
                 onPressed: generatingReturnOtp ? null : _generateReturnOtpNow,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD4A017),
+                  backgroundColor: G.yellow,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 child: generatingReturnOtp
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: G.navy),
                       )
                     : const FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
                           'GENERATE RETURN CODE',
                           maxLines: 1,
-                          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                          style: TextStyle(color: G.navy, fontWeight: FontWeight.w900, letterSpacing: 0.6),
                         ),
                       ),
               ),
@@ -787,22 +853,22 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1C),
+        color: G.card,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+        border: Border.all(color: G.navy.withOpacity(0.4)),
       ),
       child: Column(
         children: [
           const Text(
             'Read this code to the customer before handing over the vehicle:',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+            style: TextStyle(color: G.mut, fontSize: 13, height: 1.4),
           ),
           const SizedBox(height: 12),
           Text(
             code,
             style: const TextStyle(
-              color: Color(0xFFD4A017),
+              color: G.navy,
               fontSize: 34,
               fontWeight: FontWeight.w900,
               letterSpacing: 10,
@@ -812,7 +878,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
           const Text(
             'Waiting for the customer to enter it in their app…',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white54, fontSize: 12),
+            style: TextStyle(color: G.mut, fontSize: 12),
           ),
           const SizedBox(height: 14),
           TextButton(
@@ -822,12 +888,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Color(0xFFD4A017)),
+                        strokeWidth: 2, color: G.navy),
                   )
                 : const Text(
                     'CHECK AGAIN',
                     style: TextStyle(
-                      color: Color(0xFFD4A017),
+                      color: G.navy,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.6,
                     ),
@@ -842,10 +908,10 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   //  Simple "one next step" layout
   // ════════════════════════════════════════════════════════════════════
 
-  static const Color _gold = Color(0xFFD4A017);
-  static const Color _card = Color(0xFF1C1C1C);
-  static const Color _bg = Color(0xFF141414);
-  static const Color _green = Color(0xFF2FB36A);
+  static const Color _gold = G.navy;
+  static const Color _card = G.card;
+  static const Color _bg = G.bg;
+  static const Color _green = G.green;
 
   String get _status => (widget.booking['booking_status'] ?? '').toString();
   bool get _markedDone => widget.booking['marked_done_at'] != null;
@@ -963,10 +1029,10 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
           hasPickupDrop
               ? 'The customer and the delivery partner will be told the car is ready.'
               : "The customer will be told the car is ready, and you'll get a code to read them when they collect it.",
-          style: const TextStyle(color: Colors.white70, height: 1.4),
+          style: const TextStyle(color: G.mut, height: 1.4),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('NOT YET', style: TextStyle(color: Colors.white54))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('NOT YET', style: TextStyle(color: G.mut))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: _green),
             onPressed: () => Navigator.pop(ctx, true),
@@ -982,12 +1048,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: _bg,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text('Booking', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-      ),
+      appBar: garageAppBar('Booking'),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600),
@@ -1042,7 +1103,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   }
 
   Widget _label(String t) => Text(t,
-      style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2));
+      style: const TextStyle(color: G.mut, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2));
 
   // ── 1. Summary ──────────────────────────────────────────────────────
   Widget _summaryCard() {
@@ -1053,10 +1114,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     final slotDate = (b['slot_date'] ?? '').toString();
     final slotTime = (b['slot_time'] ?? '').toString();
     final notes = (b['service_location_notes'] ?? '').toString();
+    final vehicle = b['vehicles'] is Map ? b['vehicles'] as Map : null;
+    final carName = '${vehicle?['car_brand'] ?? ''} ${vehicle?['car_model'] ?? ''}'.trim();
 
-    Widget chip(IconData icon, String text, {Color color = Colors.white70}) => Container(
+    Widget chip(IconData icon, String text, {Color color = G.mut}) => Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(10)),
+          decoration: BoxDecoration(color: G.sunken, borderRadius: BorderRadius.circular(10)),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1077,11 +1140,26 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       decoration: BoxDecoration(
         color: _card,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: G.line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (vehicle != null) ...[
+            GaragePlate(vehicle['car_number']?.toString(), fontSize: 26),
+            if (carName.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                carName,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: G.txt, fontSize: 19, fontWeight: FontWeight.w900, height: 1.2),
+              ),
+            ],
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: G.line),
+            const SizedBox(height: 12),
+          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1090,7 +1168,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text((b['package_name'] ?? 'Service').toString(),
-                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.2)),
+                        style: const TextStyle(color: G.txt, fontSize: 20, fontWeight: FontWeight.w900, height: 1.2)),
                     if (price.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(price, style: const TextStyle(color: _gold, fontSize: 16, fontWeight: FontWeight.w800)),
@@ -1121,7 +1199,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
               chip(hasPickupDrop ? Icons.local_shipping_rounded : Icons.storefront_rounded,
                   hasPickupDrop ? 'Pickup & drop' : 'Customer drops at garage'),
               chip(cod ? Icons.payments_rounded : Icons.verified_rounded, cod ? 'Collect cash' : 'Paid online',
-                  color: cod ? Colors.orange : _green),
+                  color: cod ? G.orange : _green),
             ],
           ),
           if (notes.isNotEmpty) ...[
@@ -1129,8 +1207,8 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(10)),
-              child: Text('📝 $notes', style: const TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.4)),
+              decoration: BoxDecoration(color: G.sunken, borderRadius: BorderRadius.circular(10)),
+              child: Text('📝 $notes', style: const TextStyle(color: G.mut, fontSize: 12.5, height: 1.4)),
             ),
           ],
         ],
@@ -1150,14 +1228,14 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
               children: [
                 Row(
                   children: [
-                    Expanded(child: Container(height: 2, color: i == 0 ? Colors.transparent : (i <= done ? _green : Colors.white12))),
+                    Expanded(child: Container(height: 2, color: i == 0 ? Colors.transparent : (i <= done ? _green : G.line))),
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
                       width: 26,
                       height: 26,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: i < done ? _green : (i == done ? _gold : const Color(0xFF2A2A2A)),
+                        color: i < done ? _green : (i == done ? _gold : G.line),
                         boxShadow: i == done && done < 5 ? [BoxShadow(color: _gold.withOpacity(0.35), blurRadius: 10)] : null,
                       ),
                       alignment: Alignment.center,
@@ -1165,12 +1243,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                           ? const Icon(Icons.check_rounded, size: 15, color: Colors.white)
                           : Text('${i + 1}',
                               style: TextStyle(
-                                  color: i == done ? Colors.black : Colors.white54, fontSize: 12, fontWeight: FontWeight.w900)),
+                                  color: i == done ? Colors.white : G.mut, fontSize: 12, fontWeight: FontWeight.w900)),
                     ),
                     Expanded(
                         child: Container(
                             height: 2,
-                            color: i == _trackerSteps.length - 1 ? Colors.transparent : (i < done ? _green : Colors.white12))),
+                            color: i == _trackerSteps.length - 1 ? Colors.transparent : (i < done ? _green : G.line))),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -1181,7 +1259,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                     child: Text(_trackerSteps[i],
                         maxLines: 1,
                         style: TextStyle(
-                            color: i < done ? _green : (i == done ? _gold : Colors.white38),
+                            color: i < done ? _green : (i == done ? _gold : G.faint),
                             fontSize: 11,
                             fontWeight: FontWeight.w800)),
                   ),
@@ -1259,64 +1337,113 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     return _stepShell(
       eyebrow: _stageOverride != null ? 'SEND UPDATE' : 'NEXT STEP',
       title: stage,
-      body: 'Take a photo and send it. The customer sees it in their app right away.',
+      body: 'Take a photo or a short video and send it. The customer sees it in their app right away.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          GestureDetector(
-            onTap: pickImage,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              height: selectedImageBytes == null ? 110 : 190,
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.25),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: _gold.withOpacity(0.5), width: 1.5),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: selectedImageBytes == null
-                  ? const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.photo_camera_rounded, color: _gold, size: 32),
-                        SizedBox(height: 6),
-                        Text('Tap to take photo', style: TextStyle(color: _gold, fontWeight: FontWeight.w800)),
-                      ],
-                    )
-                  : Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Image.memory(selectedImageBytes!, fit: BoxFit.cover),
-                        Positioned(
-                          right: 8,
-                          bottom: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
-                            child: const Text('Retake', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          if (selectedImageBytes == null && _videoBytes == null)
+            Row(
+              children: [
+                Expanded(child: _mediaChoice(Icons.photo_camera_rounded, 'Take photo', pickImage)),
+                const SizedBox(width: 10),
+                Expanded(child: _mediaChoice(Icons.videocam_rounded, 'Record video', pickVideo)),
+              ],
+            )
+          else if (_videoBytes != null)
+            GestureDetector(
+              onTap: pickVideo,
+              child: Container(
+                height: 120,
+                decoration: BoxDecoration(
+                  color: G.navy,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: _gold.withOpacity(0.5), width: 1.5),
+                ),
+                child: Stack(
+                  children: [
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.play_circle_fill_rounded, color: G.yellow, size: 44),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Video ready · ${(_videoBytes!.length / (1024 * 1024)).toStringAsFixed(1)} MB',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
+                        child: const Text('Change', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            GestureDetector(
+              onTap: pickImage,
+              child: Container(
+                height: 190,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: _gold.withOpacity(0.5), width: 1.5),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.memory(selectedImageBytes!, fit: BoxFit.cover),
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
+                        child: const Text('Retake', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
+          if (selectedImageBytes != null || _videoBytes != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => setState(() {
+                  selectedImageBytes = null;
+                  _videoBytes = null;
+                }),
+                child: const Text('Remove', style: TextStyle(color: G.mut, fontWeight: FontWeight.w700)),
+              ),
+            ),
           const SizedBox(height: 10),
           TextField(
             controller: descController,
             maxLines: 2,
             minLines: 1,
-            style: const TextStyle(color: Colors.white),
+            style: const TextStyle(color: G.txt),
             decoration: InputDecoration(
               hintText: 'Short note for the customer (optional)',
-              hintStyle: const TextStyle(color: Colors.white38),
+              hintStyle: const TextStyle(color: G.faint),
               filled: true,
-              fillColor: Colors.black.withOpacity(0.25),
+              fillColor: G.sunken,
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             ),
           ),
           const SizedBox(height: 12),
-          _bigButton(label: 'SEND UPDATE', busy: loading, onTap: uploadUpdate),
+          _bigButton(label: loading && _videoBytes != null ? 'UPLOADING VIDEO…' : 'SEND UPDATE', busy: loading, onTap: uploadUpdate),
           const SizedBox(height: 4),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1324,7 +1451,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
               Flexible(
                 child: TextButton(
                   onPressed: _pickStage,
-                  child: const Text('Different stage?', style: TextStyle(color: Colors.white60, fontWeight: FontWeight.w700)),
+                  child: const Text('Different stage?', style: TextStyle(color: G.mut, fontWeight: FontWeight.w700)),
                 ),
               ),
               if (_stageOverride != null)
@@ -1355,7 +1482,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [color.withOpacity(0.16), _card],
+          colors: [color.withOpacity(0.07), _card],
         ),
         border: Border.all(color: color.withOpacity(0.55), width: 1.5),
         boxShadow: [BoxShadow(color: color.withOpacity(0.10), blurRadius: 24, offset: const Offset(0, 10))],
@@ -1365,9 +1492,9 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
         children: [
           Text(eyebrow, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.4)),
           const SizedBox(height: 6),
-          Text(title, style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w900, height: 1.2)),
+          Text(title, style: const TextStyle(color: G.txt, fontSize: 21, fontWeight: FontWeight.w900, height: 1.2)),
           const SizedBox(height: 6),
-          Text(body, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
+          Text(body, style: const TextStyle(color: G.mut, fontSize: 13, height: 1.4)),
           const SizedBox(height: 14),
           child,
         ],
@@ -1379,8 +1506,8 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     required String label,
     required bool busy,
     required VoidCallback onTap,
-    Color color = _gold,
-    Color fg = Colors.black,
+    Color color = G.yellow,
+    Color fg = G.navy,
   }) {
     return SizedBox(
       height: 54,
@@ -1458,7 +1585,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
+            border: Border.all(color: G.line),
           ),
           child: Stack(
             clipBehavior: Clip.none,
@@ -1472,7 +1599,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(label,
-                        maxLines: 1, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                        maxLines: 1, style: const TextStyle(color: G.txt, fontSize: 12, fontWeight: FontWeight.w800)),
                   ),
                 ],
               ),
@@ -1499,12 +1626,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       decoration: BoxDecoration(
         color: _card,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: G.line),
       ),
       child: Column(
         children: [
           for (var i = 0; i < _updates.length; i++) ...[
-            if (i > 0) const Divider(height: 1, color: Colors.white10),
+            if (i > 0) const Divider(height: 1, color: G.line),
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
@@ -1515,13 +1642,15 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                     child: SizedBox(
                       width: 46,
                       height: 46,
-                      child: FutureBuilder<String?>(
+                      child: _isVideoPath(_updates[i]['image_url']?.toString())
+                          ? Container(color: Colors.black54, child: const Icon(Icons.videocam_rounded, color: Colors.white))
+                          : FutureBuilder<String?>(
                         future: _photoLinks.putIfAbsent(
                             '${_updates[i]['image_url']}', () => _signedPhoto(_updates[i]['image_url']?.toString())),
                         builder: (context, snap) => snap.data == null
-                            ? Container(color: Colors.white10, child: const Icon(Icons.image_rounded, color: Colors.white24))
+                            ? Container(color: G.sunken, child: const Icon(Icons.image_rounded, color: G.faint))
                             : Image.network(snap.data!, fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(color: Colors.white10)),
+                                errorBuilder: (_, __, ___) => Container(color: G.sunken)),
                       ),
                     ),
                   ),
@@ -1531,14 +1660,14 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text((_updates[i]['stage'] ?? '').toString(),
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                            style: const TextStyle(color: G.txt, fontWeight: FontWeight.w800)),
                         if ((_updates[i]['description'] ?? '').toString().isNotEmpty) ...[
                           const SizedBox(height: 2),
                           Text(_updates[i]['description'].toString(),
-                              style: const TextStyle(color: Colors.white60, fontSize: 12.5, height: 1.3)),
+                              style: const TextStyle(color: G.mut, fontSize: 12.5, height: 1.3)),
                         ],
                         const SizedBox(height: 2),
-                        Text(_when(_updates[i]['created_at']), style: const TextStyle(color: Colors.white38, fontSize: 11.5)),
+                        Text(_when(_updates[i]['created_at']), style: const TextStyle(color: G.faint, fontSize: 11.5)),
                       ],
                     ),
                   ),
@@ -1558,6 +1687,34 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
     return '${d.day} ${m[d.month - 1]}, $h:${d.minute.toString().padLeft(2, '0')} ${d.hour < 12 ? 'AM' : 'PM'}';
   }
+
+  Widget _mediaChoice(IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 104,
+        decoration: BoxDecoration(
+          color: G.sunken,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _gold.withOpacity(0.5), width: 1.5),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: _gold, size: 30),
+            const SizedBox(height: 6),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(label, maxLines: 1, style: const TextStyle(color: _gold, fontWeight: FontWeight.w800)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static bool _isVideoPath(String? p) => RegExp(r'\.(mp4|mov|m4v|webm|3gp)$', caseSensitive: false).hasMatch(p ?? '');
 
   // ── Bottom-sheet helpers ────────────────────────────────────────────
   Widget _sheet({required String title, required List<Widget> children}) {
@@ -1579,11 +1736,11 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                 child: Container(
                   width: 40,
                   height: 4,
-                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                  decoration: BoxDecoration(color: G.line, borderRadius: BorderRadius.circular(2)),
                 ),
               ),
               const SizedBox(height: 14),
-              Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+              Text(title, style: const TextStyle(color: G.txt, fontSize: 18, fontWeight: FontWeight.w900)),
               const SizedBox(height: 10),
               ...children,
             ],
@@ -1597,8 +1754,8 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 6),
       leading: Icon(icon, color: _gold),
-      title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-      subtitle: sub == null ? null : Text(sub, style: const TextStyle(color: Colors.white54)),
+      title: Text(title, style: const TextStyle(color: G.txt, fontWeight: FontWeight.w800)),
+      subtitle: sub == null ? null : Text(sub, style: const TextStyle(color: G.mut)),
       onTap: () => Navigator.pop(ctx, value),
     );
   }

@@ -21,11 +21,16 @@
 //   → picks the expert (a delivery partner) for an inspection visit.
 // POST { action: "inspection_photos", paths: [...] }
 //   → 5-minute signed URLs for inspection photos (thumbnails in the CRM).
+// POST { action: "invoice_issue", table, id, lines?, reason? }
+//   → makes the booking's bill now, or overrides it with the given lines
+//     [{name, amount (incl. GST), gst: 18|5, free?, note?}]. The old bill is
+//     kept as 'replaced'; the customer is notified and sees the new one.
 // POST { action: "me" }
 //   → { email } — used by the page to confirm access after sign-in.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2";
+import { cleanLines, isInvoiceTable, issueInvoice } from "../_shared/invoice.ts";
 
 const cors: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -338,6 +343,11 @@ async function detail(client: SupabaseClient, body: Row) {
       client.from("fleet_chat_messages").select("id,message,sender_type,sender_name,created_at")
         .eq("request_id", id).order("created_at"));
   }
+  if (isInvoiceTable(table)) {
+    extra.invoices = await safe(errors, "invoices", () =>
+      client.from("invoices").select("*").eq("booking_table", table).eq("booking_id", id)
+        .order("created_at", { ascending: false }));
+  }
   const intent = await safe(errors, "payment_intents", () =>
     client.from("payment_intents").select("id,status,amount,payment_method,razorpay_order_id,razorpay_payment_id,error,created_at")
       .eq("booking_table", table).eq("booking_id", id).limit(1));
@@ -475,7 +485,7 @@ async function signedDoc(client: SupabaseClient, body: Row) {
   if (!path || path.includes("..")) throw new HttpError(400, "bad_request", "Invalid document.");
   if (/^https?:\/\//i.test(path)) return { url: path };
   const bucket = body.bucket === "booking-images" || body.bucket === "subscription-services" ||
-      body.bucket === "resolve-media" || body.bucket === "inspection-photos"
+      body.bucket === "resolve-media" || body.bucket === "inspection-photos" || body.bucket === "invoices"
     ? String(body.bucket)
     : "insurance-documents";
   const { data, error } = await client.storage.from(bucket).createSignedUrl(path, 300);
@@ -507,6 +517,22 @@ Deno.serve(async (req: Request) => {
         return json(await inspectionAssign(client, body));
       case "inspection_photos":
         return json(await inspectionPhotos(client, body));
+      case "invoice_issue": {
+        const table = String(body.table ?? "");
+        const id = String(body.id ?? "");
+        if (!isInvoiceTable(table) || !id) throw new HttpError(400, "bad_request", "This booking type has no bill.");
+        let lines;
+        if (body.lines !== undefined && body.lines !== null) {
+          try {
+            lines = cleanLines(body.lines);
+          } catch (e) {
+            throw new HttpError(400, "bad_lines", e instanceof Error ? e.message : String(e));
+          }
+        }
+        const reason = String(body.reason ?? "").trim().slice(0, 500) || null;
+        const invoice = await issueInvoice(client, { table, id, lines, reason, createdBy: user.email ?? "crm" });
+        return json({ invoice });
+      }
       default:
         throw new HttpError(400, "invalid_action", "Unknown action.");
     }

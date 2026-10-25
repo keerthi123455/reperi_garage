@@ -49,3 +49,17 @@ entrypoint = "./functions/razorpay-webhook/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/crm-api/index.ts"
+
+# Daily "renew your monthly wash plan" push, called by pg_cron with the
+# cron_secret from app_settings (see monthly_wash_app_renewal.sql).
+[functions.subscription-reminders]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/subscription-reminders/index.ts"
+
+# Bills: called by the invoice_auto_issue DB trigger with x-invoice-secret
+# (supabase/invoices.sql). No user JWT involved.
+[functions.invoice-api]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/invoice-api/index.ts"

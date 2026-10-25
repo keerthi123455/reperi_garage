@@ -12,6 +12,8 @@
 <string>Reperi Garage uses your location to auto-detect your service or pickup address when booking, and to dispatch help for Roadside Assistance.</string>
 	<key>NSCameraUsageDescription</key>
 <string>Reperi Garage uses your camera to photograph your vehicle so we can recommend the right service.</string>
+	<key>NSMicrophoneUsageDescription</key>
+<string>Reperi Garage uses the microphone when you record a video of a vehicle, so the sound is included.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 <string>Reperi Garage needs access to your photos so you can attach vehicle images for diagnosis.</string>
 	<key>CFBundleDisplayName</key>

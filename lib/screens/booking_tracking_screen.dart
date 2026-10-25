@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/bill_download_button.dart';
 import '../widgets/booking_addons.dart';
 import '../widgets/inspection_view_widget.dart';
 import '../widgets/error_display.dart';
@@ -103,6 +104,9 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     _urlCache[storedValue] = (url: future, at: DateTime.now());
     return future;
   }
+
+  static bool _isVideoPath(String p) =>
+      RegExp(r'\.(mp4|mov|m4v|webm|3gp)(\?|$)', caseSensitive: false).hasMatch(p);
 
   Future<void> _markUpdateAsRead() async {
     try {
@@ -505,6 +509,13 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
           // Add-ons the garage asked for (approve & pay / reject), and
           // paid ones as sub-orders — same as on the dashboard card.
           BookingAddons(booking: _booking),
+          // Bill (PDF) — appears once the garage marks the job done.
+          BillDownloadButton(
+            key: ValueKey('bill-bookings-${_booking['id']}-$_status'),
+            table: 'bookings',
+            id: _booking['id'].toString(),
+            topPadding: 14,
+          ),
         ],
       ),
     );
@@ -650,10 +661,13 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
           ),
           if (image.isNotEmpty) ...[
             const SizedBox(height: 14),
-            _UpdatePhoto(
-              future: _resolveImageUrl(image),
-              title: stage,
-            ),
+            if (_isVideoPath(image))
+              _UpdateVideo(resolve: () => _resolveImageUrl(image))
+            else
+              _UpdatePhoto(
+                future: _resolveImageUrl(image),
+                title: stage,
+              ),
           ],
           if (description.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -763,6 +777,92 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
 }
 
 /// One update photo: tap to open full screen with pinch-to-zoom.
+/// A video the garage sent — a big play tile. Tapping opens the video in the
+/// phone's own player (or a new browser tab on the web), which handles
+/// full screen, sound and seeking on every platform.
+class _UpdateVideo extends StatefulWidget {
+  const _UpdateVideo({required this.resolve});
+
+  final Future<String> Function() resolve;
+
+  @override
+  State<_UpdateVideo> createState() => _UpdateVideoState();
+}
+
+class _UpdateVideoState extends State<_UpdateVideo> {
+  bool _opening = false;
+
+  Future<void> _play() async {
+    if (_opening) return;
+    setState(() => _opening = true);
+    try {
+      final url = await widget.resolve();
+      final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't play the video. Please try again.")),
+        );
+      }
+    } catch (e) {
+      debugPrint('Video open failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't play the video. Please try again.")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _play,
+      child: Container(
+        height: 190,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF022B57), Color(0xFF0B1A2E)],
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 68,
+              height: 68,
+              decoration: const BoxDecoration(color: Color(0xFFFDF003), shape: BoxShape.circle),
+              child: _opening
+                  ? const Padding(
+                      padding: EdgeInsets.all(22),
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFF022B57)),
+                    )
+                  : const Icon(Icons.play_arrow_rounded, color: Color(0xFF022B57), size: 44),
+            ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'Tap to play video',
+                  maxLines: 1,
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _UpdatePhoto extends StatelessWidget {
   const _UpdatePhoto({required this.future, required this.title});
 

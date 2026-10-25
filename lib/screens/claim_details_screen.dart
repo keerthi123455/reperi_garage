@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../theme/garage_theme.dart';
 import '../widgets/error_display.dart';
 
 class ClaimDetailsScreen extends StatefulWidget {
@@ -228,42 +229,33 @@ class _ClaimDetailsScreenState
   Widget build(BuildContext context) {
     if (loading) {
       return Scaffold(
-        backgroundColor: const Color(0xFF0C0C0C),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF1A1A1A),
-          title: const Text('Claim Details'),
-        ),
+        backgroundColor: G.bg,
+        appBar: garageAppBar('Claim details'),
         body: const Center(
-          child: CircularProgressIndicator(color: Color(0xFFD4A017)),
+          child: CircularProgressIndicator(color: G.navy),
         ),
       );
     }
 
     if (claim == null) {
       return Scaffold(
-        backgroundColor: const Color(0xFF0C0C0C),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF1A1A1A),
-          title: const Text('Claim Details'),
-        ),
+        backgroundColor: G.bg,
+        appBar: garageAppBar('Claim details'),
         body: const Center(child: Text('Claim not found')),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0C0C0C),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Claim Details'),
-      ),
+      backgroundColor: G.bg,
+      appBar: garageAppBar('Claim details'),
       body: DefaultTabController(
         length: 2,
         child: Column(
           children: [
             TabBar(
-              labelColor: const Color(0xFFD4A017),
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: const Color(0xFFD4A017),
+              labelColor: G.navy,
+              unselectedLabelColor: G.mut,
+              indicatorColor: G.navy,
               tabs: const [
                 Tab(text: 'Documents'),
                 Tab(text: 'Updates'),
@@ -288,15 +280,15 @@ class _ClaimDetailsScreenState
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddUpdateDialog(),
-        backgroundColor: const Color(0xFFD4A017),
+        backgroundColor: G.yellow,
         label: const Text(
           'Add Update',
           style: TextStyle(
-            color: Colors.black,
+            color: G.navy,
             fontWeight: FontWeight.w900,
           ),
         ),
-        icon: const Icon(Icons.add, color: Colors.black),
+        icon: const Icon(Icons.add, color: G.navy),
       ),
     );
   }
@@ -311,18 +303,18 @@ class _ClaimDetailsScreenState
       return Container(
         height: 64,
         decoration: BoxDecoration(
-          color: Colors.green.withOpacity(0.12),
+          color: G.green.withOpacity(0.12),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.green.withOpacity(0.4)),
+          border: Border.all(color: G.green.withOpacity(0.4)),
         ),
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.check_circle_rounded, color: Colors.green, size: 20),
+            Icon(Icons.check_circle_rounded, color: G.green, size: 20),
             SizedBox(width: 10),
             Text(
               'DELIVERED — CLAIM COMPLETE',
-              style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, letterSpacing: 0.6, fontSize: 13.5),
+              style: TextStyle(color: G.green, fontWeight: FontWeight.w900, letterSpacing: 0.6, fontSize: 13.5),
             ),
           ],
         ),
@@ -333,18 +325,18 @@ class _ClaimDetailsScreenState
       return Container(
         height: 64,
         decoration: BoxDecoration(
-          color: const Color(0xFFD4A017).withOpacity(0.12),
+          color: G.navy.withOpacity(0.12),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.4)),
+          border: Border.all(color: G.navy.withOpacity(0.4)),
         ),
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.local_shipping_rounded, color: Color(0xFFD4A017), size: 20),
+            Icon(Icons.local_shipping_rounded, color: G.navy, size: 20),
             SizedBox(width: 10),
             Text(
               'READY — WAITING FOR PICKUP',
-              style: TextStyle(color: Color(0xFFD4A017), fontWeight: FontWeight.w900, letterSpacing: 0.6, fontSize: 13.5),
+              style: TextStyle(color: G.navy, fontWeight: FontWeight.w900, letterSpacing: 0.6, fontSize: 13.5),
             ),
           ],
         ),
@@ -356,7 +348,7 @@ class _ClaimDetailsScreenState
       child: Container(
         height: 64,
         decoration: BoxDecoration(
-          color: Colors.green.shade600.withOpacity(markingDone ? 0.6 : 1),
+          color: G.green.withOpacity(markingDone ? 0.6 : 1),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Center(
@@ -383,10 +375,10 @@ class _ClaimDetailsScreenState
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
+                color: G.card,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: const Color(0xFFD4A017).withOpacity(0.3),
+                  color: G.line,
                 ),
               ),
               child: Column(
@@ -398,7 +390,7 @@ class _ClaimDetailsScreenState
                       const Text(
                         'Damage Description',
                         style: TextStyle(
-                          color: Color(0xFFD4A017),
+                          color: G.navy,
                           fontSize: 14,
                           fontWeight: FontWeight.w900,
                         ),
@@ -407,7 +399,7 @@ class _ClaimDetailsScreenState
                         _descriptionExpanded
                             ? Icons.expand_less
                             : Icons.expand_more,
-                        color: const Color(0xFFD4A017),
+                        color: G.navy,
                       ),
                     ],
                   ),
@@ -416,7 +408,7 @@ class _ClaimDetailsScreenState
                     Text(
                       claim!['damage_description'] ?? 'No description provided',
                       style: TextStyle(
-                        color: Colors.grey.withOpacity(0.9),
+                        color: G.mut.withOpacity(0.9),
                         fontSize: 13,
                         height: 1.5,
                       ),
@@ -430,7 +422,7 @@ class _ClaimDetailsScreenState
           const Text(
             'Submitted Documents',
             style: TextStyle(
-              color: Colors.white,
+              color: G.txt,
               fontSize: 14,
               fontWeight: FontWeight.w900,
             ),
@@ -453,10 +445,10 @@ class _ClaimDetailsScreenState
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: G.card,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: const Color(0xFFD4A017).withOpacity(0.3),
+          color: G.line,
         ),
       ),
       child: Row(
@@ -469,7 +461,7 @@ class _ClaimDetailsScreenState
                 Text(
                   title,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: G.txt,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -478,7 +470,7 @@ class _ClaimDetailsScreenState
                 Text(
                   url != null ? '✅ Uploaded' : '❌ Not uploaded',
                   style: TextStyle(
-                    color: url != null ? Colors.green : Colors.red,
+                    color: url != null ? G.green : G.red,
                     fontSize: 10,
                   ),
                 ),
@@ -491,8 +483,8 @@ class _ClaimDetailsScreenState
               icon: const Icon(Icons.download, size: 16),
               label: const Text('Download'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFD4A017),
-                foregroundColor: Colors.black,
+                backgroundColor: G.yellow,
+                foregroundColor: G.navy,
               ),
             ),
         ],
@@ -506,11 +498,11 @@ class _ClaimDetailsScreenState
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.update, size: 48, color: Colors.grey.withOpacity(0.5)),
+            Icon(Icons.update, size: 48, color: G.mut.withOpacity(0.5)),
             const SizedBox(height: 12),
             const Text(
               'No updates yet',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(color: G.mut),
             ),
           ],
         ),
@@ -526,10 +518,10 @@ class _ClaimDetailsScreenState
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: G.card,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: const Color(0xFFD4A017).withOpacity(0.2),
+              color: G.line,
             ),
           ),
           child: Column(
@@ -538,7 +530,7 @@ class _ClaimDetailsScreenState
               Text(
                 'Update #${updates.length - index}',
                 style: const TextStyle(
-                  color: Color(0xFFD4A017),
+                  color: G.navy,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -559,7 +551,7 @@ class _ClaimDetailsScreenState
               Text(
                 update['description'],
                 style: TextStyle(
-                  color: Colors.grey.withOpacity(0.9),
+                  color: G.mut.withOpacity(0.9),
                   fontSize: 12,
                 ),
               ),
@@ -569,7 +561,7 @@ class _ClaimDetailsScreenState
                     ?.toString()
                     .split('.')[0] ?? ''),
                 style: TextStyle(
-                  color: Colors.grey.withOpacity(0.5),
+                  color: G.mut.withOpacity(0.5),
                   fontSize: 10,
                 ),
               ),
@@ -584,24 +576,24 @@ class _ClaimDetailsScreenState
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: G.card,
         title: const Text(
           'Add Update',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: G.txt),
         ),
         content: TextField(
           controller: _updateController,
           maxLines: 4,
           maxLength: 500,
-          style: const TextStyle(color: Colors.white),
+          style: const TextStyle(color: G.txt),
           decoration: InputDecoration(
             hintText: 'Describe the inspection update...',
-            hintStyle: TextStyle(color: Colors.grey.withOpacity(0.6)),
+            hintStyle: TextStyle(color: G.mut.withOpacity(0.6)),
             filled: true,
-            fillColor: const Color(0xFF0C0C0C),
+            fillColor: G.sunken,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
+              borderSide: BorderSide(color: G.mut.withOpacity(0.3)),
             ),
           ),
         ),
@@ -610,7 +602,7 @@ class _ClaimDetailsScreenState
             onPressed: () => Navigator.pop(context),
             child: const Text(
               'Cancel',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(color: G.mut),
             ),
           ),
           ElevatedButton(
@@ -619,11 +611,11 @@ class _ClaimDetailsScreenState
               Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFD4A017),
+              backgroundColor: G.yellow,
             ),
             child: const Text(
               'Add',
-              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900),
+              style: TextStyle(color: G.navy, fontWeight: FontWeight.w900),
             ),
           ),
         ],
