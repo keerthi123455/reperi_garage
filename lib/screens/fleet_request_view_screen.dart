@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'payment_screen.dart';
+import '../theme/fleet_theme.dart';
+import '../theme/garage_theme.dart' show G, GaragePlate;
 import '../widgets/error_display.dart';
 
 class FleetRequestViewScreen extends StatefulWidget {
@@ -21,7 +22,7 @@ class FleetRequestViewScreen extends StatefulWidget {
 }
 
 class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, FleetThemeListener {
   static const _signedUrlExpirySeconds = 300;
 
   // ── Approval state ──
@@ -116,6 +117,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
 
     _watchRequestForUnreadChat();
     _fetchFleetBlockingStatus();
+    _refreshLive();
   }
 
   @override
@@ -478,238 +480,187 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
 
   Widget _buildChatSheet(BuildContext sheetCtx) {
     final viewInsets = MediaQuery.of(sheetCtx).viewInsets;
-    return Container(
-      height: MediaQuery.of(sheetCtx).size.height * 0.72 + viewInsets.bottom,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F0F0F),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        border: Border(
-          top: BorderSide(color: Color(0xFF3A3A3A)),
-          left: BorderSide(color: Color(0xFF3A3A3A)),
-          right: BorderSide(color: Color(0xFF3A3A3A)),
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Container(
+        height: MediaQuery.of(sheetCtx).size.height * 0.75 + viewInsets.bottom,
+        decoration: BoxDecoration(
+          color: F.bg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
-      ),
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(4),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Center(
+              child: Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(color: F.line, borderRadius: BorderRadius.circular(4)),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFD4A017).withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.chat_bubble_rounded,
-                            color: Color(0xFFD4A017), size: 18),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              'Garage Admin',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
-                              ),
-                            ),
-                            Text(
-                              'Real-time conversation',
-                              style: TextStyle(color: Colors.white38, fontSize: 11),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // 🔒 MENU & CLOSE BUTTONS
-                if (blockingLoaded)
-                  IconButton(
-                    icon: const Icon(Icons.more_vert, color: Colors.white54),
-                    onPressed: _showFleetSafetyMenu,
-                  ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Colors.white54),
-                  tooltip: 'Close',
-                  onPressed: () => Navigator.pop(sheetCtx),
-                ),
-              ],
-            ),
-          ),
-          const Divider(color: Color(0xFF1E1E1E), height: 20),
-
-          Expanded(
-            child: _chatLoading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xFFD4A017),
-                      strokeWidth: 2,
-                    ),
-                  )
-                : isBlockedByOther
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.block, color: Colors.red, size: 48),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'You are blocked',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'You cannot send or receive messages',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : _chatMessages.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'No messages yet.\nStart the conversation.',
-                              textAlign: TextAlign.center,
-                              style:
-                                  TextStyle(color: Colors.white24, fontSize: 13),
-                            ),
-                          )
-                    : ListView.builder(
-                        controller: _chatScrollController,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        itemCount: _chatMessages.length,
-                        itemBuilder: (_, i) {
-                          final msg = _chatMessages[i];
-                          final senderKey = msg['sender_type'] ?? 'unknown';
-                          final isBlocked = blockedSenders.contains(senderKey);
-
-                          // 🔒 SKIP blocked messages
-                          if (isBlocked) return const SizedBox.shrink();
-
-                          final isFleet = msg['sender_type'] == 'fleet';
-                          final seen = isFleet
-                              ? msg['is_read_by_admin'] == true
-                              : msg['is_read_by_fleet'] == true;
-                          return _chatBubble(
-                              msg['message'] ?? '', isFleet, seen);
-                        },
-                      ),
-          ),
-
-          if (_otherTyping)
+            const SizedBox(height: 14),
             Padding(
-              padding: const EdgeInsets.only(left: 16, bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 1.5,
-                      color: Color(0xFFD4A017),
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: const BoxDecoration(color: F.yellow, shape: BoxShape.circle),
+                    child: const Icon(Icons.support_agent_rounded, color: F.navy, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Garage team',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: F.txt, fontWeight: FontWeight.w900, fontSize: 18)),
+                        Text('Replies show up here instantly',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: F.mut, fontSize: 13.5, fontWeight: FontWeight.w600)),
+                      ],
                     ),
                   ),
-                  SizedBox(width: 8),
-                  Text(
-                    'Garage Admin is typing…',
-                    style: TextStyle(
-                      color: Colors.white38,
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
+                  // 🔒 MENU & CLOSE BUTTONS
+                  if (blockingLoaded)
+                    IconButton(
+                      tooltip: 'Block or report',
+                      icon: Icon(Icons.more_vert_rounded, color: F.mut),
+                      onPressed: _showFleetSafetyMenu,
+                    ),
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, color: F.mut),
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.pop(sheetCtx),
+                  ),
+                ],
+              ),
+            ),
+            Divider(color: F.line, height: 22),
+            Expanded(
+              child: _chatLoading
+                  ? Center(child: CircularProgressIndicator(color: F.accent, strokeWidth: 2.4))
+                  : isBlockedByOther
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.block_rounded, color: F.red, size: 52),
+                                const SizedBox(height: 14),
+                                Text('You are blocked',
+                                    style: TextStyle(color: F.txt, fontSize: 19, fontWeight: FontWeight.w900)),
+                                const SizedBox(height: 6),
+                                Text('You cannot send or receive messages',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: F.mut, fontSize: 15.5)),
+                              ],
+                            ),
+                          ),
+                        )
+                      : _chatMessages.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.forum_rounded, color: F.faint, size: 48),
+                                    const SizedBox(height: 10),
+                                    Text('No messages yet',
+                                        style: TextStyle(color: F.txt, fontSize: 17, fontWeight: FontWeight.w800)),
+                                    const SizedBox(height: 4),
+                                    Text('Ask the garage anything about this vehicle.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(color: F.mut, fontSize: 15)),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              controller: _chatScrollController,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              itemCount: _chatMessages.length,
+                              itemBuilder: (_, i) {
+                                final msg = _chatMessages[i];
+                                final senderKey = msg['sender_type'] ?? 'unknown';
+                                final isBlocked = blockedSenders.contains(senderKey);
+
+                                // 🔒 SKIP blocked messages
+                                if (isBlocked) return const SizedBox.shrink();
+
+                                final isFleet = msg['sender_type'] == 'fleet';
+                                final seen = isFleet ? msg['is_read_by_admin'] == true : msg['is_read_by_fleet'] == true;
+                                return _chatBubble(msg['message'] ?? '', isFleet, seen);
+                              },
+                            ),
+            ),
+            if (_otherTyping)
+              Padding(
+                padding: const EdgeInsets.only(left: 18, bottom: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 1.8, color: F.accent),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('Garage team is typing…',
+                        style: TextStyle(color: F.mut, fontSize: 14, fontStyle: FontStyle.italic)),
+                  ],
+                ),
+              ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + viewInsets.bottom),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _chatController,
+                      onChanged: _handleChatTyping,
+                      enabled: !isBlockedByOther && blockingLoaded,
+                      style: TextStyle(color: F.txt, fontSize: 17),
+                      cursorColor: F.accent,
+                      minLines: 1,
+                      maxLines: 4,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _sendChatMessage(),
+                      decoration: F.input(isBlockedByOther ? 'You are blocked' : 'Type a message…').copyWith(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Material(
+                    color: F.yellow,
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: _sendChatMessage,
+                      child: SizedBox(
+                        width: 54,
+                        height: 54,
+                        child: _chatSending
+                            ? const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: CircularProgressIndicator(color: F.navy, strokeWidth: 2.4),
+                              )
+                            : const Icon(Icons.send_rounded, color: F.navy, size: 24),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-
-          Padding(
-            padding:
-                EdgeInsets.fromLTRB(16, 0, 16, 16 + viewInsets.bottom),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF262626),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFF3A3A3A)),
-                    ),
-                    child: TextField(
-                      controller: _chatController,
-                      onChanged: _handleChatTyping,
-                      enabled: !isBlockedByOther && blockingLoaded,
-                      style:
-                          const TextStyle(color: Colors.white, fontSize: 14),
-                      maxLines: null,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendChatMessage(),
-                      decoration: InputDecoration(
-                        hintText: isBlockedByOther ? 'You are blocked' : 'Type a message…',
-                        hintStyle: const TextStyle(color: Colors.white54),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: _sendChatMessage,
-                  child: Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD4A017),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: _chatSending
-                        ? const Padding(
-                            padding: EdgeInsets.all(13),
-                            child: CircularProgressIndicator(
-                              color: Colors.black,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Icon(Icons.send_rounded,
-                            color: Colors.black, size: 20),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -718,36 +669,25 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
     return Align(
       alignment: isFleet ? Alignment.centerRight : Alignment.centerLeft,
       child: Column(
-        crossAxisAlignment:
-            isFleet ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: isFleet ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Container(
             margin: const EdgeInsets.only(bottom: 2),
-            constraints: const BoxConstraints(maxWidth: 280),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.78),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             decoration: BoxDecoration(
-              color: isFleet
-                  ? const Color(0xFFD4A017).withOpacity(0.15)
-                  : const Color(0xFF1E1E1E),
+              color: isFleet ? F.navy : F.card,
               borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(16),
-                topRight: const Radius.circular(16),
-                bottomLeft: Radius.circular(isFleet ? 16 : 4),
-                bottomRight: Radius.circular(isFleet ? 4 : 16),
+                topLeft: const Radius.circular(18),
+                topRight: const Radius.circular(18),
+                bottomLeft: Radius.circular(isFleet ? 18 : 4),
+                bottomRight: Radius.circular(isFleet ? 4 : 18),
               ),
-              border: isFleet
-                  ? Border.all(
-                      color: const Color(0xFFD4A017).withOpacity(0.25))
-                  : Border.all(color: const Color(0xFF3A3A3A)),
+              border: isFleet ? null : Border.all(color: F.line),
             ),
             child: Text(
               message,
-              style: TextStyle(
-                color:
-                    isFleet ? const Color(0xFFE8C84A) : Colors.white,
-                fontSize: 13.5,
-              ),
+              style: TextStyle(color: isFleet ? Colors.white : F.txt, fontSize: 16, height: 1.35),
             ),
           ),
           if (isFleet)
@@ -756,19 +696,10 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    seen ? Icons.remove_red_eye : Icons.remove_red_eye_outlined,
-                    size: 11,
-                    color: seen ? const Color(0xFFD4A017) : Colors.white24,
-                  ),
+                  Icon(seen ? Icons.done_all_rounded : Icons.done_rounded, size: 15, color: seen ? F.blue : F.faint),
                   const SizedBox(width: 4),
-                  Text(
-                    seen ? 'Seen' : 'Sent',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: seen ? const Color(0xFFD4A017) : Colors.white24,
-                    ),
-                  ),
+                  Text(seen ? 'Seen' : 'Sent',
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: seen ? F.blue : F.faint)),
                 ],
               ),
             )
@@ -822,9 +753,9 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: F.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -834,7 +765,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFF333333),
+                color: F.line,
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
@@ -885,7 +816,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
               },
             ),
             ListTile(
-              title: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              title: Text('Cancel', style: TextStyle(color: F.mut, fontWeight: FontWeight.w700, fontSize: 16)),
               onTap: () => Navigator.pop(context),
             ),
             const SizedBox(height: 16),
@@ -969,14 +900,15 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        backgroundColor: F.card,
+        surfaceTintColor: F.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
           'Report Admin',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+            color: F.txt,
+            fontSize: 19,
+            fontWeight: FontWeight.w800,
           ),
         ),
         content: Column(
@@ -985,14 +917,14 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
               .map((reason) => RadioListTile<String>(
                 title: Text(
                   reason,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
+                  style: TextStyle(
+                    color: F.txt,
+                    fontSize: 16,
                   ),
                 ),
                 value: reason,
                 groupValue: selectedReason,
-                activeColor: const Color(0xFFD4A017),
+                activeColor: F.accent,
                 onChanged: (value) {
                   Navigator.pop(context);
                   selectedReason = value;
@@ -1063,605 +995,788 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
         .where((e) => e.isNotEmpty)
         .toList();
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF262626),
+    final step = F.stepOf(req['status']?.toString());
+    // Refreshed after paying (see _refreshLive), so the bill and the report
+    // unlock without leaving this screen.
+    final awaitingPay = _v('payment_status') == 'awaiting_payment';
+    final paid = _v('payment_status') == 'paid';
+    final adminComment = (req['admin_comment'] ?? '').toString().trim();
+    // The garage has sent something to approve → approval goes to the top.
+    final approvalOnTop = adminComment.isNotEmpty || req['admin_photo_url'] != null;
+    final model = (req['vehicle_model'] ?? '').toString().trim();
+    final (stepFg, stepBg) = F.stepColors(step);
+    final requested = G.when(req['created_at']);
 
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1C1C1C),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
-              color: Colors.white, size: 18),
-          tooltip: 'Back',
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'REQUEST DETAILS',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 2.5,
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.chat_bubble_rounded,
-                      color: Color(0xFFD4A017)),
-                  onPressed: _openChatPopup,
-                ),
-                if (_hasUnreadChat)
-                  Positioned(
-                    top: 6,
-                    right: 6,
-                    child: Container(
-                      width: 9,
-                      height: 9,
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-          decoration: const BoxDecoration(
-            color: Colors.black,
-            border:
-                Border(top: BorderSide(color: Color(0xFF1E1E1E), width: 1)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD4A017),
-                    minimumSize: const Size(double.infinity, 54),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  icon: const Icon(Icons.call, color: Colors.black, size: 20),
-                  label: const Text(
-                    'CALL GARAGE',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.5,
-                      fontSize: 14,
-                    ),
-                  ),
-                  onPressed: _callGarage,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Stack(
-                clipBehavior: Clip.none,
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Scaffold(
+        backgroundColor: F.bg,
+        bottomNavigationBar: _bottomBar(),
+        body: SafeArea(
+          bottom: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF262626),
-                      minimumSize: const Size(54, 54),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: const Color(0xFFD4A017).withOpacity(0.4),
-                        ),
-                      ),
-                      elevation: 0,
-                    ),
-                    onPressed: _openChatPopup,
-                    child: const Icon(Icons.chat_bubble_rounded,
-                        color: Color(0xFFD4A017), size: 22),
-                  ),
-                  if (_hasUnreadChat)
-                    Positioned(
-                      top: -4,
-                      right: -4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 5, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'NEW',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 8,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  req['vehicle_model'] ?? 'Unknown Vehicle',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD4A017).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                        color: const Color(0xFFD4A017).withOpacity(0.4)),
-                  ),
-                  child: Text(
-                    req['car_number'] ?? '',
-                    style: const TextStyle(
-                      color: Color(0xFFD4A017),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                if (req['vehicle_photo_url'] != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: FutureBuilder<String>(
-                      future: _resolveImageUrl(req['vehicle_photo_url']),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return Container(
-                            height: 200,
-                            width: double.infinity,
-                            color: const Color(0xFF141414),
-                            child: const Center(
-                              child: CircularProgressIndicator(
-                                color: Color(0xFFD4A017),
-                                strokeWidth: 2,
-                              ),
-                            ),
-                          );
-                        }
-                        return Image.network(
-                          snapshot.data!,
-                          height: 200,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        );
-                      },
-                    ),
-                  ),
-
-                const SizedBox(height: 24),
-                _Divider(),
-
-                const SizedBox(height: 20),
-                const _Label('STATUS'),
-                const SizedBox(height: 8),
-                _StatusBadge(status: req['status'] ?? 'Pending'),
-
-                const SizedBox(height: 24),
-                _Divider(),
-
-                if (req['payment_status'] == 'awaiting_payment' ||
-                    req['payment_status'] == 'paid') ...[
-                  const SizedBox(height: 20),
-                  const _Label('SERVICE BILL'),
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF141414),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFD4A017).withOpacity(0.25)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                    child: Row(
                       children: [
-                        ...List<Map<String, dynamic>>.from(req['bill_items'] ?? []).map(
-                          (item) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    item['name']?.toString() ?? '',
-                                    style: const TextStyle(color: Colors.white70, fontSize: 14),
-                                  ),
-                                ),
-                                Text(
-                                  '₹${item['price']}',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
-                                ),
-                              ],
-                            ),
-                          ),
+                        FleetIconButton(
+                          icon: Icons.arrow_back_rounded,
+                          tooltip: 'Back',
+                          onTap: () => Navigator.pop(context),
                         ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 10),
-                          child: Divider(color: Color(0xFF3A3A3A), height: 1),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text('Request details',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: F.txt, fontSize: 21, fontWeight: FontWeight.w900)),
                         ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('TOTAL',
-                                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                            Text(
-                              '₹${req['total_amount']}',
-                              style: const TextStyle(
-                                color: Color(0xFFD4A017),
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        if (req['payment_status'] == 'awaiting_payment')
-                          SizedBox(
-                            width: double.infinity,
-                            height: 54,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFFD4A017),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                              ),
-                              onPressed: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => PaymentScreen(
-                                      title: 'Fleet Service — ${req['company_name'] ?? ''}',
-                                      duration: '',
-                                      vehicleId: '',
-                                      vehicleRequired: false,
-                                      // Priced by the server from this request's
-                                      // total_amount / bill_items (set by the
-                                      // garage) and marked paid there after the
-                                      // payment is verified.
-                                      fleetRequestId: '${req['id']}',
-                                    ),
-                                  ),
-                                );
-                                if (mounted) setState(() {});
-                              },
-                              child: const Text(
-                                'PAY NOW',
-                                style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, letterSpacing: 1),
-                              ),
-                            ),
-                          )
-                        else
-                          Row(
-                            children: const [
-                              Icon(Icons.check_circle_rounded, color: Colors.green, size: 18),
-                              SizedBox(width: 8),
-                              Text('Paid', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w700)),
-                            ],
-                          ),
+                        const FleetThemeButton(),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  _Divider(),
-                ],
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+                      children: [
+                        // ── Vehicle ──
+                        GaragePlate(req['car_number']?.toString(), fontSize: 28),
+                        const SizedBox(height: 10),
+                        Text(model.isEmpty ? 'Vehicle' : model,
+                            style: TextStyle(color: F.txt, fontSize: 24, fontWeight: FontWeight.w900, height: 1.2)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            FleetPill(F.statusLabel(req['status']?.toString()), fg: stepFg, bg: stepBg),
+                            if (requested.isNotEmpty)
+                              Text('Requested $requested',
+                                  style: TextStyle(color: F.mut, fontSize: 15, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
 
-                if (statuses.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-                  const _Label('STATUS HISTORY'),
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 8, horizontal: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF141414),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                          color: Colors.white.withOpacity(0.07)),
-                    ),
-                    child: Column(
-                      children: statuses.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final status = entry.value;
-                        final isLast = index == statuses.length - 1;
-                        return ListTile(
-                          leading: Icon(
-                            isLast
-                                ? Icons.radio_button_checked
-                                : Icons.check_circle,
-                            color: isLast
-                                ? const Color(0xFFD4A017)
-                                : const Color(0xFFD4A017).withOpacity(0.5),
-                            size: 20,
-                          ),
-                          title: Text(
-                            status,
-                            style: TextStyle(
-                              color: isLast
-                                  ? Colors.white
-                                  : Colors.white54,
-                              fontSize: 14,
-                              fontWeight: isLast
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                          dense: true,
-                          visualDensity: VisualDensity.compact,
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  _Divider(),
-                ],
+                        // ── What needs you ──
+                        if (awaitingPay) ...[
+                          const SizedBox(height: 16),
+                          _billCard(req, toPay: true),
+                        ],
+                        if (approvalOnTop) ...[
+                          const SizedBox(height: 16),
+                          _approvalCard(adminComment, urgent: _approvalState == null),
+                        ],
 
-                const SizedBox(height: 20),
-                const _Label('ADMIN COMMENT'),
-                const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF141414),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: Colors.white.withOpacity(0.07)),
-                  ),
-                  child: Text(
-                    req['admin_comment'] ?? 'No updates yet.',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      height: 1.5,
-                    ),
-                  ),
-                ),
+                        // ── 21-point inspection report ──
+                        if (widget.request['delivery_partner_id'] != null || _v('inspection21_status') != null) ...[
+                          const SizedBox(height: 16),
+                          _inspectionReportCard(),
+                        ],
 
-                if (comments.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-                  const _Label('COMMENT HISTORY'),
-                  const SizedBox(height: 12),
-                  Column(
-                    children: comments.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final comment = entry.value;
-                      final isLast = index == comments.length - 1;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: isLast
-                                ? const Color(0xFFD4A017).withOpacity(0.07)
-                                : const Color(0xFF141414),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isLast
-                                  ? const Color(0xFFD4A017).withOpacity(0.3)
-                                  : Colors.white.withOpacity(0.05),
-                            ),
-                          ),
+                        // ── Progress ──
+                        _section('PROGRESS'),
+                        _timeline(step, requested),
+                        if (statuses.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          _historyCard(statuses),
+                        ],
+
+                        // ── Garage updates ──
+                        _section('UPDATE FROM THE GARAGE'),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: F.box(),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(
-                                Icons.comment_outlined,
-                                color: isLast
-                                    ? const Color(0xFFD4A017)
-                                    : Colors.white24,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 10),
+                              Icon(Icons.campaign_rounded, color: F.accent, size: 24),
+                              const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  comment,
+                                  adminComment.isEmpty ? 'No updates yet. We\'ll post here as work moves along.' : adminComment,
                                   style: TextStyle(
-                                    color: isLast
-                                        ? Colors.white
-                                        : Colors.white54,
-                                    fontSize: 14,
-                                    height: 1.4,
+                                    color: adminComment.isEmpty ? F.mut : F.txt,
+                                    fontSize: 17,
+                                    height: 1.45,
+                                    fontWeight: adminComment.isEmpty ? FontWeight.w600 : FontWeight.w700,
                                   ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      );
-                    }).toList(),
-                  ),
-                ],
-
-                const SizedBox(height: 24),
-                _Divider(),
-
-                const SizedBox(height: 20),
-                const _Label('GARAGE PHOTO UPDATE'),
-                const SizedBox(height: 10),
-                if (req['admin_photo_url'] != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: FutureBuilder<String>(
-                      future: _resolveImageUrl(req['admin_photo_url']),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return Container(
-                            height: 200,
-                            width: double.infinity,
-                            color: const Color(0xFF141414),
-                            child: const Center(
-                              child: CircularProgressIndicator(
-                                color: Color(0xFFD4A017),
-                                strokeWidth: 2,
+                        if (comments.length > 1) ...[
+                          const SizedBox(height: 10),
+                          Text('Earlier updates',
+                              style: TextStyle(color: F.mut, fontSize: 14.5, fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 8),
+                          for (final c in comments.reversed.skip(1))
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(color: F.sunken, borderRadius: BorderRadius.circular(14)),
+                                child: Text(c, style: TextStyle(color: F.mut, fontSize: 15.5, height: 1.4)),
                               ),
                             ),
-                          );
-                        }
-                        return Image.network(
-                          snapshot.data!,
-                          height: 200,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        );
-                      },
-                    ),
-                  )
-                else
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF141414),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: Colors.white.withOpacity(0.07)),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.image_not_supported_outlined,
-                            color: Colors.white38, size: 20),
-                        SizedBox(width: 10),
-                        Text('No photo uploaded yet.',
-                            style: TextStyle(
-                                color: Colors.white38, fontSize: 14)),
+                        ],
+
+                        // ── Photos ──
+                        _section('PHOTOS FROM THE GARAGE'),
+                        if (req['admin_photo_url'] == null && photos.isEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(18),
+                            decoration: F.box(),
+                            child: Row(
+                              children: [
+                                Icon(Icons.photo_outlined, color: F.faint, size: 24),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text('No photos yet.',
+                                      style: TextStyle(color: F.mut, fontSize: 16, fontWeight: FontWeight.w600)),
+                                ),
+                              ],
+                            ),
+                          )
+                        else ...[
+                          if (req['admin_photo_url'] != null) _photo(req['admin_photo_url'].toString(), label: 'LATEST'),
+                          for (var i = 0; i < photos.length; i++)
+                            if (photos[i] != req['admin_photo_url']?.toString())
+                              Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: _photo(photos[i], label: 'PHOTO ${i + 1}'),
+                              ),
+                        ],
+
+                        // ── Bill (paid) ──
+                        if (paid) ...[
+                          _section('SERVICE BILL'),
+                          _billCard(req, toPay: false),
+                        ],
+
+                        // ── Approval (nothing sent yet) ──
+                        if (!approvalOnTop) ...[
+                          _section('WORK APPROVAL'),
+                          _approvalCard(adminComment, urgent: false),
+                        ],
+
+                        // ── Your photo ──
+                        if (req['vehicle_photo_url'] != null) ...[
+                          _section('YOUR PHOTO OF THE VEHICLE'),
+                          _photo(req['vehicle_photo_url'].toString()),
+                        ],
                       ],
                     ),
                   ),
-
-                if (photos.isNotEmpty) ...[
-                  const SizedBox(height: 24),
-                  const _Label('PHOTO HISTORY'),
-                  const SizedBox(height: 14),
-                  Column(
-                    children: photos.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final photo = entry.value;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: Stack(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: FutureBuilder<String>(
-                                future: _resolveImageUrl(photo),
-                                builder: (context, snapshot) {
-                                  if (!snapshot.hasData) {
-                                    return Container(
-                                      height: 220,
-                                      width: double.infinity,
-                                      color: const Color(0xFF141414),
-                                      child: const Center(
-                                        child: CircularProgressIndicator(
-                                          color: Color(0xFFD4A017),
-                                          strokeWidth: 2,
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                  return Image.network(
-                                    snapshot.data!,
-                                    height: 220,
-                                    width: double.infinity,
-                                    fit: BoxFit.cover,
-                                  );
-                                },
-                              ),
-                            ),
-                            Positioned(
-                              top: 10,
-                              left: 10,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.65),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                      color: const Color(0xFFD4A017)
-                                          .withOpacity(0.4)),
-                                ),
-                                child: Text(
-                                  'PHOTO ${index + 1}',
-                                  style: const TextStyle(
-                                    color: Color(0xFFD4A017),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ),
                 ],
-
-                const SizedBox(height: 24),
-                _Divider(),
-
-                const SizedBox(height: 20),
-                const _Label('WORK APPROVAL'),
-                const SizedBox(height: 6),
-                const Text(
-                  'Review the work done and approve or reject below.',
-                  style: TextStyle(
-                      color: Colors.white38, fontSize: 12, height: 1.4),
-                ),
-                const SizedBox(height: 16),
-
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 400),
-                  switchInCurve: Curves.easeOut,
-                  switchOutCurve: Curves.easeIn,
-                  child: _approvalState == null
-                      ? _buildApprovalButtons()
-                      : _buildApprovalResult(_approvalState!),
-                ),
-
-                const SizedBox(height: 8),
-              ],
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // ── 21-point inspection report ──────────────────────────────────────
+  // Made from the 21 photos the pickup partner takes (fleet-inspection
+  // function). The fleet can download it once the bill is paid.
+  Map<String, dynamic>? _live; // latest payment / report state of this request
+  bool _reportOpening = false;
+
+  Future<void> _refreshLive() async {
+    try {
+      final row = await Supabase.instance.client
+          .from('fleet_pickup_requests')
+          .select('payment_status, inspection21_status, inspection21_summary, delivery_partner_id')
+          .eq('id', widget.request['id'])
+          .maybeSingle();
+      if (mounted && row != null) setState(() => _live = Map<String, dynamic>.from(row));
+    } catch (_) {
+      // Keep what we have.
+    }
+  }
+
+  dynamic _v(String k) => _live != null && _live!.containsKey(k) ? _live![k] : widget.request[k];
+
+  Future<void> _downloadReport() async {
+    if (_reportOpening) return;
+    setState(() => _reportOpening = true);
+    try {
+      final res = await Supabase.instance.client.functions.invoke('fleet-inspection', body: {
+        'action': 'download',
+        'id': '${widget.request['id']}',
+        'fleet_user_id': '${widget.request['fleet_user_id'] ?? ''}',
+      });
+      final url = (res.data is Map ? res.data['url'] : null)?.toString();
+      if (url == null || url.isEmpty) throw 'no link';
+      final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't open the report. Please try again.")));
+      }
+    } on FunctionException catch (e) {
+      final msg = e.details is Map ? (e.details['message'] ?? '').toString() : '';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg.isNotEmpty ? msg : "Couldn't open the report. Please try again.")),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't open the report. Please try again.")));
+      }
+    } finally {
+      if (mounted) setState(() => _reportOpening = false);
+    }
+  }
+
+  /// Shown only for pickups done by a Reperi delivery partner.
+  Widget _inspectionReportCard() {
+    final status = (_v('inspection21_status') ?? '').toString();
+    final paid = _v('payment_status') == 'paid';
+    final summary = _v('inspection21_summary') is Map ? Map<String, dynamic>.from(_v('inspection21_summary') as Map) : null;
+    final ready = status == 'ready';
+
+    Widget chip(String n, String label, Color fg, Color bg) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(14)),
+            child: Column(
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(n, maxLines: 1, style: TextStyle(color: fg, fontSize: 22, fontWeight: FontWeight.w900)),
+                ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(label, maxLines: 1, style: TextStyle(color: fg, fontSize: 13, fontWeight: FontWeight.w800)),
+                ),
+              ],
+            ),
+          ),
+        );
+
+    final String sub;
+    if (ready && paid) {
+      sub = 'Photos of every side of the vehicle at pickup, checked for scratches, dents and cracks.';
+    } else if (ready) {
+      sub = 'Ready — available to download once the service bill is paid.';
+    } else if (status == 'processing' || status == 'failed') {
+      sub = "Our pickup partner has taken the 21 photos. We're preparing your report.";
+    } else {
+      sub = 'Our pickup partner takes 21 photos of the vehicle at pickup. Your report is made from them.';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: ready && paid ? F.box(border: F.dark ? F.yellow : F.navy, width: 2) : F.box(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.fact_check_rounded, color: F.accent, size: 24),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('21-point inspection report',
+                    style: TextStyle(color: F.txt, fontSize: 18, fontWeight: FontWeight.w900)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(sub, style: TextStyle(color: F.mut, fontSize: 15, fontWeight: FontWeight.w600, height: 1.4)),
+          if (ready && paid && summary != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                chip('${summary['ok'] ?? 0}', 'No damage', F.green, F.greenBg),
+                const SizedBox(width: 8),
+                chip('${summary['minor'] ?? 0}', 'Minor', F.amber, F.amberBg),
+                const SizedBox(width: 8),
+                chip('${summary['major'] ?? 0}', 'Major', F.red, F.redBg),
+              ],
+            ),
+          ],
+          if (ready) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 56,
+              child: paid
+                  ? ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: F.yellow,
+                        foregroundColor: F.navy,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: _reportOpening ? null : _downloadReport,
+                      icon: _reportOpening
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.4, color: F.navy))
+                          : const Icon(Icons.download_rounded, size: 22),
+                      label: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text('DOWNLOAD REPORT (PDF)',
+                            maxLines: 1, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                      ),
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        color: F.sunken,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: F.line, width: 2),
+                      ),
+                      alignment: Alignment.center,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text('🔒 Unlocks after payment',
+                              maxLines: 1, style: TextStyle(color: F.mut, fontSize: 17, fontWeight: FontWeight.w900)),
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _section(String t) => Padding(
+        padding: const EdgeInsets.only(top: 24, bottom: 10),
+        child: Text(t, style: TextStyle(color: F.mut, fontSize: 13.5, fontWeight: FontWeight.w800, letterSpacing: 1)),
+      );
+
+  /// Call garage + Chat, always at the bottom.
+  Widget _bottomBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: F.card,
+        border: Border(top: BorderSide(color: F.line)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Center(
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: F.yellow,
+                          foregroundColor: F.navy,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        icon: const Icon(Icons.call_rounded, size: 22),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('Call garage', maxLines: 1, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                        ),
+                        onPressed: _callGarage,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        SizedBox(
+                          height: 56,
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: F.accent,
+                              side: BorderSide(color: F.accent, width: 2),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                            icon: const Icon(Icons.chat_bubble_rounded, size: 21),
+                            label: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text('Chat', maxLines: 1, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                            ),
+                            onPressed: _openChatPopup,
+                          ),
+                        ),
+                        if (_hasUnreadChat)
+                          Positioned(
+                            top: -7,
+                            right: -4,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: F.redSolid,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: F.card, width: 2),
+                              ),
+                              child: const Text('NEW',
+                                  style: TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w900)),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Requested → Picked up → In garage → Done.
+  Widget _timeline(int step, String requested) {
+    const subs = ['We have your request', 'On the way to the garage', 'Inspection and work', 'Vehicle returned'];
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+      decoration: F.box(),
+      child: Column(
+        children: [
+          for (var i = 0; i < F.steps.length; i++)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i < step || (i == step && step == 3)
+                            ? F.greenSolid
+                            : (i == step ? F.yellow : F.line),
+                      ),
+                      alignment: Alignment.center,
+                      child: i < step || (i == step && step == 3)
+                          ? const Icon(Icons.check_rounded, color: Colors.white, size: 18)
+                          : Text('${i + 1}',
+                              style: TextStyle(
+                                color: i == step ? F.navy : F.mut,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                              )),
+                    ),
+                    if (i < F.steps.length - 1)
+                      Container(width: 2.5, height: 26, color: i < step ? F.greenSolid : F.line),
+                  ],
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 3, bottom: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(F.steps[i],
+                            style: TextStyle(
+                              color: i <= step ? F.txt : F.mut,
+                              fontSize: 17,
+                              fontWeight: i == step ? FontWeight.w900 : FontWeight.w700,
+                            )),
+                        Text(
+                          i == 0 && requested.isNotEmpty ? requested : (i == step && step < 3 ? 'Now · ${subs[i]}' : subs[i]),
+                          style: TextStyle(color: F.mut, fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _historyCard(List<String> statuses) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: Container(
+        decoration: F.box(),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+          iconColor: F.accent,
+          collapsedIconColor: F.mut,
+          title: Text('Status history (${statuses.length})',
+              style: TextStyle(color: F.txt, fontSize: 16, fontWeight: FontWeight.w800)),
+          children: [
+            for (var i = statuses.length - 1; i >= 0; i--)
+              ListTile(
+                dense: true,
+                leading: Icon(i == statuses.length - 1 ? Icons.radio_button_checked_rounded : Icons.check_circle_rounded,
+                    color: i == statuses.length - 1 ? F.accent : F.faint, size: 20),
+                title: Text(statuses[i],
+                    style: TextStyle(
+                      color: i == statuses.length - 1 ? F.txt : F.mut,
+                      fontSize: 15.5,
+                      fontWeight: i == statuses.length - 1 ? FontWeight.w800 : FontWeight.w600,
+                    )),
+              ),
+            const SizedBox(height: 6),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _photo(String stored, {String? label}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: FutureBuilder<String>(
+        future: _resolveImageUrl(stored),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return Container(
+              height: 220,
+              width: double.infinity,
+              color: F.sunken,
+              child: Center(child: CircularProgressIndicator(color: F.accent, strokeWidth: 2.4)),
+            );
+          }
+          final url = snapshot.data!;
+          return GestureDetector(
+            onTap: () => _openPhoto(url),
+            child: Stack(
+              children: [
+                Image.network(
+                  url,
+                  height: 220,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 220,
+                    color: F.sunken,
+                    child: Center(child: Icon(Icons.broken_image_rounded, color: F.faint, size: 40)),
+                  ),
+                ),
+                if (label != null)
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(color: Colors.black.withOpacity(0.62), borderRadius: BorderRadius.circular(10)),
+                      child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.55), borderRadius: BorderRadius.circular(20)),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.zoom_in_rounded, color: Colors.white, size: 16),
+                        SizedBox(width: 4),
+                        Text('Tap to zoom', style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _openPhoto(String url) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black,
+        pageBuilder: (context, _, __) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, elevation: 0),
+          body: InteractiveViewer(
+            minScale: 1,
+            maxScale: 5,
+            child: Center(child: Image.network(url, fit: BoxFit.contain)),
+          ),
+        ),
+        transitionsBuilder: (context, a, _, child) => FadeTransition(opacity: a, child: child),
+      ),
+    );
+  }
+
+  String _rupees(dynamic v) {
+    final n = num.tryParse('${v ?? ''}');
+    if (n == null) return '₹${v ?? ''}';
+    final s = n.round().toString();
+    if (s.length <= 3) return '₹$s';
+    final last3 = s.substring(s.length - 3);
+    var rest = s.substring(0, s.length - 3);
+    final parts = <String>[];
+    while (rest.length > 2) {
+      parts.insert(0, rest.substring(rest.length - 2));
+      rest = rest.substring(0, rest.length - 2);
+    }
+    if (rest.isNotEmpty) parts.insert(0, rest);
+    return '₹${parts.join(',')},$last3';
+  }
+
+  Widget _billCard(Map req, {required bool toPay}) {
+    final items = List<Map<String, dynamic>>.from(req['bill_items'] ?? []);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: toPay
+          ? F.box(border: F.dark ? F.yellow : F.navy, width: 2)
+          : F.box(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (toPay) ...[
+            Row(
+              children: [
+                Icon(Icons.receipt_long_rounded, color: F.accent, size: 24),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Your bill is ready',
+                      style: TextStyle(color: F.txt, fontSize: 18, fontWeight: FontWeight.w900)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(item['name']?.toString() ?? '',
+                        style: TextStyle(color: F.txt, fontSize: 16, fontWeight: FontWeight.w600, height: 1.3)),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(_rupees(item['price']),
+                      style: TextStyle(color: F.txt, fontSize: 16, fontWeight: FontWeight.w800)),
+                ],
+              ),
+            ),
+          Divider(color: F.line, height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: Text('TOTAL', style: TextStyle(color: F.mut, fontSize: 14.5, fontWeight: FontWeight.w800, letterSpacing: 1)),
+              ),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(_rupees(req['total_amount']),
+                      maxLines: 1, style: TextStyle(color: F.accent, fontSize: 26, fontWeight: FontWeight.w900)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (toPay)
+            SizedBox(
+              height: 58,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: F.yellow,
+                  foregroundColor: F.navy,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                icon: const Icon(Icons.lock_rounded, size: 20),
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PaymentScreen(
+                        title: 'Fleet Service — ${req['company_name'] ?? ''}',
+                        duration: '',
+                        vehicleId: '',
+                        vehicleRequired: false,
+                        // Priced by the server from this request's
+                        // total_amount / bill_items (set by the
+                        // garage) and marked paid there after the
+                        // payment is verified.
+                        fleetRequestId: '${req['id']}',
+                      ),
+                    ),
+                  );
+                  if (mounted) setState(() {});
+                  await _refreshLive();
+                },
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('PAY ${_rupees(req['total_amount'])}',
+                      maxLines: 1, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                ),
+              ),
+            )
+          else
+            Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: F.green, size: 22),
+                const SizedBox(width: 8),
+                Text('Paid', style: TextStyle(color: F.green, fontWeight: FontWeight.w900, fontSize: 17)),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Approve / reject what the garage sent (or the decision already made).
+  Widget _approvalCard(String adminComment, {required bool urgent}) {
+    final decided = _approvalState != null;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: urgent
+          ? BoxDecoration(color: F.amberBg, borderRadius: BorderRadius.circular(20))
+          : F.box(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!decided) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.warning_amber_rounded, color: urgent ? F.amber : F.accent, size: 24),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Approve the work',
+                      style: TextStyle(color: urgent ? F.amber : F.txt, fontSize: 18, fontWeight: FontWeight.w900)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              adminComment.isNotEmpty
+                  ? 'Read the garage update below, then approve or reject.'
+                  : 'Review the work done and approve or reject.',
+              style: TextStyle(color: urgent ? F.amber : F.mut, fontSize: 15, fontWeight: FontWeight.w600, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+          ],
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 400),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            child: decided ? _buildApprovalResult(_approvalState!) : _buildApprovalButtons(),
+          ),
+        ],
       ),
     );
   }
@@ -1673,18 +1788,19 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
         Expanded(
           child: _ApprovalButton(
             label: 'APPROVE',
-            icon: Icons.check_circle_outline,
-            color: const Color(0xFF1DB954),
+            icon: Icons.check_circle_rounded,
+            color: F.greenSolid,
+            filled: true,
             isLoading: _isSubmitting,
             onPressed: () => _handleApproval('Approved'),
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
         Expanded(
           child: _ApprovalButton(
             label: 'REJECT',
-            icon: Icons.cancel_outlined,
-            color: const Color(0xFFE53935),
+            icon: Icons.cancel_rounded,
+            color: F.red,
             isLoading: _isSubmitting,
             onPressed: () => _handleApproval('Rejected'),
           ),
@@ -1695,13 +1811,10 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
 
   Widget _buildApprovalResult(String decision) {
     final isApproved = decision == 'Approved';
-    final color =
-        isApproved ? const Color(0xFF1DB954) : const Color(0xFFE53935);
-    final icon = isApproved ? Icons.check_circle : Icons.cancel;
-    final label = isApproved ? 'APPROVED' : 'REJECTED';
-    final sublabel = isApproved
-        ? 'You\'ve approved this work update.'
-        : 'You\'ve rejected this work update.';
+    final color = isApproved ? F.green : F.red;
+    final icon = isApproved ? Icons.check_circle_rounded : Icons.cancel_rounded;
+    final label = isApproved ? 'Approved' : 'Rejected';
+    final sublabel = isApproved ? 'You approved this work. The garage will go ahead.' : 'You rejected this work. The garage has been told.';
 
     return FadeTransition(
       key: ValueKey('result_$decision'),
@@ -1710,34 +1823,23 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
         scale: _scaleAnim,
         child: Container(
           width: double.infinity,
-          padding:
-              const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: isApproved ? F.greenBg : F.redBg,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withOpacity(0.35)),
           ),
-          child: Column(
+          child: Row(
             children: [
-              Icon(icon, color: color, size: 52),
-              const SizedBox(height: 10),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 2,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                sublabel,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white38,
-                  fontSize: 13,
-                  height: 1.4,
+              Icon(icon, color: color, size: 36),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: TextStyle(color: color, fontSize: 19, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 2),
+                    Text(sublabel, style: TextStyle(color: F.mut, fontSize: 14.5, height: 1.35, fontWeight: FontWeight.w600)),
+                  ],
                 ),
               ),
             ],
@@ -1750,74 +1852,11 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
 
 // ─── Helper widgets ────────────────────────────────────────────────────────────
 
-class _Label extends StatelessWidget {
-  final String text;
-  const _Label(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        color: Colors.white38,
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 2,
-      ),
-    );
-  }
-}
-
-class _Divider extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Divider(color: Colors.white.withOpacity(0.07), height: 1);
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final String status;
-  const _StatusBadge({required this.status});
-
-  Color get _color {
-    switch (status.toLowerCase()) {
-      case 'approved':
-        return const Color(0xFF1DB954);
-      case 'rejected':
-        return const Color(0xFFE53935);
-      case 'in progress':
-        return const Color(0xFFD4A017);
-      default:
-        return Colors.white54;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration:
-              BoxDecoration(color: _color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          status,
-          style: TextStyle(
-              color: _color, fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-      ],
-    );
-  }
-}
-
 class _ApprovalButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final Color color;
+  final bool filled;
   final bool isLoading;
   final VoidCallback onPressed;
 
@@ -1826,39 +1865,36 @@ class _ApprovalButton extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.onPressed,
+    this.filled = false,
     this.isLoading = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return ElevatedButton.icon(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color.withOpacity(0.12),
-        foregroundColor: color,
-        minimumSize: const Size(double.infinity, 50),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: color.withOpacity(0.5)),
+    final fg = filled ? Colors.white : color;
+    return SizedBox(
+      height: 56,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: filled ? color : F.card,
+          foregroundColor: fg,
+          disabledBackgroundColor: filled ? color.withOpacity(0.6) : F.card,
+          disabledForegroundColor: fg.withOpacity(0.6),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: filled ? BorderSide.none : BorderSide(color: color, width: 2),
+          ),
+          elevation: 0,
         ),
-        elevation: 0,
-      ),
-      icon: isLoading
-          ? SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                  color: color, strokeWidth: 2),
-            )
-          : Icon(icon, size: 18),
-      label: Text(
-        label,
-        style: const TextStyle(
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1,
-          fontSize: 13,
+        icon: isLoading
+            ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: fg, strokeWidth: 2.2))
+            : Icon(icon, size: 21),
+        label: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(label, maxLines: 1, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16.5, letterSpacing: 0.4)),
         ),
+        onPressed: isLoading ? null : onPressed,
       ),
-      onPressed: isLoading ? null : onPressed,
     );
   }
 }

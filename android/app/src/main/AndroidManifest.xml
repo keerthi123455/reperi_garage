@@ -108,6 +108,29 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="reperi" android:host="reset-password" />
             </intent-filter>
+
+            <!-- Community share links (https://reperi.in/community/reel/<id>,
+                 /community/post/<id>) open straight in the app when it's
+                 installed. Android checks web/.well-known/assetlinks.json on
+                 reperi.in to confirm this app may open them (autoVerify);
+                 the app picks the link up in services/community_links.dart.
+                 Without the app the same link opens reperi.in. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="reperi.in" />
+                <data android:host="www.reperi.in" />
+                <data android:pathPrefix="/community" />
+            </intent-filter>
+
+            <!-- Links are handled by app_links (Community + Supabase), not by
+                 Flutter's own deep linking, which would try to open them as
+                 named routes this app doesn't have. -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="false" />
         </activity>
         
         <!-- Don't delete the meta-data below -->

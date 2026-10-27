@@ -571,6 +571,39 @@
         .cp-row .cp-btn { flex: 1; }
         .cp-spin { width: 40px; height: 40px; border: 4px solid #E3E0D8; border-top-color: #022B57; border-radius: 50%; margin: 110px auto; animation: cpspin 1s linear infinite; }
         @keyframes cpspin { to { transform: rotate(360deg); } }
+
+        /* ── Fleet pickups: 21-point inspection photos ── */
+        .fleet-card { background: #13233F; border: 2px solid #3B82F6; border-radius: 22px; padding: 18px; margin-bottom: 16px; color: #fff; }
+        .fleet-card.done { border-color: #22c55e; background: #12261b; }
+        .fleet-tag { display: inline-block; background: #3B82F6; color: #fff; font-weight: 900; font-size: 14px; padding: 6px 12px; border-radius: 20px; letter-spacing: .5px; }
+        .fleet-co { font-size: 23px; font-weight: 900; margin-top: 10px; word-break: break-word; }
+        .fleet-model { font-size: 17px; font-weight: 700; color: #c9d4e8; margin-top: 2px; }
+        .fleet-plate { display: inline-flex; border: 2.5px solid #111; border-radius: 8px; overflow: hidden; background: #fff; margin-top: 10px; max-width: 100%; }
+        .fleet-plate i { font-style: normal; background: #1a4fb5; color: #fff; font-weight: 800; font-size: 9px; writing-mode: vertical-rl; transform: rotate(180deg); padding: 0 3px; display: flex; align-items: center; }
+        .fleet-plate b { font-size: 22px; font-weight: 900; letter-spacing: 1.4px; padding: 6px 10px; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .fleet-prog { margin-top: 16px; font-size: 19px; font-weight: 900; }
+        .fleet-bar { height: 10px; border-radius: 5px; background: #2a3550; margin-top: 6px; overflow: hidden; }
+        .fleet-bar div { height: 100%; background: #22c55e; transition: width .3s; }
+        .fleet-now { margin-top: 14px; background: #1d3a6b; border-radius: 16px; padding: 14px; }
+        .fleet-now b { display: block; font-size: 20px; font-weight: 900; color: #93c5fd; }
+        .fleet-now span { display: block; font-size: 16.5px; font-weight: 600; color: #e5ecf7; line-height: 1.45; margin-top: 4px; }
+        .fleet-shot { margin-top: 12px; min-height: 170px; border-radius: 16px; border: 3px dashed #60a5fa; background: #0e1a30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #93c5fd; font-weight: 900; font-size: 19px; cursor: pointer; position: relative; overflow: hidden; text-align: center; padding: 10px; }
+        .fleet-shot .ic { font-size: 40px; }
+        .fleet-shot small { font-size: 14px; color: #9aa4b5; font-weight: 700; }
+        .fleet-shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .fleet-shot .over { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.65); color: #fff; padding: 10px; font-size: 16px; }
+        .fleet-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 14px; }
+        .fleet-grid button { aspect-ratio: 1; border-radius: 9px; border: none; background: #2a3550; color: #9aa4b5; font-weight: 900; font-size: 14px; cursor: pointer; }
+        .fleet-grid button.ok { background: #16803d; color: #fff; }
+        .fleet-grid button.cur { outline: 3px solid #93c5fd; background: #3B82F6; color: #fff; }
+        .fleet-btn { display: block; width: 100%; min-height: 62px; border: none; border-radius: 16px; font-size: 19px; font-weight: 900; margin-top: 14px; cursor: pointer; }
+        .fleet-btn.green { background: #16a34a; color: #fff; }
+        .fleet-btn.blue { background: #3B82F6; color: #fff; }
+        .fleet-btn:disabled { background: #4b5563; color: #d1d5db; cursor: not-allowed; }
+        .fleet-hint { text-align: center; font-size: 14.5px; color: #9aa4b5; font-weight: 700; margin-top: 8px; }
+        .fleet-info { margin-top: 12px; font-size: 16px; color: #e5ecf7; line-height: 1.5; }
+        .fleet-done { margin-top: 14px; background: #16803d; color: #fff; border-radius: 14px; padding: 14px; font-weight: 900; font-size: 18px; text-align: center; }
+        .fleet-msg { margin-top: 10px; font-size: 15px; font-weight: 700; }
     </style>
 </head>
 <body>
@@ -617,6 +650,11 @@
                         <span class="info-value" id="partnerSince">—</span>
                     </div>
                 </div>
+            </div>
+
+            <div class="card" id="fleetCard" style="display:none">
+                <div class="section-title">Fleet Pickups</div>
+                <div id="fleetContent"></div>
             </div>
 
             <div class="card">
@@ -851,6 +889,7 @@
         // screen.dart in the app) and normalizes them into one shape so
         // they can be rendered as a single merged, sorted list.
         async function fetchAssignedBookings(partnerId) {
+            fetchFleetTrips();
             const bookingsContent = document.getElementById('bookingsContent');
 
             try {
@@ -1707,6 +1746,185 @@
             });
             if (error) { alert(error.message); return; }
             await fetchAssignedBookings(currentPartnerId);
+        }
+
+        // ── Fleet pickups (21-point inspection) ─────────────────────────
+        // Only fleet trips have the 21 photos. Trips come from
+        // delivery_fleet_trips() (supabase/fleet_inspection.sql). Photo 21
+        // starts the report (fleet-inspection function).
+        const FLEET_SHOTS = [
+            ['Front', 'Stand 3 big steps in front of the vehicle, in the middle. Fit the whole front, including the number plate.'],
+            ['Front-left corner', 'Stand at the front-left corner, 2 big steps away. Fit the front and the left side in one photo.'],
+            ['Left side', 'Stand in the middle of the left side, far enough back to fit the whole side, front to back.'],
+            ['Rear-left corner', 'Stand at the rear-left corner, 2 big steps away. Fit the back and the left side in one photo.'],
+            ['Rear', 'Stand 3 big steps behind the vehicle, in the middle. Fit the whole back, including the number plate.'],
+            ['Rear-right corner', 'Stand at the rear-right corner, 2 big steps away. Fit the back and the right side in one photo.'],
+            ['Right side', 'Stand in the middle of the right side, far enough back to fit the whole side, front to back.'],
+            ['Front-right corner', 'Stand at the front-right corner, 2 big steps away. Fit the front and the right side in one photo.'],
+            ['Bonnet / hood', 'Stand at the front and hold the phone high, pointing down at the bonnet. Show the whole bonnet.'],
+            ['Roof', 'Hold the phone up high (or stand on a step) so the roof is visible. Show as much of the roof as you can.'],
+            ['Windscreen', 'Stand at the front and photograph the whole front glass. Avoid your reflection; look for cracks and chips.'],
+            ['Rear glass', 'Photograph the whole back glass (or the back of the cabin for pickup trucks).'],
+            ['Front bumper (close-up)', 'Go close (1 step) and photograph the front bumper from left end to right end.'],
+            ['Rear bumper (close-up)', 'Go close (1 step) and photograph the rear bumper from left end to right end.'],
+            ['Front-left wheel & tyre', 'Crouch and photograph the front-left wheel. Show the whole tyre and the rim.'],
+            ['Rear-left wheel & tyre', 'Crouch and photograph the rear-left wheel. Show the whole tyre and the rim.'],
+            ['Rear-right wheel & tyre', 'Crouch and photograph the rear-right wheel. Show the whole tyre and the rim.'],
+            ['Front-right wheel & tyre', 'Crouch and photograph the front-right wheel. Show the whole tyre and the rim.'],
+            ['Dashboard & odometer', 'Turn the ignition on. Photograph the dashboard so the km reading, fuel level and any warning lights are clear.'],
+            ['Front seats', 'Open the driver door and photograph both front seats and the floor.'],
+            ['Rear seats / cargo area', 'Photograph the back seats, or the cargo area / loading bed for goods vehicles.'],
+        ];
+        let fleetTrips = [];
+        let fleetGarages = {};
+        const fleetSel = {};            // trip id → photo number being taken
+        const fleetUrls = {};           // storage path → signed link
+
+        async function fetchFleetTrips() {
+            const card = document.getElementById('fleetCard');
+            try {
+                const { data, error } = await sbClient.rpc('delivery_fleet_trips');
+                if (error) throw error;
+                fleetTrips = data || [];
+                const ids = [...new Set(fleetTrips.map((t) => t.assigned_to_admin_id).filter(Boolean))];
+                if (ids.length) {
+                    const { data: g } = await sbClient.from('admin').select('id, username, latitude, longitude, address').in('id', ids);
+                    fleetGarages = {};
+                    (g || []).forEach((x) => { fleetGarages[String(x.id)] = x; });
+                }
+                // Signed links for the photos already taken (thumbnails).
+                const paths = fleetTrips.flatMap((t) => Object.values(t.inspection21_photos || {})).filter((p) => !fleetUrls[p]);
+                if (paths.length) {
+                    const { data: links } = await sbClient.storage.from('fleet-inspections').createSignedUrls(paths, 3600);
+                    (links || []).forEach((l) => { if (l.signedUrl) fleetUrls[l.path] = l.signedUrl; });
+                }
+                renderFleetTrips();
+            } catch (err) {
+                // Never break the rest of the dashboard over this section.
+                console.warn('Fleet trips not loaded:', err.message || err);
+                if (card) card.style.display = 'none';
+            }
+        }
+
+        function renderFleetTrips() {
+            const card = document.getElementById('fleetCard');
+            const box = document.getElementById('fleetContent');
+            if (!card || !box) return;
+            // Open trips first, then the 5 most recent finished ones.
+            const open = fleetTrips.filter((t) => t.delivery_stage !== 'at_garage');
+            const done = fleetTrips.filter((t) => t.delivery_stage === 'at_garage').slice(0, 5);
+            const list = [...open, ...done];
+            card.style.display = list.length ? '' : 'none';
+            box.innerHTML = list.map(fleetCardHtml).join('');
+        }
+
+        function fleetCardHtml(t) {
+            const id = escapeHtml(String(t.id));
+            const photos = t.inspection21_photos || {};
+            const have = Object.keys(photos).length;
+            const stage = t.delivery_stage || 'assigned';
+            const plate = escapeHtml(fleetPlate(t.car_number));
+            const garage = fleetGarages[String(t.assigned_to_admin_id || '')];
+            const top = `
+                <span class="fleet-tag">🚚 FLEET PICKUP</span>
+                <div class="fleet-co">${escapeHtml(t.company_name || t.username || 'Fleet')}</div>
+                <div class="fleet-model">${escapeHtml(t.vehicle_model || 'Vehicle')}</div>
+                ${plate ? `<span class="fleet-plate"><i>IND</i><b>${plate}</b></span>` : ''}`;
+
+            if (stage === 'at_garage') {
+                return `<div class="fleet-card done">${top}
+                    <div class="fleet-done">✅ Dropped at the garage${t.stage_at_garage_at ? ' · ' + escapeHtml(formatFullDateTime(t.stage_at_garage_at)) : ''}</div></div>`;
+            }
+
+            if (stage === 'picked_up') {
+                const nav = garage && garage.latitude && garage.longitude
+                    ? `<a class="fleet-btn blue" style="text-align:center;line-height:62px;text-decoration:none" target="_blank" rel="noopener" href="${navigateUrl(garage.latitude, garage.longitude)}">🧭 NAVIGATE TO GARAGE</a>` : '';
+                return `<div class="fleet-card">${top}
+                    <div class="fleet-info">✅ 21 photos done · picked up${t.stage_picked_up_at ? ' ' + escapeHtml(formatFullDateTime(t.stage_picked_up_at)) : ''}</div>
+                    <div class="fleet-info">🏪 Garage: <b>${escapeHtml(garage ? garage.username : 'Not set yet — call Reperi')}</b>${garage && garage.address ? '<br>' + escapeHtml(garage.address) : ''}</div>
+                    ${nav}
+                    <button class="fleet-btn green" onclick="fleetStep('${id}','at_garage')">🏁 DROPPED AT GARAGE</button>
+                    <div class="fleet-msg" id="fleet-msg-${id}"></div></div>`;
+            }
+
+            // Taking the 21 photos.
+            const firstMissing = FLEET_SHOTS.findIndex((_, i) => !photos[String(i + 1)]) + 1;
+            const sel = fleetSel[t.id] || firstMissing || 21;
+            const [area, how] = FLEET_SHOTS[sel - 1];
+            const path = photos[String(sel)];
+            const url = path ? fleetUrls[path] : null;
+            const grid = FLEET_SHOTS.map((_, i) => {
+                const n = i + 1;
+                const cls = n === sel ? 'cur' : (photos[String(n)] ? 'ok' : '');
+                return `<button class="${cls}" title="${escapeHtml(FLEET_SHOTS[i][0])}" onclick="fleetPick('${id}', ${n})">${n}</button>`;
+            }).join('');
+            return `<div class="fleet-card">${top}
+                <div class="fleet-prog">📷 ${have} of 21 photos</div>
+                <div class="fleet-bar"><div style="width:${Math.round(have / 21 * 100)}%"></div></div>
+                <div class="fleet-now"><b>Photo ${sel} · ${escapeHtml(area)}</b><span>${escapeHtml(how)}</span></div>
+                <label class="fleet-shot" id="fleet-shot-${id}">
+                    ${url ? `<img src="${escapeHtml(url)}" alt="Photo ${sel}"><span class="over">✅ Done — tap to retake photo ${sel}</span>`
+                          : `<span class="ic">📷</span>TAP — TAKE PHOTO ${sel}<small>camera or gallery</small>`}
+                    <input type="file" accept="image/*" hidden onchange="fleetUpload('${id}', ${sel}, this)">
+                </label>
+                <div class="fleet-grid">${grid}</div>
+                <button class="fleet-btn green" ${have >= 21 ? '' : 'disabled'} onclick="fleetStep('${id}','picked_up')">✅ VEHICLE PICKED UP</button>
+                <div class="fleet-hint">${have >= 21 ? 'All 21 photos taken — the inspection report is being made.' : `Unlocks after all 21 photos (${21 - have} to go)`}</div>
+                <div class="fleet-msg" id="fleet-msg-${id}"></div></div>`;
+        }
+
+        // "KA51MH2210" → "KA 51 MH 2210" (anything else just in capitals).
+        function fleetPlate(raw) {
+            const s = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const m = s.match(/^([A-Z]{2})(\d{1,2})([A-Z]{0,3})(\d{1,4})$/);
+            return m ? [m[1], m[2], m[3], m[4]].filter(Boolean).join(' ') : String(raw || '').toUpperCase();
+        }
+
+        function fleetPick(id, n) {
+            fleetSel[id] = n;
+            renderFleetTrips();
+        }
+
+        async function fleetUpload(id, n, input) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const shot = document.getElementById('fleet-shot-' + id);
+            if (shot) shot.innerHTML = '<div class="loading-spinner"></div><span>UPLOADING PHOTO ' + n + '…</span>';
+            try {
+                const blob = await inspImageToJpeg(file);
+                const path = `${id}/${n}-${Date.now()}.jpg`;
+                const up = await sbClient.storage.from('fleet-inspections').upload(path, blob, { contentType: 'image/jpeg' });
+                if (up.error) throw up.error;
+                const { data, error } = await sbClient.rpc('delivery_fleet_photo', { p_id: String(id), p_n: n, p_path: path });
+                if (error) throw error;
+                fleetUrls[path] = URL.createObjectURL(blob);
+                const trip = fleetTrips.find((t) => String(t.id) === String(id));
+                if (trip) trip.inspection21_photos = data || trip.inspection21_photos;
+                // Jump to the next photo still missing.
+                const photos = (trip && trip.inspection21_photos) || {};
+                const next = FLEET_SHOTS.findIndex((_, i) => !photos[String(i + 1)]) + 1;
+                fleetSel[id] = next || n;
+                renderFleetTrips();
+            } catch (e) {
+                alert('Photo upload failed: ' + (e.message || e));
+                await fetchFleetTrips();
+            }
+        }
+
+        async function fleetStep(id, step) {
+            const ask = step === 'picked_up'
+                ? 'Vehicle picked up with all 21 photos taken?'
+                : 'Vehicle dropped at the garage?';
+            if (!confirm(ask)) return;
+            const msg = document.getElementById('fleet-msg-' + id);
+            try {
+                const { error } = await sbClient.rpc('delivery_fleet_step', { p_id: String(id), p_step: step });
+                if (error) throw error;
+                if (step === 'at_garage') await incrementDeliveriesCompleted();
+                await fetchFleetTrips();
+            } catch (e) {
+                if (msg) { msg.style.color = '#fca5a5'; msg.textContent = '❌ ' + (e.message || 'Could not save'); }
+            }
         }
 
         async function handleLogout() {

@@ -116,44 +116,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final isReviewAdmin = AppleReviewAssignmentOverride.enabled &&
         adminUsername == AppleReviewAssignmentOverride.adminUsername;
 
-    // Fleet requests are split by the fleet account that sent them:
-    //  - the review fleet account (AppleReviewAssignmentOverride
-    //    .reviewFleetUsername) -> only the review garage sees them
-    //  - every real fleet company -> only haya_autogears sees them
-    final List<dynamic> fleetResponse;
-    if (isReviewAdmin) {
+    // Fleet requests and claims: whatever is assigned to THIS garage
+    // (assigned_to_admin_id) — set automatically by the rules in the CRM
+    // (Assignment rules tab) and changeable per booking there.
+    // supabase/assignments.sql gives fleet requests that column; until it's
+    // run, fleet falls back to the old fixed routing below.
+    List<dynamic> fleetResponse;
+    try {
       fleetResponse = await supabase
           .from('fleet_pickup_requests')
           .select()
-          .eq('username', AppleReviewAssignmentOverride.reviewFleetUsername)
+          .eq('assigned_to_admin_id', widget.adminId)
           .order('created_at', ascending: false);
-    } else if (adminUsername == 'haya_autogears') {
-      fleetResponse = await supabase
-          .from('fleet_pickup_requests')
-          .select()
-          // .neq alone would also hide rows whose username is NULL
-          // (NULL != x is not true in SQL) — keep those for haya_autogears.
-          .or('username.is.null,username.neq."${AppleReviewAssignmentOverride.reviewFleetUsername}"')
-          .order('created_at', ascending: false);
-    } else {
-      fleetResponse = [];
+    } catch (e) {
+      debugPrint('Fleet by assignment not available yet, using old routing: $e');
+      fleetResponse = await _legacyFleetRequests(supabase, adminUsername.toString(), isReviewAdmin);
     }
 
-    // Only fetch claims if admin is newexpert_care (or the review admin —
-    // see isReviewAdmin above). claim_table.assigned_to_admin_id is a
-    // foreign key to admin.id (a uuid) — this used to compare against the
-    // literal username string 'newexpert_care', which matched back when
-    // that column was `text` and stored raw usernames; now that it's a
-    // real uuid FK, it has to compare against that admin's actual id.
-    final claimsResponse = (adminUsername == 'newexpert_care' || isReviewAdmin)
-        ? await supabase
-            .from('claim_table')
-            .select('*')
-            .eq('assigned_to_admin_id', isReviewAdmin
-                ? (await AppleReviewAssignmentOverride.resolveAdminId())!
-                : '1bcf9d81-6625-4c01-ac23-f0c237462eb7')
-            .order('created_at', ascending: false)
-        : [];
+    final claimsResponse = await supabase
+        .from('claim_table')
+        .select('*')
+        .eq('assigned_to_admin_id', widget.adminId)
+        .order('created_at', ascending: false);
 
     // Number plate / brand / model for the claims (claims only store the
     // vehicle id). Not fatal — the tile falls back to the id.
@@ -201,6 +185,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       this.claimVehicles = claimVehicles;
       loading = false;
     });
+  }
+
+  /// Old fixed fleet routing (before supabase/assignments.sql):
+  /// the review fleet → the review garage, every real fleet → haya_autogears.
+  Future<List<dynamic>> _legacyFleetRequests(SupabaseClient supabase, String adminUsername, bool isReviewAdmin) async {
+    if (isReviewAdmin) {
+      return await supabase
+          .from('fleet_pickup_requests')
+          .select()
+          .eq('username', AppleReviewAssignmentOverride.reviewFleetUsername)
+          .order('created_at', ascending: false);
+    }
+    if (adminUsername == 'haya_autogears') {
+      return await supabase
+          .from('fleet_pickup_requests')
+          .select()
+          // .neq alone would also hide rows whose username is NULL.
+          .or('username.is.null,username.neq."${AppleReviewAssignmentOverride.reviewFleetUsername}"')
+          .order('created_at', ascending: false);
+    }
+    return [];
   }
 
   /// A readable garage name from the admin row: its name column if it has

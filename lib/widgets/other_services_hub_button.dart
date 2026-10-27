@@ -5,14 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../screens/community_screen.dart';
 import '../screens/roadside_assistance_screen.dart';
 
 /// Round yellow hub button on Home (the spanner that hops and shines).
 ///
 /// Tapped, it opens a speed-dial: the screen blurs, the spanner turns into
-/// a ✕ and three circles spring out around it —
+/// a ✕ and four circles spring out around it —
 ///   • SOS (red)            → [onSos] (Roadside Assistance)
 ///   • Call (green)         → calls the Reperi line
+///   • Community (purple)   → the Community page (reels + recent work),
+///     which grows out of the tapped circle
 ///   • Other services (blue with the yellow spanner) → grows into the 16:9
 ///     banner (`assets/images/other_reperi_services_banner_16x9.jpeg`);
 ///     tapping the banner calls [onOpen] (the Other Services screen).
@@ -102,6 +105,11 @@ class _OtherServicesHubButtonState extends State<OtherServicesHubButton> with Ti
           // Works even if the screen didn't pass onSos.
           Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RoadsideAssistanceScreen()));
         }
+        return;
+      case _HubAction.community:
+        setState(() => _open = false);
+        // The page grows out of the purple circle that was tapped.
+        navigator.push(CommunityScreen.route(origin: pick!.from));
         return;
       case _HubAction.call:
         setState(() => _open = false);
@@ -560,7 +568,7 @@ class _BannerViewState extends State<_BannerView> {
 //  Speed-dial (opened by tapping the hub)
 // ═══════════════════════════════════════════════════════════════════════
 
-enum _HubAction { sos, call, services }
+enum _HubAction { sos, call, community, services }
 
 class _HubPick {
   const _HubPick(this.action, this.from);
@@ -573,6 +581,7 @@ class _HubPick {
 const Color _sosRed = Color(0xFFE5262B);
 const Color _callGreen = Color(0xFF1FAA59);
 const Color _servicesBlue = Color(0xFF1D5FD6);
+const Color _communityPurple = Color(0xFF7B3FE4);
 
 class _HubMenuRoute extends PageRouteBuilder<_HubPick> {
   _HubMenuRoute({required Rect origin, required double hubSize})
@@ -595,10 +604,12 @@ class _HubMenuItem {
   final double angleDeg;
 }
 
-/// Fanned out to the left / up of the hub (it sits at the right edge).
+/// Fanned out to the left / up of the hub (it sits at the right edge),
+/// 30° apart so four circles and their labels never touch.
 const List<_HubMenuItem> _kHubItems = [
   _HubMenuItem(_HubAction.sos, 'SOS', 270),
-  _HubMenuItem(_HubAction.call, 'Call us', 225),
+  _HubMenuItem(_HubAction.call, 'Call us', 240),
+  _HubMenuItem(_HubAction.community, 'Community', 210),
   _HubMenuItem(_HubAction.services, "Not sure what's wrong\nwith your vehicle?", 180),
 ];
 
@@ -614,7 +625,7 @@ class _HubMenuView extends StatefulWidget {
 
 class _HubMenuViewState extends State<_HubMenuView> with SingleTickerProviderStateMixin {
   static const double _item = 58; // circle size
-  static const double _radius = 130; // distance from the hub centre (room for labels)
+  static const double _radius = 170; // distance from the hub centre (room for four circles + labels)
 
   late final AnimationController _pulse =
       AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat(reverse: true);
@@ -805,6 +816,11 @@ class _HubMenuViewState extends State<_HubMenuView> with SingleTickerProviderSta
         return _plainCircle(
           color: _callGreen,
           child: const Icon(Icons.phone_in_talk_rounded, color: Colors.white, size: 26),
+        );
+      case _HubAction.community:
+        return _plainCircle(
+          color: _communityPurple,
+          child: const Icon(Icons.groups_rounded, color: Colors.white, size: 30),
         );
       case _HubAction.services:
         return _plainCircle(

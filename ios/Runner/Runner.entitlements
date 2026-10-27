@@ -4,5 +4,10 @@
 <dict>
 	<key>aps-environment</key>
 	<string>production</string>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:reperi.in</string>
+		<string>applinks:www.reperi.in</string>
+	</array>
 </dict>
 </plist>

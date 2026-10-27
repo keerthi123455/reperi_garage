@@ -9,8 +9,15 @@
 # and just asks Cloudflare "has this changed?" (ETag). Unchanged files come
 # back as a tiny 304, so it stays fast but is never stale.
 #
-# Keep this as ONE rule. Cloudflare Pages merges headers from every rule that
-# matches a path, so overlapping rules produce conflicting Cache-Control values.
+# Keep this as ONE Cache-Control rule. Cloudflare Pages merges headers from
+# every rule that matches a path, so overlapping rules produce conflicting
+# Cache-Control values. (The rule below only sets Content-Type, so it merges
+# cleanly with this one.)
 
 /*
   Cache-Control: no-cache
+
+# iOS reads this file (no extension) to let the app open reperi.in/community
+# links; Apple expects it served as JSON.
+/.well-known/apple-app-site-association
+  Content-Type: application/json

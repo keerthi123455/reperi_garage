@@ -63,3 +63,10 @@ entrypoint = "./functions/subscription-reminders/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/invoice-api/index.ts"
+
+# 21-point inspection report (called by the DB after the 21st photo, and by
+# the fleet app to download). Checks its own secret / the fleet + payment.
+[functions.fleet-inspection]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/fleet-inspection/index.ts"

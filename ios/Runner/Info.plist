@@ -94,5 +94,9 @@
     </array>
   </dict>
 </array>
+<!-- Links (Community share links, Supabase reset) are handled by app_links,
+     not Flutter's built-in deep linking. -->
+<key>FlutterDeepLinkingEnabled</key>
+<false/>
 </dict>
 </plist>

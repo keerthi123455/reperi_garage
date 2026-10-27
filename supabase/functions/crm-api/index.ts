@@ -29,6 +29,17 @@
 //      { action: "qr_activate", id } / { action: "qr_delete", id }
 //   → the payment QR shown when garages / delivery partners / washers
 //     collect payment (supabase/payment_collection.sql). One is "in use".
+// POST { action: "community_list" }
+//   → { reels, posts } — everything in the app's Community page, hidden too.
+// POST { action: "community_upload_urls", kind: "reel"|"post", files: [{type, size}] }
+//   → [{ path, signedUrl }] — the CRM uploads each file straight to storage
+//     (community-media) with a PUT, so big videos never pass through here.
+// POST { action: "community_save_reel", video_path, poster_path?, caption, duration?, width?, height?, publish }
+// POST { action: "community_save_post", body, media: [{path, type, width?, height?, poster_path?, duration?}], publish }
+// POST { action: "community_update", kind, id, text?, publish? }
+//   → edit the caption / brief, or show / hide it in the app.
+// POST { action: "community_delete", kind, id }
+//   → removes it from the app and deletes its files.
 // POST { action: "me" }
 //   → { email } — used by the page to confirm access after sign-in.
 
@@ -553,6 +564,164 @@ async function qrDelete(client: SupabaseClient, body: Row) {
   return await qrList(client);
 }
 
+// ── Community (app: Content reels + Recent work posts) ────────────────
+// Tables + bucket: supabase/community.sql. Files are uploaded by the CRM
+// page straight to storage with one-time signed upload URLs from here.
+const COMMUNITY_BUCKET = "community-media";
+const COMMUNITY_MAX_BYTES = 50 * 1024 * 1024;
+const COMMUNITY_TYPES: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+  "video/webm": "webm",
+};
+const COMMUNITY_TABLE = { reel: "community_reels", post: "community_posts" } as const;
+type CommunityKind = keyof typeof COMMUNITY_TABLE;
+
+function communityKind(v: unknown): CommunityKind {
+  if (v === "reel" || v === "post") return v;
+  throw new HttpError(400, "bad_request", "Unknown item type.");
+}
+
+/** A path we handed out ourselves: reels/… or posts/… with a known extension. */
+function communityPath(v: unknown, folder: "reels" | "posts", what: string): string {
+  const p = String(v ?? "");
+  if (!new RegExp(`^${folder}/\\d{4}/\\d{2}/[0-9a-f-]{36}\\.(jpg|png|webp|mp4|mov|webm)$`).test(p)) {
+    throw new HttpError(400, "bad_file", `The ${what} didn't upload properly. Please choose it again.`);
+  }
+  return p;
+}
+
+function numOrNull(v: unknown, max = 100000): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 && n <= max ? Math.round(n * 100) / 100 : null;
+}
+
+async function communityList(client: SupabaseClient) {
+  const [reels, posts] = await Promise.all([
+    client.from("community_reels").select("*").order("created_at", { ascending: false }).limit(500),
+    client.from("community_posts").select("*").order("created_at", { ascending: false }).limit(500),
+  ]);
+  if (reels.error) throw reels.error;
+  if (posts.error) throw posts.error;
+  return { reels: reels.data ?? [], posts: posts.data ?? [] };
+}
+
+async function communityUploadUrls(client: SupabaseClient, body: Row) {
+  const kind = communityKind(body.kind);
+  const files = Array.isArray(body.files) ? body.files : [];
+  // A post: up to 10 photos/videos plus a cover image for each video.
+  if (!files.length || files.length > 20) throw new HttpError(400, "bad_request", "Too many files at once — 10 photos or videos per post.");
+  const folder = kind === "reel" ? "reels" : "posts";
+  const now = new Date();
+  const month = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  const out: { path: string; signedUrl: string }[] = [];
+  for (const f of files) {
+    const type = String(f?.type ?? "").toLowerCase();
+    const ext = COMMUNITY_TYPES[type];
+    if (!ext) throw new HttpError(400, "bad_type", "Only JPG, PNG, WebP photos and MP4, MOV, WebM videos can be uploaded.");
+    const size = Number(f?.size ?? 0);
+    if (!(size > 0)) throw new HttpError(400, "bad_file", "One of the files is empty.");
+    if (size > COMMUNITY_MAX_BYTES) throw new HttpError(400, "too_big", "Each file must be 50 MB or less.");
+    const path = `${folder}/${month}/${crypto.randomUUID()}.${ext}`;
+    const { data, error } = await client.storage.from(COMMUNITY_BUCKET).createSignedUploadUrl(path);
+    if (error || !data) throw error ?? new Error("Could not prepare the upload.");
+    out.push({ path, signedUrl: data.signedUrl });
+  }
+  return { uploads: out };
+}
+
+async function communitySaveReel(client: SupabaseClient, body: Row, user: User) {
+  const caption = String(body.caption ?? "").trim().slice(0, 2200);
+  const row = {
+    video_path: communityPath(body.video_path, "reels", "video"),
+    poster_path: body.poster_path ? communityPath(body.poster_path, "reels", "cover image") : null,
+    caption,
+    duration_seconds: numOrNull(body.duration, 3600),
+    width: numOrNull(body.width, 10000),
+    height: numOrNull(body.height, 10000),
+    is_published: body.publish !== false,
+    created_by: user.email ?? null,
+  };
+  const { error } = await client.from("community_reels").insert(row);
+  if (error) throw error;
+  return await communityList(client);
+}
+
+async function communitySavePost(client: SupabaseClient, body: Row, user: User) {
+  const text = String(body.body ?? "").trim().slice(0, 5000);
+  if (!text) throw new HttpError(400, "bad_request", "Write a short brief about the work.");
+  const items = Array.isArray(body.media) ? body.media : [];
+  if (items.length < 1 || items.length > 10) throw new HttpError(400, "bad_request", "Add between 1 and 10 photos or videos.");
+  const media = items.map((m: Row) => {
+    const type = m?.type === "video" ? "video" : "image";
+    const item: Row = {
+      path: communityPath(m?.path, "posts", type === "video" ? "video" : "photo"),
+      type,
+      width: numOrNull(m?.width, 10000),
+      height: numOrNull(m?.height, 10000),
+    };
+    if (type === "video") {
+      item.poster_path = m?.poster_path ? communityPath(m.poster_path, "posts", "video cover") : null;
+      item.duration = numOrNull(m?.duration, 3600);
+    }
+    return item;
+  });
+  const { error } = await client.from("community_posts").insert({
+    body: text,
+    media,
+    is_published: body.publish !== false,
+    created_by: user.email ?? null,
+  });
+  if (error) throw error;
+  return await communityList(client);
+}
+
+async function communityUpdate(client: SupabaseClient, body: Row) {
+  const kind = communityKind(body.kind);
+  const id = String(body.id ?? "");
+  const patch: Row = {};
+  if (typeof body.text === "string") {
+    const text = body.text.trim();
+    if (kind === "post" && !text) throw new HttpError(400, "bad_request", "The brief can't be empty.");
+    patch[kind === "reel" ? "caption" : "body"] = text.slice(0, kind === "reel" ? 2200 : 5000);
+  }
+  if (typeof body.publish === "boolean") patch.is_published = body.publish;
+  if (!id || !Object.keys(patch).length) throw new HttpError(400, "bad_request", "Nothing to change.");
+  const { data, error } = await client.from(COMMUNITY_TABLE[kind]).update(patch).eq("id", id).select("id");
+  if (error) throw error;
+  if (!data?.length) throw new HttpError(404, "not_found", "That item no longer exists.");
+  return await communityList(client);
+}
+
+async function communityDelete(client: SupabaseClient, body: Row) {
+  const kind = communityKind(body.kind);
+  const id = String(body.id ?? "");
+  const { data: row, error: readErr } = await client.from(COMMUNITY_TABLE[kind]).select("*").eq("id", id).maybeSingle();
+  if (readErr) throw readErr;
+  if (!row) throw new HttpError(404, "not_found", "That item no longer exists.");
+  const paths: string[] = [];
+  if (kind === "reel") {
+    if (row.video_path) paths.push(String(row.video_path));
+    if (row.poster_path) paths.push(String(row.poster_path));
+  } else {
+    for (const m of (Array.isArray(row.media) ? row.media : []) as Row[]) {
+      if (m?.path) paths.push(String(m.path));
+      if (m?.poster_path) paths.push(String(m.poster_path));
+    }
+  }
+  const { error } = await client.from(COMMUNITY_TABLE[kind]).delete().eq("id", id);
+  if (error) throw error;
+  // Files last: a failed cleanup never leaves a broken item in the app.
+  if (paths.length) {
+    const { error: rmErr } = await client.storage.from(COMMUNITY_BUCKET).remove(paths);
+    if (rmErr) console.error("community_delete: files not removed", rmErr);
+  }
+  return await communityList(client);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -585,6 +754,18 @@ Deno.serve(async (req: Request) => {
         return json(await qrActivate(client, body));
       case "qr_delete":
         return json(await qrDelete(client, body));
+      case "community_list":
+        return json(await communityList(client));
+      case "community_upload_urls":
+        return json(await communityUploadUrls(client, body));
+      case "community_save_reel":
+        return json(await communitySaveReel(client, body, user));
+      case "community_save_post":
+        return json(await communitySavePost(client, body, user));
+      case "community_update":
+        return json(await communityUpdate(client, body));
+      case "community_delete":
+        return json(await communityDelete(client, body));
       case "invoice_issue": {
         const table = String(body.table ?? "");
         const id = String(body.id ?? "");

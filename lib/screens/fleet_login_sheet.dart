@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'fleet_order_sheet.dart';
 import 'fleet_dashboard_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../theme/fleet_theme.dart';
 import '../widgets/error_display.dart';
 
 // Same project URL/anon key as Supabase.initialize() in main.dart — used
@@ -25,6 +26,7 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
   final _passwordController = TextEditingController();
 
   bool _loading = false;
+  bool _showPassword = false;
 
   @override
   void dispose() {
@@ -38,18 +40,20 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF262626),
+        backgroundColor: F.card,
+        surfaceTintColor: F.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            const Icon(Icons.error_rounded, color: Colors.red),
+            Icon(Icons.error_rounded, color: F.red),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+                style: TextStyle(
+                  color: F.txt,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
@@ -57,21 +61,22 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
         ),
         content: Text(
           message,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 14,
+          style: TextStyle(
+            color: F.mut,
+            fontSize: 16,
             height: 1.5,
           ),
         ),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFD4A017),
+              backgroundColor: F.yellow,
+              elevation: 0,
             ),
             onPressed: () => Navigator.pop(context),
             child: const Text(
               'OK',
-              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+              style: TextStyle(color: F.navy, fontWeight: FontWeight.w900, fontSize: 16),
             ),
           ),
         ],
@@ -84,18 +89,20 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF262626),
+        backgroundColor: F.card,
+        surfaceTintColor: F.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            const Icon(Icons.check_circle, color: Colors.green),
+            Icon(Icons.check_circle, color: F.green),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+                style: TextStyle(
+                  color: F.txt,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
@@ -103,16 +110,17 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
         ),
         content: Text(
           message,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 14,
+          style: TextStyle(
+            color: F.mut,
+            fontSize: 16,
             height: 1.5,
           ),
         ),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade700,
+              backgroundColor: F.greenSolid,
+              elevation: 0,
             ),
             onPressed: () {
               Navigator.pop(context);
@@ -120,7 +128,7 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
             },
             child: const Text(
               'OK',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16),
             ),
           ),
         ],
@@ -159,279 +167,236 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
     }
   }
 
+  Future<void> _login() async {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      final username = _usernameController.text.trim();
+      final password = _passwordController.text.trim();
+
+      // Validate fields not empty
+      if (username.isEmpty || password.isEmpty) {
+        setState(() {
+          _loading = false;
+        });
+        _showErrorDialog(
+          'Missing Fields',
+          'Please enter both username and password.',
+        );
+        return;
+      }
+
+      // Verified server-side against a bcrypt hash so
+      // the password never travels as a plain-text
+      // table filter.
+      final result = await Supabase.instance.client
+          .functions
+          .invoke(
+        'fleet-login',
+        body: {
+          'username': username,
+          'password': password,
+        },
+      );
+
+      if (!mounted) return;
+
+      final data = result.data as Map<String, dynamic>?;
+      final fleetUser = data?['success'] == true
+          ? data!['fleetUser'] as Map<String, dynamic>
+          : null;
+
+      if (fleetUser != null) {
+        // Success - Login successful
+        final prefs = await SharedPreferences.getInstance();
+
+        await prefs.setBool('fleet_logged_in', true);
+        await prefs.setString('fleet_company', fleetUser['company_name'] ?? 'N/A');
+        await prefs.setString('fleet_username', fleetUser['username']);
+        await prefs.setString('fleet_user_id', fleetUser['id'].toString());
+
+        if (!mounted) return;
+
+        Navigator.pop(context);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => FleetDashboardScreen(
+              fleetUser: fleetUser,
+            ),
+          ),
+        );
+      } else {
+        // Error - Invalid credentials
+        setState(() {
+          _loading = false;
+        });
+        _showErrorDialog(
+          'Login Failed',
+          'Invalid username or password. Please try again.',
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+      });
+      ErrorDisplay.showPremiumError(
+        context,
+        error: e,
+        customMessage:
+            'Could not log in. Please check your username and password and try again.',
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1C1C1C),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-      ),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Handle bar
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF333333),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 28),
-
-                // Icon + Title
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD4A017).withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Icon(
-                        Icons.local_shipping_rounded,
-                        color: Color(0xFFD4A017),
-                        size: 28,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Fleet Login',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w900,
-                          ),
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Container(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        decoration: BoxDecoration(
+          color: F.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+                child: AutofillGroup(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 44,
+                          height: 5,
+                          decoration: BoxDecoration(color: F.line, borderRadius: BorderRadius.circular(4)),
                         ),
-                        Text(
-                          'Manage your vehicle fleet',
-                          style: TextStyle(
-                            color: Colors.white54,
-                            fontSize: 13,
+                      ),
+                      const SizedBox(height: 22),
+                      Row(
+                        children: [
+                          Container(
+                            width: 54,
+                            height: 54,
+                            decoration: const BoxDecoration(color: F.yellow, shape: BoxShape.circle),
+                            child: const Icon(Icons.local_shipping_rounded, color: F.navy, size: 28),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 32),
-                _label('Username'),
-                const SizedBox(height: 8),
-
-                _field(
-                  controller: _usernameController,
-                  hint: 'Enter username',
-                  icon: Icons.person_rounded,
-                ),
-
-                const SizedBox(height: 20),
-
-                _label('Password'),
-                const SizedBox(height: 8),
-
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF262626),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: const Color(0xFF3A3A3A),
-                    ),
-                  ),
-                  child: TextField(
-                    controller: _passwordController,
-                    obscureText: true,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      hintText: 'Enter password',
-                      hintStyle: TextStyle(
-                        color: Colors.white54,
-                      ),
-                      prefixIcon: Icon(
-                        Icons.lock_rounded,
-                        color: Color(0xFFD4A017),
-                        size: 20,
-                      ),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 16,
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Forgot Password Button
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _showForgotPasswordDialog,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: const Text(
-                      'Forgot Password?',
-                      style: TextStyle(
-                        color: Color(0xFFD4A017),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 32),
-
-                // Submit Button
-                SizedBox(
-                  width: double.infinity,
-                  height: 58,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFD4A017),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
-                    onPressed: _loading
-                        ? null
-                        : () async {
-                            setState(() {
-                              _loading = true;
-                            });
-
-                            try {
-                              final username = _usernameController.text.trim();
-                              final password = _passwordController.text.trim();
-
-                              // Validate fields not empty
-                              if (username.isEmpty || password.isEmpty) {
-                                setState(() {
-                                  _loading = false;
-                                });
-                                _showErrorDialog(
-                                  'Missing Fields',
-                                  'Please enter both username and password.',
-                                );
-                                return;
-                              }
-
-                              // Verified server-side against a bcrypt hash so
-                              // the password never travels as a plain-text
-                              // table filter.
-                              final result = await Supabase.instance.client
-                                  .functions
-                                  .invoke(
-                                'fleet-login',
-                                body: {
-                                  'username': username,
-                                  'password': password,
-                                },
-                              );
-
-                              if (!mounted) return;
-
-                              final data = result.data as Map<String, dynamic>?;
-                              final fleetUser = data?['success'] == true
-                                  ? data!['fleetUser'] as Map<String, dynamic>
-                                  : null;
-
-                              if (fleetUser != null) {
-                                // Success - Login successful
-                                final prefs = await SharedPreferences.getInstance();
-
-                                await prefs.setBool('fleet_logged_in', true);
-                                await prefs.setString('fleet_company', fleetUser['company_name'] ?? 'N/A');
-                                await prefs.setString('fleet_username', fleetUser['username']);
-                                await prefs.setString('fleet_user_id', fleetUser['id'].toString());
-
-                                if (!mounted) return;
-
-                                Navigator.pop(context);
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => FleetDashboardScreen(
-                                      fleetUser: fleetUser,
-                                    ),
-                                  ),
-                                );
-                              } else {
-                                // Error - Invalid credentials
-                                setState(() {
-                                  _loading = false;
-                                });
-                                _showErrorDialog(
-                                  'Login Failed',
-                                  'Invalid username or password. Please try again.',
-                                );
-                              }
-                            } catch (e) {
-                              if (!mounted) return;
-                              setState(() {
-                                _loading = false;
-                              });
-                              ErrorDisplay.showPremiumError(
-                                context,
-                                error: e,
-                                customMessage:
-                                    'Could not log in. Please check your username and password and try again.',
-                              );
-                            }
-                          },
-                    child: _loading
-                        ? const SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: CircularProgressIndicator(
-                              color: Colors.black,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Text(
-                            'LOGIN',
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 15,
-                              letterSpacing: 1.2,
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Fleet login',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(color: F.txt, fontSize: 28, fontWeight: FontWeight.w900)),
+                                Text('Request pickups and track every vehicle',
+                                    style: TextStyle(color: F.mut, fontSize: 15.5, fontWeight: FontWeight.w600, height: 1.3)),
+                              ],
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 26),
+                      _label('USERNAME'),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _usernameController,
+                        autofillHints: const [AutofillHints.username],
+                        textInputAction: TextInputAction.next,
+                        autocorrect: false,
+                        cursorColor: F.accent,
+                        style: TextStyle(color: F.txt, fontSize: 18, fontWeight: FontWeight.w700),
+                        decoration: F.input('Enter username',
+                            prefixIcon: Icon(Icons.person_rounded, color: F.accent, size: 24)),
+                      ),
+                      const SizedBox(height: 18),
+                      _label('PASSWORD'),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _passwordController,
+                        obscureText: !_showPassword,
+                        autofillHints: const [AutofillHints.password],
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) {
+                          if (!_loading) _login();
+                        },
+                        cursorColor: F.accent,
+                        style: TextStyle(color: F.txt, fontSize: 18, fontWeight: FontWeight.w700),
+                        decoration: F.input(
+                          'Enter password',
+                          prefixIcon: Icon(Icons.lock_rounded, color: F.accent, size: 24),
+                          suffixIcon: IconButton(
+                            tooltip: _showPassword ? 'Hide password' : 'Show password',
+                            icon: Icon(_showPassword ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                                color: F.mut),
+                            onPressed: () => setState(() => _showPassword = !_showPassword),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        height: 60,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: F.yellow,
+                            foregroundColor: F.navy,
+                            disabledBackgroundColor: F.yellow.withOpacity(0.6),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          ),
+                          onPressed: _loading ? null : _login,
+                          child: _loading
+                              ? const SizedBox(
+                                  height: 24,
+                                  width: 24,
+                                  child: CircularProgressIndicator(color: F.navy, strokeWidth: 2.6),
+                                )
+                              : const FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text('LOG IN',
+                                      maxLines: 1,
+                                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 19, letterSpacing: 0.6)),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: TextButton(
+                          onPressed: _showForgotPasswordDialog,
+                          child: Text('Forgot password?',
+                              style: TextStyle(color: F.accent, fontSize: 16.5, fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.verified_user_rounded, color: F.mut, size: 17),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text('Only for registered fleet partners',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: F.mut, fontSize: 14, fontWeight: FontWeight.w700)),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-
-                const SizedBox(height: 16),
-
-                // Note
-                const Center(
-                  child: Text(
-                    'Authorized Fleet Access Only',
-                    style: TextStyle(color: Colors.white38, fontSize: 12),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-              ],
+              ),
             ),
           ),
         ),
@@ -442,39 +407,11 @@ class _FleetLoginSheetState extends State<FleetLoginSheet> {
   Widget _label(String text) {
     return Text(
       text,
-      style: const TextStyle(
-        color: Colors.white70,
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
+      style: TextStyle(
+        color: F.mut,
+        fontSize: 14,
+        fontWeight: FontWeight.w800,
         letterSpacing: 0.5,
-      ),
-    );
-  }
-
-  Widget _field({
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF262626),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF3A3A3A)),
-      ),
-      child: TextField(
-        controller: controller,
-        keyboardType: keyboardType,
-        style: const TextStyle(color: Colors.white),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(color: Colors.white54),
-          prefixIcon: Icon(icon, color: const Color(0xFFD4A017), size: 20),
-          border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        ),
       ),
     );
   }
@@ -536,12 +473,12 @@ class _FleetForgotPasswordDialogState
 
   InputDecoration _fieldDecoration(String hint) => InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white54),
+        hintStyle: TextStyle(color: F.faint),
         filled: true,
-        fillColor: const Color(0xFF3A3A3A),
+        fillColor: F.sunken,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFF333333)),
+          borderSide: BorderSide(color: F.line),
         ),
       );
 
@@ -549,10 +486,10 @@ class _FleetForgotPasswordDialogState
         padding: const EdgeInsets.only(bottom: 8),
         child: Text(
           text,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+          style: TextStyle(
+            color: F.mut,
+            fontSize: 14.5,
+            fontWeight: FontWeight.w700,
           ),
         ),
       );
@@ -670,11 +607,13 @@ class _FleetForgotPasswordDialogState
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Reset Password'),
-      backgroundColor: const Color(0xFF262626),
-      titleTextStyle: const TextStyle(
-        color: Colors.white,
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
+      backgroundColor: F.card,
+      surfaceTintColor: F.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      titleTextStyle: TextStyle(
+        color: F.txt,
+        fontSize: 21,
+        fontWeight: FontWeight.w800,
       ),
       content: SingleChildScrollView(
         child: Column(
@@ -686,7 +625,7 @@ class _FleetForgotPasswordDialogState
                   TextField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: F.txt, fontSize: 17, fontWeight: FontWeight.w600),
                     enabled: !_isLoading,
                     decoration: _fieldDecoration('your@email.com'),
                   ),
@@ -694,7 +633,7 @@ class _FleetForgotPasswordDialogState
                   _fieldLabel('Username registered with Reperi'),
                   TextField(
                     controller: _usernameController,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: F.txt, fontSize: 17, fontWeight: FontWeight.w600),
                     enabled: !_isLoading,
                     decoration: _fieldDecoration('your_username'),
                   ),
@@ -702,14 +641,14 @@ class _FleetForgotPasswordDialogState
               : [
                   Text(
                     'We sent a 6-digit code to ${_emailController.text.trim()}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    style: TextStyle(color: F.mut, fontSize: 15),
                   ),
                   const SizedBox(height: 16),
                   _fieldLabel('Verification Code'),
                   TextField(
                     controller: _otpController,
                     keyboardType: TextInputType.number,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: F.txt, fontSize: 17, fontWeight: FontWeight.w600),
                     enabled: !_isLoading,
                     decoration: _fieldDecoration('123456'),
                   ),
@@ -718,7 +657,7 @@ class _FleetForgotPasswordDialogState
                   TextField(
                     controller: _passwordController,
                     obscureText: true,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: F.txt, fontSize: 17, fontWeight: FontWeight.w600),
                     enabled: !_isLoading,
                     decoration: _fieldDecoration('Enter new password'),
                   ),
@@ -730,14 +669,15 @@ class _FleetForgotPasswordDialogState
           // Keyboard dismiss now happens in dispose(), not here — doing it
           // right before pop is what raced the route teardown.
           onPressed: _isLoading ? null : () => Navigator.pop(context),
-          child: const Text(
+          child: Text(
             'Cancel',
-            style: TextStyle(color: Color(0xFFD4A017)),
+            style: TextStyle(color: F.accent, fontWeight: FontWeight.w800, fontSize: 16),
           ),
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFD4A017),
+            backgroundColor: F.yellow,
+            elevation: 0,
           ),
           onPressed: _isLoading ? null : (_step == 0 ? _sendCode : _confirmReset),
           child: _isLoading
@@ -746,12 +686,12 @@ class _FleetForgotPasswordDialogState
                   width: 16,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                    valueColor: AlwaysStoppedAnimation<Color>(F.navy),
                   ),
                 )
               : Text(
                   _step == 0 ? 'Send Code' : 'Reset Password',
-                  style: const TextStyle(color: Colors.black),
+                  style: const TextStyle(color: F.navy, fontWeight: FontWeight.w900, fontSize: 16),
                 ),
         ),
       ],

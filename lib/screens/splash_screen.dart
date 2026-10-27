@@ -8,6 +8,7 @@ import 'reset_password_screen.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
 import '../main.dart' show isPasswordRecoveryInProgress;
+import '../services/community_links.dart';
 import '../services/guest_mode.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -187,6 +188,10 @@ _navigate();
   @override
 void dispose() {
   _authSubscription?.cancel();
+
+  // The first real screen is up — open a shared Community link (reel /
+  // post) that arrived while the splash was showing.
+  CommunityLinks.markReady();
 
   _fadeController.dispose();
   _progressController.dispose();

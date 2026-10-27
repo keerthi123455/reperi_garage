@@ -1,8 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/booking_api.dart';
+import '../theme/fleet_theme.dart';
 import '../utils/secure_storage_path.dart';
 import '../widgets/error_display.dart';
 
@@ -15,18 +18,13 @@ class FleetOrderSheet extends StatefulWidget {
   });
 
   @override
-  State<FleetOrderSheet> createState() =>
-      _FleetOrderSheetState();
+  State<FleetOrderSheet> createState() => _FleetOrderSheetState();
 }
 
-class _FleetOrderSheetState
-    extends State<FleetOrderSheet> {
+class _FleetOrderSheetState extends State<FleetOrderSheet> with FleetThemeListener {
+  final _vehicleModelController = TextEditingController();
 
-  final _vehicleModelController =
-      TextEditingController();
-
-  final _carNumberController =
-      TextEditingController();
+  final _carNumberController = TextEditingController();
 
   // ── Web-safe image state ──
   // dart:io File does NOT work on Flutter Web.
@@ -37,95 +35,44 @@ class _FleetOrderSheetState
 
   final _picker = ImagePicker();
 
-  Future<void> _pickImage() async {
-    final source = await _showImageSourceSheet();
-    if (source == null) return;
-
-    // Note: on web, ImageSource.camera opens the browser's webcam capture
-    // UI if a camera is available and permission is granted — it does NOT
-    // crash, but it may not be available on desktop browsers without a
-    // webcam. ImageSource.gallery always works everywhere as a fallback.
-    final picked = await _picker.pickImage(
-      source: source,
-      imageQuality: 70,
-    );
-
-    if (picked == null) return;
-
-    // readAsBytes() works identically on web, mobile, and desktop.
-    final bytes = await picked.readAsBytes();
-
-    if (!mounted) return;
-    setState(() {
-      _imageBytes = bytes;
-    });
+  @override
+  void dispose() {
+    _vehicleModelController.dispose();
+    _carNumberController.dispose();
+    super.dispose();
   }
 
-  Future<ImageSource?> _showImageSourceSheet() {
-    return showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: const Color(0xFF262626),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Add Vehicle Photo',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: const Icon(Icons.camera_alt_rounded,
-                    color: Color(0xFFD4A017)),
-                title: const Text('Take Photo',
-                    style: TextStyle(color: Colors.white)),
-                onTap: () =>
-                    Navigator.pop(sheetContext, ImageSource.camera),
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library_rounded,
-                    color: Color(0xFFD4A017)),
-                title: const Text('Choose from Gallery',
-                    style: TextStyle(color: Colors.white)),
-                onTap: () =>
-                    Navigator.pop(sheetContext, ImageSource.gallery),
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        );
-      },
-    );
+  // Note: on web, ImageSource.camera opens the browser's webcam capture UI if
+  // a camera is available and permission is granted; gallery always works.
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final picked = await _picker.pickImage(source: source, imageQuality: 70);
+      if (picked == null) return;
+      // readAsBytes() works identically on web, mobile, and desktop.
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+      setState(() => _imageBytes = bytes);
+    } catch (e) {
+      if (mounted) {
+        ErrorDisplay.showPremiumError(context, error: e, customMessage: 'Could not open the photo. Please try again.');
+      }
+    }
   }
 
   Future<void> _submit() async {
 
-    if (_vehicleModelController.text.isEmpty ||
-        _carNumberController.text.isEmpty ||
+    if (_vehicleModelController.text.trim().isEmpty ||
+        _carNumberController.text.trim().isEmpty ||
         _imageBytes == null) {
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Please fill all fields',
+            _carNumberController.text.trim().isEmpty
+                ? 'Enter the vehicle number'
+                : _vehicleModelController.text.trim().isEmpty
+                    ? 'Enter the vehicle model'
+                    : 'Add a photo of the vehicle',
           ),
         ),
       );
@@ -160,38 +107,23 @@ class _FleetOrderSheetState
       // .dart and fleet_request_view_screen.dart).
       final imageUrl = 'fleet/$fileName';
 
-      await Supabase.instance.client
-          .from('fleet_pickup_requests')
-          .insert({
-
-        'fleet_user_id':
-            widget.fleetUser['id'],
-
-        'company_name':
-            widget.fleetUser['company_name'],
-
-        'username':
-            widget.fleetUser['username'],
-
-        'vehicle_model':
-            _vehicleModelController.text.trim(),
-
-        'car_number':
-            _carNumberController.text.trim(),
-
-        'vehicle_photo_url':
-            imageUrl,
-
-        'status':
-            'Pending',
-      });
+      // Through the booking server: it picks the garage and the delivery
+      // partner (CRM → Assignment rules) and creates the request.
+      await BookingApi.fleetPickupCreate(
+        fleetUserId: widget.fleetUser['id'],
+        companyName: widget.fleetUser['company_name']?.toString(),
+        username: widget.fleetUser['username']?.toString(),
+        vehicleModel: _vehicleModelController.text.trim(),
+        carNumber: _carNumberController.text.trim().toUpperCase(),
+        vehiclePhotoPath: imageUrl,
+      );
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content:
-              Text('Pickup request submitted'),
+              Text('Pickup requested — we\'ll update you here'),
         ),
       );
 
@@ -203,7 +135,7 @@ class _FleetOrderSheetState
         ErrorDisplay.showPremiumError(
           context,
           error: e,
-          customMessage: 'Could not submit your pickup request. Please try again.',
+          customMessage: e is BookingApiException ? e.message : 'Could not submit your pickup request. Please try again.',
         );
       }
 
@@ -218,117 +150,253 @@ class _FleetOrderSheetState
 
   @override
   Widget build(BuildContext context) {
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF1C1C1C),
-
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1C1C1C),
-        title: const Text(
-          'Fleet Pickup Request',
-        ),
-      ),
-
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-
-            child: Column(
-              children: [
-
-                TextField(
-                  controller:
-                      _vehicleModelController,
-                  style:
-                      const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Vehicle Model',
-                    labelStyle:
-                        TextStyle(color: Colors.white),
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Scaffold(
+        backgroundColor: F.bg,
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                    child: Row(
+                      children: [
+                        FleetIconButton(
+                          icon: Icons.arrow_back_rounded,
+                          tooltip: 'Back',
+                          onTap: () => Navigator.maybePop(context),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Request pickup',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: F.txt, fontSize: 21, fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        const FleetThemeButton(),
+                      ],
+                    ),
                   ),
-                ),
-
-                const SizedBox(height: 20),
-
-                TextField(
-                  controller:
-                      _carNumberController,
-                  style:
-                      const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Car Number',
-                    labelStyle:
-                        TextStyle(color: Colors.white),
-                  ),
-                ),
-
-                const SizedBox(height: 25),
-
-                GestureDetector(
-                  onTap: _pickImage,
-                  child: Container(
-                    height: 220,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      borderRadius:
-                          BorderRadius.circular(18),
-                      border: Border.all(
-                        color: const Color(0xFFD4A017),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            "We'll collect the vehicle, inspect it and send you photos and a price before any work.",
+                            style: TextStyle(color: F.mut, fontSize: 16, fontWeight: FontWeight.w600, height: 1.45),
+                          ),
+                          _label('VEHICLE NUMBER'),
+                          _plateField(),
+                          _label('VEHICLE MODEL'),
+                          TextField(
+                            controller: _vehicleModelController,
+                            textCapitalization: TextCapitalization.words,
+                            textInputAction: TextInputAction.done,
+                            cursorColor: F.accent,
+                            style: TextStyle(color: F.txt, fontSize: 18, fontWeight: FontWeight.w700),
+                            decoration: F.input('e.g. Tata Ace Gold'),
+                          ),
+                          _label('VEHICLE PHOTO'),
+                          _photo(),
+                          const SizedBox(height: 8),
+                          Text(
+                            'A clear photo of the front helps us find the vehicle.',
+                            style: TextStyle(color: F.mut, fontSize: 14.5, fontWeight: FontWeight.w600, height: 1.4),
+                          ),
+                          const SizedBox(height: 26),
+                          SizedBox(
+                            height: 62,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: F.yellow,
+                                foregroundColor: F.navy,
+                                disabledBackgroundColor: F.yellow.withOpacity(0.6),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                              ),
+                              onPressed: _loading ? null : _submit,
+                              child: _loading
+                                  ? const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(color: F.navy, strokeWidth: 2.6),
+                                    )
+                                  : const FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text('REQUEST PICKUP',
+                                          maxLines: 1,
+                                          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, letterSpacing: 0.4)),
+                                    ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    child: _imageBytes == null
-                        ? const Center(
-                            child: Text(
-                              'Click To Upload Vehicle Photo',
-                              style: TextStyle(
-                                color: Colors.white,
-                              ),
-                            ),
-                          )
-                        : ClipRRect(
-                            borderRadius:
-                                BorderRadius.circular(18),
-                            child: Image.memory(
-                              _imageBytes!,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
                   ),
-                ),
-
-                const SizedBox(height: 30),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 58,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          const Color(0xFFD4A017),
-                    ),
-                    onPressed:
-                        _loading ? null : _submit,
-                    child: _loading
-                        ? const CircularProgressIndicator(
-                            color: Colors.black,
-                          )
-                        : const Text(
-                            'REQUEST PICKUP',
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontWeight:
-                                  FontWeight.w900,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+
+  Widget _label(String t) => Padding(
+        padding: const EdgeInsets.only(top: 20, bottom: 8),
+        child: Text(t, style: TextStyle(color: F.mut, fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+      );
+
+  /// Number typed straight onto an Indian-style plate.
+  Widget _plateField() {
+    return Container(
+      height: 66,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF111111), width: 2.6),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            width: 26,
+            color: const Color(0xFF1A4FB5),
+            alignment: Alignment.center,
+            child: const RotatedBox(
+              quarterTurns: 3,
+              child: Text('IND', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
+            ),
+          ),
+          Expanded(
+            child: Center(
+              child: TextField(
+                controller: _carNumberController,
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9 ]')),
+                  LengthLimitingTextInputFormatter(14),
+                  TextInputFormatter.withFunction(
+                    (oldV, newV) => newV.copyWith(text: newV.text.toUpperCase()),
+                  ),
+                ],
+                textInputAction: TextInputAction.next,
+                cursorColor: const Color(0xFF111111),
+                style: const TextStyle(
+                  color: Color(0xFF111111),
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2,
+                ),
+                decoration: const InputDecoration(
+                  hintText: 'KA 01 AB 1234',
+                  hintStyle: TextStyle(color: Color(0xFFB8B8B8), fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: 2),
+                  border: InputBorder.none,
+                  isCollapsed: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 14),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _photo() {
+    if (_imageBytes != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Stack(
+          children: [
+            Image.memory(_imageBytes!, height: 220, width: double.infinity, fit: BoxFit.cover),
+            Positioned(
+              right: 10,
+              bottom: 10,
+              child: Row(
+                children: [
+                  _overlayButton(Icons.photo_camera_rounded, 'Retake', () => _pickImage(ImageSource.camera)),
+                  const SizedBox(width: 8),
+                  _overlayButton(Icons.photo_library_rounded, 'Gallery', () => _pickImage(ImageSource.gallery)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    Widget choice(IconData icon, String label, ImageSource src) => Expanded(
+          child: Material(
+            color: F.card,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => _pickImage(src),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: F.line),
+                ),
+                child: Column(
+                  children: [
+                    Icon(icon, color: F.accent, size: 34),
+                    const SizedBox(height: 8),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(label,
+                          maxLines: 1, style: TextStyle(color: F.accent, fontSize: 16, fontWeight: FontWeight.w900)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: F.sunken,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: F.accent.withOpacity(0.6), width: 2),
+      ),
+      child: Row(
+        children: [
+          choice(Icons.photo_camera_rounded, 'Take photo', ImageSource.camera),
+          const SizedBox(width: 10),
+          choice(Icons.photo_library_rounded, 'From gallery', ImageSource.gallery),
+        ],
+      ),
+    );
+  }
+
+  Widget _overlayButton(IconData icon, String label, VoidCallback onTap) => Material(
+        color: Colors.black.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: Colors.white, size: 18),
+                const SizedBox(width: 6),
+                Text(label, style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.w800)),
+              ],
+            ),
+          ),
+        ),
+      );
 }

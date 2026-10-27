@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/login_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'services/catalog_service.dart';
+import 'services/community_links.dart';
 import 'services/guest_mode.dart';
 import 'services/push_notification_service.dart';
 import 'services/web_display.dart';
@@ -49,6 +50,10 @@ Future<void> main() async {
   // start loading them now (from the on-device cache first, then the
   // network) so package screens open instantly.
   CatalogService.ensureLoaded().catchError((_) {});
+
+  // Shared Community links (reperi.in/community/reel|post/...) open the
+  // app on that reel / post — caught here, opened after the splash.
+  CommunityLinks.init(navigatorKey);
 
   Supabase.instance.client.auth.onAuthStateChange.listen((data) {
     if (data.event == AuthChangeEvent.passwordRecovery) {

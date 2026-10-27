@@ -104,6 +104,28 @@ class BookingApi {
   }
 
   /// Where a checkout stands (and retries a failed save server-side).
+  /// Fleet "REQUEST PICKUP": the server creates the request and assigns the
+  /// garage and the delivery partner (CRM → Assignment rules).
+  static Future<String> fleetPickupCreate({
+    required Object? fleetUserId,
+    String? companyName,
+    String? username,
+    required String vehicleModel,
+    required String carNumber,
+    required String vehiclePhotoPath,
+  }) async {
+    final j = await _call({
+      'action': 'fleet_pickup_create',
+      'fleet_user_id': fleetUserId,
+      'company_name': companyName,
+      'username': username,
+      'vehicle_model': vehicleModel,
+      'car_number': carNumber,
+      'vehicle_photo_url': vehiclePhotoPath,
+    });
+    return (j['id'] ?? '').toString();
+  }
+
   static Future<BookingResult> status(String intentId) async {
     final data = await _call({'action': 'status', 'intent_id': intentId});
     return BookingResult.fromJson(data);

@@ -961,6 +961,107 @@ async function assign(
   return null;
 }
 
+// ── Fleet pickup request (fleet app → REQUEST PICKUP) ──────────────────
+// Garage: the fleet company's own garage (fleet_garage_rules), else the
+// default fleet garage (app_settings 'fleet_default_admin_id'); the Apple
+// review fleet goes to the review garage. Delivery partner: pool
+// 'delivery_fleet' in turn (the active delivery partners). Both are set in
+// the CRM → Assignment rules. See supabase/assignments.sql and
+// supabase/fleet_inspection.sql.
+
+async function fleetGarage(db: SupabaseClient, fleetUserId: string, username: string): Promise<string | null> {
+  if (username.toLowerCase() === "appreview@gmail.com") {
+    const { data } = await db.from("admin").select("id").eq("username", "appreview@gmail.com").maybeSingle();
+    if (data?.id) return String(data.id);
+  }
+  if (fleetUserId) {
+    const { data } = await db.from("fleet_garage_rules").select("admin_id").eq("fleet_user_id", fleetUserId).maybeSingle();
+    if (data?.admin_id) return String(data.admin_id);
+  }
+  const { data } = await db.from("app_settings").select("value").eq("key", "fleet_default_admin_id").maybeSingle();
+  const v = data?.value == null ? "" : String(data.value).replace(/"/g, "");
+  return v || null;
+}
+
+async function fleetDeliveryPartner(db: SupabaseClient, username: string, settings: Settings): Promise<string | null> {
+  if (settings.reviewOverrideEnabled && username) {
+    const { data } = await db.from("review_overrides").select("member_ref")
+      .eq("customer_email", username.toLowerCase()).eq("role", "delivery").maybeSingle();
+    if (data?.member_ref) return String(data.member_ref);
+  }
+  const { data, error } = await db.rpc("next_pool_member", { p_pool: "delivery_fleet" });
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
+
+async function pushTo(externalId: string, title: string, message: string, data: Record<string, unknown>) {
+  const key = Deno.env.get("ONESIGNAL_REST_API_KEY") ?? "";
+  if (!key) return;
+  try {
+    await fetch("https://api.onesignal.com/notifications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Key ${key}` },
+      body: JSON.stringify({
+        app_id: "6bc39a67-c05a-4ba4-b950-9ccfc8e9b9b6",
+        include_aliases: { external_id: [externalId] },
+        target_channel: "push",
+        headings: { en: title },
+        contents: { en: message },
+        data,
+      }),
+    });
+  } catch (e) {
+    console.error("fleet push failed", e);
+  }
+}
+
+export async function createFleetPickup(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+  settings: Settings,
+): Promise<{ id: string; delivery_partner_id: number | null; garage_id: string | null }> {
+  const rawFleetId = body.fleet_user_id;
+  const fleetUserId = rawFleetId === null || rawFleetId === undefined ? "" : String(rawFleetId).trim();
+  const username = String(body.username ?? "").trim();
+  const company = String(body.company_name ?? "").trim().slice(0, 120);
+  const model = String(body.vehicle_model ?? "").trim().slice(0, 80);
+  const number = String(body.car_number ?? "").trim().toUpperCase().replace(/\s+/g, " ").slice(0, 20);
+  const photo = String(body.vehicle_photo_url ?? "").trim();
+  if (!fleetUserId) throw new ApiError("sign_in_required", "Please log in to your fleet account again.", 401);
+  if (!model) throw new ApiError("invalid_request", "Enter the vehicle model.");
+  if (!number) throw new ApiError("invalid_request", "Enter the vehicle number.");
+  if (!photo.startsWith("fleet/") || photo.includes("..")) throw new ApiError("invalid_request", "Add a photo of the vehicle.");
+
+  const garage = await fleetGarage(db, fleetUserId, username);
+  const partner = await fleetDeliveryPartner(db, username, settings);
+  const now = new Date().toISOString();
+  const partnerId = partner === null ? null : (Number.isInteger(Number(partner)) ? Number(partner) : null);
+
+  const { data, error } = await db.from("fleet_pickup_requests").insert({
+    fleet_user_id: rawFleetId,
+    company_name: company || null,
+    username: username || null,
+    vehicle_model: model,
+    car_number: number,
+    vehicle_photo_url: photo,
+    status: "Pending",
+    ...(garage ? { assigned_to_admin_id: garage, assigned_at: now } : {}),
+    ...(partnerId !== null ? { delivery_partner_id: partnerId, delivery_stage: "assigned", stage_assigned_at: now } : {}),
+  }).select("id").single();
+  if (error) throw error;
+  const id = String(data.id);
+
+  if (partnerId !== null) {
+    await pushTo(
+      `delivery_${partnerId}`,
+      "New fleet pickup 🚚",
+      `${company || "A fleet"} — ${model} (${number}). Take the 21 inspection photos at pickup.`,
+      { type: "fleet_pickup", id },
+    );
+  }
+  return { id, delivery_partner_id: partnerId, garage_id: garage };
+}
+
 const toInt = (v: string | null) => (v === null ? null : Number.isInteger(Number(v)) ? Number(v) : null);
 
 // ── Finalize (create the booking) ──────────────────────────────────────

@@ -12,6 +12,10 @@
 //   → approves a garage add-on and returns a Razorpay order for its price
 // POST { action: "renew_create", subscription_id }
 //   → Razorpay order to renew a monthly wash plan (last 2 days / last day)
+// POST { action: "fleet_pickup_create", fleet_user_id, company_name, username,
+//        vehicle_model, car_number, vehicle_photo_url }
+//   → a fleet pickup request, with its garage and delivery partner assigned
+//     by the rules in the CRM (Assignment rules)
 // POST { action: "status",  intent_id }
 //   → current state of a checkout (for "finishing your booking…" retries)
 
@@ -22,6 +26,7 @@ import {
   buildQuote,
   corsHeaders,
   createAddonIntent,
+  createFleetPickup,
   createIntent,
   createRenewalIntent,
   createRazorpayOrder,
@@ -95,6 +100,10 @@ Deno.serve(async (req: Request) => {
           amount_paise: intent.amount * 100,
           currency: "INR",
         });
+      }
+
+      case "fleet_pickup_create": {
+        return json(await createFleetPickup(db, body, settings));
       }
 
       case "renew_create": {

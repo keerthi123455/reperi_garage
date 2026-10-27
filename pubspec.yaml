@@ -41,6 +41,12 @@ dependencies:
   ## PUSH NOTIFICATIONS
   onesignal_flutter: ^5.3.5
 
+  ## COMMUNITY — reels in the app, the share sheet, and opening shared
+  ## reperi.in/community/... links straight in the app
+  video_player: ^2.9.2
+  share_plus: ">=11.0.0 <13.0.0"
+  app_links: ^7.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -278,6 +278,48 @@ th.num { text-align: right; }
   .kpi .value { font-size: 22px; }
   .kv dt { margin-top: 6px; }
 }
+
+/* ── Community (app Content reels + Recent work posts) ── */
+.cm-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); align-items: start; }
+.cm-head { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 15px; margin-bottom: 4px; }
+.cm-head .hint { margin-left: auto; font-size: 12px; color: var(--muted); font-weight: 600; }
+.cm-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center;
+  border: 2px dashed var(--line); border-radius: 14px; padding: 26px 16px; cursor: pointer; color: var(--muted); font-weight: 700;
+  transition: border-color .15s, background .15s; }
+.cm-drop:hover, .cm-drop.over { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); }
+.cm-drop small { font-weight: 600; font-size: 12px; }
+.cm-reel { display: flex; gap: 16px; flex-wrap: wrap; }
+.cm-reel video, .cm-reel .cm-ph { width: 150px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 12px; background: #000; flex: none; }
+.cm-reel .cm-side { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 10px; }
+.cm-meta { font-size: 12px; color: var(--muted); font-weight: 600; }
+.cm-warn { font-size: 12.5px; color: var(--amber); background: var(--amber-soft); padding: 8px 10px; border-radius: 9px; }
+.cm-text { width: 100%; min-height: 92px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2);
+  font: inherit; font-size: 13.5px; line-height: 1.45; resize: vertical; outline: none; color: var(--text); }
+.cm-text:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(212,160,23,.18); }
+.cm-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.cm-thumb { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--surface-2); border: 1px solid var(--line); cursor: grab; }
+.cm-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.cm-thumb .x { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; border: none; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; font-size: 13px; line-height: 22px; padding: 0; }
+.cm-thumb .tag { position: absolute; left: 5px; bottom: 5px; padding: 1px 6px; border-radius: 6px; background: rgba(0,0,0,.62); color: #fff; font-size: 11px; font-weight: 700; }
+.cm-thumb .first { position: absolute; left: 5px; top: 5px; padding: 1px 6px; border-radius: 6px; background: var(--brand); color: #12100b; font-size: 10.5px; font-weight: 800; }
+.cm-thumb.dragging { opacity: .4; }
+.cm-add { aspect-ratio: 1; border-radius: 10px; border: 2px dashed var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 11.5px; font-weight: 800; cursor: pointer; gap: 2px; }
+.cm-add:hover { border-color: var(--brand); color: var(--brand-ink); }
+.cm-add b { font-size: 22px; line-height: 1; }
+.cm-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.cm-bar > i { display: block; height: 100%; width: 0; background: var(--brand); transition: width .2s; }
+.cm-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cm-foot .grow { flex: 1; }
+.cm-check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.cm-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--line); }
+.cm-row:first-child { border-top: none; }
+.cm-row .pic { width: 46px; height: 46px; border-radius: 9px; object-fit: cover; background: var(--surface-2); flex: none; display: block; }
+.cm-row .pic.reel { height: 70px; width: 40px; }
+.cm-row .body { flex: 1; min-width: 0; }
+.cm-row .title { font-weight: 700; font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.cm-row .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.cm-row .acts .btn { height: 32px; padding: 0 10px; font-size: 12.5px; }
 </style>
 </head>
 <body>
@@ -781,8 +823,11 @@ function startAutoRefresh() {
 }
 function stopAutoRefresh() { if (state.timer) clearInterval(state.timer); state.timer = null; }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state.model && !editingResolve()) load(true); });
-// Don't wipe a half-typed price by auto-refreshing.
-function editingResolve() { return !!document.querySelector('[data-resolve-form][data-dirty], [data-qr-form][data-dirty]'); }
+// Don't wipe a half-typed price by auto-refreshing. The Community tab never
+// auto-refreshes: it holds chosen files and uploads in progress.
+function editingResolve() {
+  return state.tab === 'community' || !!document.querySelector('[data-resolve-form][data-dirty], [data-qr-form][data-dirty]');
+}
 
 // ─────────────────────────────── Chrome ───────────────────────────────
 const TABS = [
@@ -790,7 +835,7 @@ const TABS = [
   ['washes', 'Washes'], ['claims', 'Claims'], ['fleet', 'Fleet'], ['customers', 'Customers'],
   ['partners', 'Partners'], ['payments', 'Payments'], ['cancellations', 'Cancellations'],
   ['resolve', 'After service issue'], ['addons', 'Add-ons'], ['inspections', 'Inspections'],
-  ['payqr', 'Payment QR'],
+  ['payqr', 'Payment QR'], ['community', 'Community'],
 ];
 function buildChrome() {
   document.querySelectorAll('#rangeSeg button').forEach((b) => {
@@ -924,6 +969,458 @@ function bindQr() {
   };
 }
 
+// ── Community ──
+// What customers see behind the purple "Community" circle on the app's Home
+// screen: Content (9:16 reels, swiped like TikTok) and Recent work (posts of
+// 1–10 photos/videos with a short brief). Files go straight from this page to
+// storage (bucket community-media) through one-time upload links from
+// crm-api, so large videos never pass through the API.
+const CM_PUBLIC = SUPABASE_URL + '/storage/v1/object/public/community-media/';
+const CM_MAX_BYTES = 50 * 1024 * 1024;
+const CM_MAX_ITEMS = 10;
+const CM_SHARE = 'https://reperi.in/community/';
+const CM_TYPES_BY_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' };
+let cm = {
+  list: null, error: '',
+  reel: null, reelCaption: '', reelPublish: true,
+  post: [], postBody: '', postPublish: true,
+  busy: '', editing: null, flash: '',
+};
+const cmUrl = (p) => (p ? CM_PUBLIC + p : '');
+const cmMB = (n) => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
+const cmDur = (s) => { s = Math.round(Number(s) || 0); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+function cmType(file) {
+  if (file.type && (file.type.startsWith('image/') || file.type.startsWith('video/'))) return file.type === 'image/jpg' ? 'image/jpeg' : file.type;
+  const ext = String(file.name || '').split('.').pop().toLowerCase();
+  return CM_TYPES_BY_EXT[ext] || '';
+}
+
+function community() {
+  afterRender.push(() => { if (!cm.list && !cm.error) cmLoad(); else cmBind(); });
+  return `<div class="card pad" style="margin-bottom:16px">
+      <h3 style="margin:0 0 4px">Community</h3>
+      <div class="secondary">Everything here shows up behind the purple <b>Community</b> circle on the app's Home screen.
+        <b>Reels</b> go to the Content tab (vertical 9:16 videos). <b>Recent work</b> posts take up to 10 photos or videos with a short brief.
+        Hide an item to take it out of the app without deleting it.</div>
+    </div>
+    <div id="cmBody">${cmBodyHtml()}</div>`;
+}
+
+function cmBodyHtml() {
+  if (cm.error) return `<div class="banner">${esc(cm.error)}</div><button class="btn" data-cm-retry>Try again</button>`;
+  return `<div class="cm-grid">${cmReelCard()}${cmPostCard()}</div>
+    <div class="card pad" style="margin-top:16px">
+      <div class="cm-head">Published <span class="hint">Newest first</span></div>
+      <div id="cmList">${cmListHtml()}</div>
+    </div>`;
+}
+
+function cmBusyBar(kind) {
+  if (cm.busy !== kind) return '';
+  return `<div class="cm-bar"><i id="cmBar"></i></div><div class="cm-meta" id="cmBarText">Getting ready…</div>`;
+}
+
+function cmReelCard() {
+  const r = cm.reel;
+  const busy = cm.busy === 'reel';
+  let inner;
+  if (!r) {
+    inner = `<label class="cm-drop" data-cm-drop="reel">
+        <span style="font-size:26px">🎬</span>Choose or drop a vertical video
+        <small>MP4 (best), MOV or WebM · 9:16 · up to 50 MB</small>
+        <input type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm" data-cm-pick="reel" hidden>
+      </label>`;
+  } else {
+    const warns = [];
+    if (r.ratio && Math.abs(r.ratio - 9 / 16) > 0.08) warns.push(`This video is ${r.width}×${r.height}, not 9:16 — it will be cropped to fill the phone screen.`);
+    if (r.noPreview) warns.push('This browser can\'t play this video, so some phones may not either. Export it as MP4 (H.264) for the best results.');
+    else if (r.type === 'video/quicktime') warns.push('MOV files from iPhones sometimes don\'t play on Android. MP4 (H.264) is safest.');
+    inner = `<div class="cm-reel">
+        ${r.loading || r.noPreview || !r.url ? '<div class="cm-ph"></div>' : `<video src="${r.url}" muted playsinline loop autoplay></video>`}
+        <div class="cm-side">
+          <div class="cm-meta">${esc(r.name)}<br>${r.loading ? 'Reading video…' : (r.duration ? cmDur(r.duration) + ' · ' : '') + cmMB(r.size) + (r.width ? ' · ' + r.width + '×' + r.height : '')}</div>
+          ${warns.map((w) => `<div class="cm-warn">${esc(w)}</div>`).join('')}
+          <textarea class="cm-text" data-cm-text="reel" maxlength="2200" placeholder="Caption — what did you do on this car?" ${busy ? 'disabled' : ''}>${esc(cm.reelCaption)}</textarea>
+          ${cmBusyBar('reel')}
+          <div class="cm-foot">
+            <label class="cm-check"><input type="checkbox" data-cm-pub="reel" ${cm.reelPublish ? 'checked' : ''} ${busy ? 'disabled' : ''}> Show in the app now</label>
+            <span class="grow"></span>
+            <button class="btn" data-cm-clear="reel" ${busy ? 'disabled' : ''}>Change video</button>
+            <button class="btn btn-primary" data-cm-send="reel" ${busy || cm.busy || r.loading ? 'disabled' : ''}>Upload reel</button>
+          </div>
+        </div>
+      </div>`;
+  }
+  return `<div class="card pad" style="display:grid;gap:12px">
+      <div class="cm-head">🎬 New reel <span class="hint">Content tab</span></div>
+      ${inner}
+      ${cm.flash === 'reel' ? '<div class="cm-meta" style="color:var(--green)">Reel uploaded.</div>' : ''}
+    </div>`;
+}
+
+function cmPostCard() {
+  const items = cm.post;
+  const busy = cm.busy === 'post';
+  const thumbs = items.map((it, i) => `
+      <div class="cm-thumb" draggable="${busy ? 'false' : 'true'}" data-cm-idx="${i}" title="Drag to reorder">
+        ${it.thumb ? `<img src="${it.thumb}" alt="">` : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:24px">🎞</div>'}
+        ${i === 0 ? '<span class="first">Cover</span>' : ''}
+        ${it.kind === 'video' ? `<span class="tag">▶ ${it.duration ? cmDur(it.duration) : 'Video'}</span>` : ''}
+        ${busy ? '' : `<button class="x" data-cm-remove="${i}" aria-label="Remove">✕</button>`}
+      </div>`).join('');
+  const add = items.length < CM_MAX_ITEMS && !busy ? `
+      <label class="cm-add" data-cm-drop="post"><b>+</b>${items.length} / ${CM_MAX_ITEMS}
+        <input type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,.jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm" data-cm-pick="post" hidden>
+      </label>` : '';
+  const warn = items.some((it) => it.noPreview) ? '<div class="cm-warn">A video here can\'t be played in this browser, so some phones may not play it either. Export it as MP4 (H.264).</div>' : '';
+  return `<div class="card pad" style="display:grid;gap:12px">
+      <div class="cm-head">🖼 New recent-work post <span class="hint">Recent work tab · up to ${CM_MAX_ITEMS} photos or videos</span></div>
+      ${items.length ? `<div class="cm-thumbs">${thumbs}${add}</div><div class="cm-meta">The first one is the cover. Drag to reorder.</div>` : `
+      <label class="cm-drop" data-cm-drop="post">
+        <span style="font-size:26px">🖼</span>Choose or drop photos and videos
+        <small>Up to ${CM_MAX_ITEMS} · JPG, PNG, WebP, MP4, MOV · videos up to 50 MB each</small>
+        <input type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,.jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm" data-cm-pick="post" hidden>
+      </label>`}
+      ${warn}
+      <textarea class="cm-text" data-cm-text="post" maxlength="5000" placeholder="Brief about the work — the car, the problem, what you did, how long it took." ${busy ? 'disabled' : ''}>${esc(cm.postBody)}</textarea>
+      ${cmBusyBar('post')}
+      <div class="cm-foot">
+        <label class="cm-check"><input type="checkbox" data-cm-pub="post" ${cm.postPublish ? 'checked' : ''} ${busy ? 'disabled' : ''}> Show in the app now</label>
+        <span class="grow"></span>
+        ${items.length && !busy ? '<button class="btn" data-cm-clear="post">Clear</button>' : ''}
+        <button class="btn btn-primary" data-cm-send="post" ${busy || cm.busy ? 'disabled' : ''}>Publish post</button>
+      </div>
+      ${cm.flash === 'post' ? '<div class="cm-meta" style="color:var(--green)">Post published.</div>' : ''}
+    </div>`;
+}
+
+function cmItems() {
+  if (!cm.list) return [];
+  const reels = cm.list.reels.map((r) => ({
+    kind: 'reel', id: r.id, raw: r, live: r.is_published, created: r.created_at,
+    text: r.caption || '', pic: cmUrl(r.poster_path), label: 'Reel' + (r.duration_seconds ? ' · ' + cmDur(r.duration_seconds) : ''),
+  }));
+  const posts = cm.list.posts.map((p) => {
+    const media = Array.isArray(p.media) ? p.media : [];
+    const first = media[0] || {};
+    const photos = media.filter((m) => m.type !== 'video').length;
+    const videos = media.length - photos;
+    const parts = [photos ? photos + (photos === 1 ? ' photo' : ' photos') : '', videos ? videos + (videos === 1 ? ' video' : ' videos') : ''].filter(Boolean);
+    return {
+      kind: 'post', id: p.id, raw: p, live: p.is_published, created: p.created_at,
+      text: p.body || '', pic: cmUrl(first.type === 'video' ? first.poster_path : first.path), label: 'Recent work · ' + parts.join(', '),
+    };
+  });
+  return [...reels, ...posts].sort((a, b) => String(b.created).localeCompare(String(a.created)));
+}
+
+function cmListHtml() {
+  if (!cm.list) return '<div class="secondary">Loading…</div>';
+  const items = cmItems();
+  if (!items.length) return '<div class="secondary">Nothing yet. Upload a reel or a post above — it appears in the app straight away.</div>';
+  return items.map((it) => {
+    const editing = cm.editing && cm.editing.kind === it.kind && cm.editing.id === it.id;
+    const pic = it.pic ? `<img class="pic ${it.kind}" src="${esc(it.pic)}" alt="" loading="lazy">` : `<div class="pic ${it.kind}" style="display:flex;align-items:center;justify-content:center">▶</div>`;
+    const short = it.text.length > 140 ? it.text.slice(0, 140) + '…' : it.text;
+    return `<div class="cm-row">
+        ${pic}
+        <div class="body">
+          ${editing
+            ? `<textarea class="cm-text" data-cm-edit-text maxlength="${it.kind === 'reel' ? 2200 : 5000}">${esc(it.text)}</textarea>
+               <div style="display:flex;gap:6px;margin-top:8px"><button class="btn btn-primary" data-cm-save="${it.kind}:${it.id}">Save</button><button class="btn" data-cm-cancel>Cancel</button></div>`
+            : `<div class="title">${short ? esc(short) : '<span class="secondary">No caption</span>'}</div>`}
+          <div class="cm-meta" style="margin-top:3px">${esc(it.label)} · ${fmtDT(it.created)} ${it.live ? pill('In the app', 'green') : pill('Hidden')}</div>
+        </div>
+        ${editing ? '' : `<div class="acts">
+          <button class="btn" data-cm-copy="${it.kind}:${it.id}" title="Copy the share link">Copy link</button>
+          <button class="btn" data-cm-toggle="${it.kind}:${it.id}:${it.live ? 'hide' : 'show'}">${it.live ? 'Hide' : 'Show'}</button>
+          <button class="btn" data-cm-edit="${it.kind}:${it.id}">Edit</button>
+          <button class="btn" data-cm-del="${it.kind}:${it.id}" style="color:var(--red)">Delete</button>
+        </div>`}
+      </div>`;
+  }).join('');
+}
+
+async function cmLoad() {
+  try { cm.list = await api('community_list'); cm.error = ''; }
+  catch (e) {
+    if (e.message === 'signed_out' || e.message === 'forbidden') return;
+    cm.error = /community_|relation|does not exist/i.test(e.message)
+      ? 'The Community tables aren\'t set up yet. Run supabase/community.sql in the Supabase SQL editor, then try again.'
+      : (e.message || 'Could not load Community.');
+  }
+  cmRender();
+}
+function cmRender() { const box = $('cmBody'); if (box) { box.innerHTML = cmBodyHtml(); cmBind(); } }
+function cmRenderList() { const box = $('cmList'); if (box) { box.innerHTML = cmListHtml(); cmBindList(); } }
+function cmProgress(done, total, text) {
+  const bar = $('cmBar'); if (bar) bar.style.width = Math.min(100, Math.round((done / Math.max(total, 1)) * 100)) + '%';
+  const t = $('cmBarText'); if (t) t.textContent = text;
+}
+
+// ── Reading files in the browser (preview, size, first frame) ──
+function cmVideoMeta(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
+    let done = false;
+    const finish = (meta) => { if (done) return; done = true; resolve({ url, ...meta }); };
+    const timer = setTimeout(() => finish({ noPreview: true }), 12000);
+    v.onerror = () => { clearTimeout(timer); finish({ noPreview: true }); };
+    v.onloadedmetadata = () => {
+      const duration = isFinite(v.duration) ? v.duration : 0;
+      if (!v.videoWidth) { clearTimeout(timer); finish({ duration, noPreview: true }); return; }
+      v.currentTime = Math.min(0.6, duration / 3 || 0);
+    };
+    v.onseeked = () => {
+      clearTimeout(timer);
+      const w = v.videoWidth, h = v.videoHeight;
+      const scale = Math.min(1, 1080 / Math.max(w, h));
+      const c = document.createElement('canvas');
+      c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+      try {
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        c.toBlob((blob) => finish({
+          duration: isFinite(v.duration) ? v.duration : 0, width: w, height: h, ratio: w / h,
+          poster: blob, thumb: blob ? URL.createObjectURL(blob) : '',
+        }), 'image/jpeg', 0.82);
+      } catch (_) { finish({ duration: v.duration || 0, width: w, height: h, ratio: w / h }); }
+    };
+  });
+}
+// Big phone photos are shrunk to 2048px JPEG so they load fast in the app.
+function cmPrepImage(file, type) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth, h = img.naturalHeight;
+      const scale = Math.min(1, 2048 / Math.max(w, h));
+      if (scale === 1 && file.size < 2.5 * 1048576 && type !== 'image/png') {
+        resolve({ blob: file, type, width: w, height: h, thumb: url }); return;
+      }
+      const c = document.createElement('canvas');
+      c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob((blob) => resolve(blob
+        ? { blob, type: 'image/jpeg', width: c.width, height: c.height, thumb: url }
+        : { blob: file, type, width: w, height: h, thumb: url }), 'image/jpeg', 0.86);
+    };
+    img.onerror = () => resolve({ error: 'Couldn\'t read ' + file.name + '.' });
+    img.src = url;
+  });
+}
+
+async function cmPickReel(file) {
+  const type = cmType(file);
+  if (!type.startsWith('video/')) { alert('Choose a video file (MP4, MOV or WebM).'); return; }
+  if (file.size > CM_MAX_BYTES) { alert(`That video is ${cmMB(file.size)}. Reels must be 50 MB or less — trim it or export at 1080p.`); return; }
+  cm.flash = '';
+  cm.reel = { name: file.name, size: file.size, type, file, url: '', loading: true };
+  cmRender();
+  const meta = await cmVideoMeta(file);
+  if (!cm.reel || cm.reel.file !== file) return;
+  Object.assign(cm.reel, meta, { loading: false });
+  cmRender();
+}
+
+async function cmPickPost(files) {
+  cm.flash = '';
+  const room = CM_MAX_ITEMS - cm.post.length;
+  const list = [...files];
+  if (list.length > room) alert(`Only ${CM_MAX_ITEMS} per post — the first ${room} were added.`);
+  const problems = [];
+  for (const file of list.slice(0, room)) {
+    const type = cmType(file);
+    if (type.startsWith('image/')) {
+      const p = await cmPrepImage(file, type);
+      if (p.error) { problems.push(p.error); continue; }
+      if (p.blob.size > CM_MAX_BYTES) { problems.push(file.name + ' is over 50 MB.'); continue; }
+      cm.post.push({ kind: 'image', name: file.name, ...p });
+    } else if (type.startsWith('video/')) {
+      if (file.size > CM_MAX_BYTES) { problems.push(file.name + ' is over 50 MB.'); continue; }
+      const meta = await cmVideoMeta(file);
+      cm.post.push({ kind: 'video', name: file.name, blob: file, type, ...meta });
+    } else {
+      problems.push(file.name + ' isn\'t a photo or video.');
+    }
+    cmRender();
+  }
+  if (problems.length) alert(problems.join('\n'));
+  cmRender();
+}
+
+// ── Uploading ──
+async function cmPut(signedUrl, blob, type, onProgress) {
+  const { data: { session } } = await sb.auth.getSession();
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', signedUrl);
+    xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + (session ? session.access_token : SUPABASE_ANON_KEY));
+    xhr.setRequestHeader('Content-Type', type);
+    xhr.setRequestHeader('cache-control', 'max-age=31536000');
+    xhr.setRequestHeader('x-upsert', 'false');
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded); };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) { onProgress(blob.size); resolve(); return; }
+      let m = '';
+      try { m = JSON.parse(xhr.responseText).message || ''; } catch (_) {}
+      reject(new Error(xhr.status === 413 ? 'A file is too large for storage (max 50 MB).' : (m || 'Upload failed (' + xhr.status + ').')));
+    };
+    xhr.onerror = () => reject(new Error('Network problem while uploading. Check the connection and try again.'));
+    xhr.send(blob);
+  });
+}
+
+/** Uploads [{blob, type}] and returns their storage paths, in order. */
+async function cmUploadAll(kind, files) {
+  const { uploads } = await api('community_upload_urls', { kind, files: files.map((f) => ({ type: f.type, size: f.blob.size })) });
+  const total = files.reduce((s, f) => s + f.blob.size, 0);
+  const done = new Array(files.length).fill(0);
+  const tick = () => {
+    const sent = done.reduce((s, n) => s + n, 0);
+    cmProgress(sent, total, `Uploading… ${Math.round((sent / total) * 100)}% (${cmMB(sent)} of ${cmMB(total)})`);
+  };
+  tick();
+  // Two at a time: fast, but kind to a phone hotspot.
+  let next = 0;
+  const worker = async () => {
+    while (next < files.length) {
+      const i = next++;
+      await cmPut(uploads[i].signedUrl, files[i].blob, files[i].type, (n) => { done[i] = n; tick(); });
+    }
+  };
+  await Promise.all([worker(), worker()]);
+  return uploads.map((u) => u.path);
+}
+
+async function cmSendReel() {
+  const r = cm.reel;
+  if (!r || r.loading) return;
+  cm.busy = 'reel'; cmRender();
+  try {
+    const files = [{ blob: r.file, type: r.type }];
+    if (r.poster) files.push({ blob: r.poster, type: 'image/jpeg' });
+    const paths = await cmUploadAll('reel', files);
+    cmProgress(1, 1, 'Saving…');
+    cm.list = await api('community_save_reel', {
+      video_path: paths[0], poster_path: paths[1] || null, caption: cm.reelCaption,
+      duration: r.duration || null, width: r.width || null, height: r.height || null, publish: cm.reelPublish,
+    });
+    cm.reel = null; cm.reelCaption = ''; cm.reelPublish = true; cm.flash = 'reel';
+  } catch (e) {
+    if (e.message !== 'signed_out' && e.message !== 'forbidden') alert(e.message);
+  }
+  cm.busy = ''; cmRender();
+}
+
+async function cmSendPost() {
+  if (!cm.post.length) { alert('Add at least one photo or video.'); return; }
+  if (!cm.postBody.trim()) { alert('Write a short brief about the work.'); return; }
+  cm.busy = 'post'; cmRender();
+  try {
+    // Each item, then a cover image for each video.
+    const files = cm.post.map((it) => ({ blob: it.blob, type: it.type }));
+    const posterOf = [];
+    cm.post.forEach((it, i) => { if (it.kind === 'video' && it.poster) { posterOf[i] = files.length; files.push({ blob: it.poster, type: 'image/jpeg' }); } });
+    const paths = await cmUploadAll('post', files);
+    cmProgress(1, 1, 'Saving…');
+    const media = cm.post.map((it, i) => ({
+      path: paths[i], type: it.kind, width: it.width || null, height: it.height || null,
+      ...(it.kind === 'video' ? { poster_path: posterOf[i] !== undefined ? paths[posterOf[i]] : null, duration: it.duration || null } : {}),
+    }));
+    cm.list = await api('community_save_post', { body: cm.postBody, media, publish: cm.postPublish });
+    cm.post = []; cm.postBody = ''; cm.postPublish = true; cm.flash = 'post';
+  } catch (e) {
+    if (e.message !== 'signed_out' && e.message !== 'forbidden') alert(e.message);
+  }
+  cm.busy = ''; cmRender();
+}
+
+// ── Wiring ──
+function cmBind() {
+  const box = $('cmBody'); if (!box) return;
+  box.querySelector('[data-cm-retry]')?.addEventListener('click', () => { cm.error = ''; cm.list = null; cmRender(); cmLoad(); });
+  box.querySelectorAll('[data-cm-pick]').forEach((inp) => inp.onchange = (ev) => {
+    const files = ev.target.files; if (!files || !files.length) return;
+    if (inp.dataset.cmPick === 'reel') cmPickReel(files[0]); else cmPickPost(files);
+  });
+  box.querySelectorAll('[data-cm-drop]').forEach((zone) => {
+    zone.addEventListener('dragover', (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); zone.classList.add('over'); } });
+    zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+    zone.addEventListener('drop', (e) => {
+      if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+      e.preventDefault(); zone.classList.remove('over');
+      if (zone.dataset.cmDrop === 'reel') cmPickReel(e.dataTransfer.files[0]); else cmPickPost(e.dataTransfer.files);
+    });
+  });
+  box.querySelectorAll('[data-cm-text]').forEach((t) => t.oninput = () => {
+    if (t.dataset.cmText === 'reel') cm.reelCaption = t.value; else cm.postBody = t.value;
+  });
+  box.querySelectorAll('[data-cm-pub]').forEach((c) => c.onchange = () => {
+    if (c.dataset.cmPub === 'reel') cm.reelPublish = c.checked; else cm.postPublish = c.checked;
+  });
+  box.querySelectorAll('[data-cm-clear]').forEach((b) => b.onclick = () => {
+    if (b.dataset.cmClear === 'reel') cm.reel = null; else cm.post = [];
+    cm.flash = ''; cmRender();
+  });
+  box.querySelectorAll('[data-cm-send]').forEach((b) => b.onclick = () => (b.dataset.cmSend === 'reel' ? cmSendReel() : cmSendPost()));
+  box.querySelectorAll('[data-cm-remove]').forEach((b) => b.onclick = (e) => { e.preventDefault(); cm.post.splice(Number(b.dataset.cmRemove), 1); cmRender(); });
+  // Drag a thumbnail onto another to move it there.
+  let from = -1;
+  box.querySelectorAll('.cm-thumb[draggable="true"]').forEach((t) => {
+    t.addEventListener('dragstart', (e) => { from = Number(t.dataset.cmIdx); t.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(from)); });
+    t.addEventListener('dragend', () => t.classList.remove('dragging'));
+    t.addEventListener('dragover', (e) => { if (from >= 0) e.preventDefault(); });
+    t.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const to = Number(t.dataset.cmIdx);
+      if (from < 0 || from === to) return;
+      const [moved] = cm.post.splice(from, 1);
+      cm.post.splice(to, 0, moved);
+      from = -1; cmRender();
+    });
+  });
+  cmBindList();
+}
+
+function cmBindList() {
+  const box = $('cmList'); if (!box) return;
+  const parse = (v) => { const [kind, id, extra] = String(v).split(':'); return { kind, id, extra }; };
+  box.querySelectorAll('[data-cm-copy]').forEach((b) => b.onclick = async () => {
+    const { kind, id } = parse(b.dataset.cmCopy);
+    const link = CM_SHARE + kind + '/' + id;
+    try { await navigator.clipboard.writeText(link); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy link'; }, 1500); }
+    catch (_) { prompt('Share link', link); }
+  });
+  box.querySelectorAll('[data-cm-toggle]').forEach((b) => b.onclick = async () => {
+    const { kind, id, extra } = parse(b.dataset.cmToggle);
+    b.disabled = true;
+    try { cm.list = await api('community_update', { kind, id, publish: extra === 'show' }); } catch (e) { alert(e.message); }
+    cmRenderList();
+  });
+  box.querySelectorAll('[data-cm-edit]').forEach((b) => b.onclick = () => { cm.editing = parse(b.dataset.cmEdit); cmRenderList(); box.querySelector('[data-cm-edit-text]')?.focus(); });
+  box.querySelector('[data-cm-cancel]')?.addEventListener('click', () => { cm.editing = null; cmRenderList(); });
+  box.querySelectorAll('[data-cm-save]').forEach((b) => b.onclick = async () => {
+    const { kind, id } = parse(b.dataset.cmSave);
+    const text = box.querySelector('[data-cm-edit-text]')?.value ?? '';
+    b.disabled = true;
+    try { cm.list = await api('community_update', { kind, id, text }); cm.editing = null; } catch (e) { alert(e.message); b.disabled = false; return; }
+    cmRenderList();
+  });
+  box.querySelectorAll('[data-cm-del]').forEach((b) => b.onclick = async () => {
+    const { kind, id } = parse(b.dataset.cmDel);
+    if (!confirm(kind === 'reel' ? 'Delete this reel from the app and storage? This can\'t be undone.' : 'Delete this post and all its photos/videos? This can\'t be undone.')) return;
+    b.disabled = true;
+    try { cm.list = await api('community_delete', { kind, id }); } catch (e) { alert(e.message); }
+    cmRenderList();
+  });
+}
+
 // ─────────────────────────────── Render ───────────────────────────────
 const charts = [];
 function render() {
@@ -934,7 +1431,7 @@ function render() {
   $('pageTitle').textContent = label;
   const errs = Object.keys(state.data.errors || {});
   const banner = errs.length ? `<div class="banner">Some data couldn't be loaded (${esc(errs.join(', '))}). Everything else is accurate.</div>` : '';
-  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons, inspections, payqr }[state.tab] || overview;
+  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons, inspections, payqr, community }[state.tab] || overview;
   $('content').innerHTML = banner + view();
   bindRows();
   afterRender.splice(0).forEach((fn) => fn());
