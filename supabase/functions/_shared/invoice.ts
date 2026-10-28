@@ -32,6 +32,7 @@ export const INVOICE_TABLES = [
   "claim_table",
   "monthlywash_table",
   "fleet_pickup_requests",
+  "fleet_washing_requests",
 ] as const;
 export type InvoiceTable = typeof INVOICE_TABLES[number];
 
@@ -112,7 +113,8 @@ async function collect(db: Db, table: InvoiceTable, id: string): Promise<Collect
   let title = "Your service bill";
   let serviceName = "";
 
-  const intent = table === "fleet_pickup_requests" ? null : await intentFor(db, table, id);
+  const intent = (table === "fleet_pickup_requests" || table === "fleet_washing_requests")
+    ? null : await intentFor(db, table, id);
   const intentOnline = intent && intent.payment_method === "online" ? money(intent.amount) : 0;
 
   switch (table) {
@@ -214,9 +216,27 @@ async function collect(db: Db, table: InvoiceTable, id: string): Promise<Collect
       const items = Array.isArray(row.bill_items) ? row.bill_items : [];
       lines = items.map((i: Row) => ({ name: titleCase(String(i.name ?? "Service")), amount: money(i.price), gst: GST_SERVICE }));
       if (!lines.length) lines = [{ name: "Fleet service", amount: money(row.total_amount), gst: GST_SERVICE }];
-      paidOnline = String(row.payment_status ?? "").toLowerCase() === "paid" ? money(row.total_amount) : 0;
+      // Only count as paid-online when the fleet picked Razorpay. Cash on
+      // delivery stays as "due" on the bill until collected.
+      paidOnline = String(row.payment_status ?? "").toLowerCase() === "paid"
+        && String(row.payment_method ?? "razorpay") === "razorpay"
+        ? money(row.total_amount) : 0;
       title = "Your fleet service bill";
       serviceName = "your fleet service";
+      break;
+    }
+    case "fleet_washing_requests": {
+      const amount = money(row.amount);
+      const brand = String(row.vehicle_brand ?? "").trim();
+      const model = String(row.vehicle_model ?? "").trim();
+      const label = ["Doorstep wash", [brand, model].filter(Boolean).join(" ")]
+        .filter(Boolean).join(" — ");
+      lines = [{ name: label || "Doorstep wash", amount, gst: GST_SERVICE }];
+      // Washes are always paid in advance via Razorpay before the washer
+      // starts, so this is always paid-online when it reaches here.
+      paidOnline = String(row.payment_status ?? "").toLowerCase() === "paid" ? amount : 0;
+      title = "Your fleet wash bill";
+      serviceName = "your fleet wash";
       break;
     }
   }

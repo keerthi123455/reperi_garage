@@ -882,9 +882,28 @@ function assignSection(j, d) {
       <input class="input" data-assign-reason maxlength="300" placeholder="Reason (optional), e.g. garage on leave" style="margin-top:10px;height:38px">
       <div data-assign-msg class="secondary" style="margin-top:6px"></div>
     </div>
+    ${j.table === 'bookings' ? pickupToggleHtml(j, d) : ''}
     ${hist ? `<h4>Assignment history</h4><ul class="timeline">${hist}</ul>` : ''}`;
 }
+
+/** Doorstep (pickupdrop='yes') vs Walk-in (null) override. Only for the
+ * `bookings` table — pollution/inspection have their own doorstep logic,
+ * fleet pickups are always picked up by a delivery partner. */
+function pickupToggleHtml(j, d) {
+  const r = d.row || {};
+  const doorstep = String(r.pickupdrop ?? '').toLowerCase() === 'yes';
+  return `<h4>Pickup &amp; drop</h4>
+    <div class="card" style="padding:14px" data-pickup-box>
+      <div class="secondary">How is the vehicle reaching the garage? The customer picked this during booking — change it here if plans changed.</div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn ${doorstep ? 'btn-primary' : ''}" data-pickup-mode="doorstep">🚗 Doorstep</button>
+        <button class="btn ${doorstep ? '' : 'btn-primary'}" data-pickup-mode="walkin">🏪 Walk-in</button>
+      </div>
+      <div data-pickup-msg class="secondary" style="margin-top:6px"></div>
+    </div>`;
+}
 function bindAssign(j) {
+  if (j.table === 'bookings') bindPickupToggle(j);
   const box = $('dBody').querySelector('[data-assign-box]'); if (!box) return;
   box.querySelector('[data-go-rules]')?.addEventListener('click', (e) => { e.preventDefault(); closeDrawer(); go('rules'); });
   const msg = box.querySelector('[data-assign-msg]');
@@ -953,6 +972,27 @@ function bindInspection21(j) {
       btn.disabled = false;
     }
   };
+}
+
+function bindPickupToggle(j) {
+  const box = $('dBody').querySelector('[data-pickup-box]'); if (!box) return;
+  const msg = box.querySelector('[data-pickup-msg]');
+  box.querySelectorAll('[data-pickup-mode]').forEach((btn) => btn.onclick = async () => {
+    const mode = btn.dataset.pickupMode;
+    const label = mode === 'doorstep' ? 'Doorstep (we pick up and drop back)' : 'Walk-in (customer brings the car)';
+    if (!confirm(`Change this booking to: ${label}?`)) return;
+    box.querySelectorAll('[data-pickup-mode]').forEach((b) => b.disabled = true);
+    msg.style.color = ''; msg.textContent = 'Saving…';
+    try {
+      await api('pickup_toggle', { id: j.id, mode });
+      msg.style.color = 'var(--green)'; msg.textContent = 'Changed ✓';
+      await load(true);
+      await openJob(j.table, j.id);
+    } catch (e) {
+      msg.style.color = 'var(--red)'; msg.textContent = e.message || "Couldn't change it";
+      box.querySelectorAll('[data-pickup-mode]').forEach((b) => b.disabled = false);
+    }
+  });
 }
 
 // ── Assignment rules tab ──

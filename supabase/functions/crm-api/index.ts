@@ -38,7 +38,6 @@
 // POST { action: "me" }
 //   → { email } — used by the page to confirm access after sign-in.
 
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2";
 import { cleanLines, isInvoiceTable, issueInvoice } from "../_shared/invoice.ts";
 
@@ -1091,6 +1090,35 @@ async function fleetCodDetail(client: SupabaseClient, body: Row) {
 }
 
 /** CRM marks a cash bill collected (payment_status flips to paid). */
+/** Flip a booking between doorstep (pickupdrop='yes') and walk-in (null).
+ * Doorstep gets picked up & dropped back by a delivery partner; walk-in
+ * means the customer brings the car to the garage themselves. The
+ * customer picks this when booking (PaymentScreen); the CRM can change
+ * it after the booking exists. Only `bookings` has this field. */
+async function pickupToggle(client: SupabaseClient, body: Row, user: User) {
+  const id = String(body.id ?? "");
+  if (!id) throw new HttpError(400, "bad_request", "Missing booking.");
+  const mode = String(body.mode ?? ""); // 'doorstep' | 'walkin'
+  if (mode !== "doorstep" && mode !== "walkin") throw new HttpError(400, "bad_request", "Choose doorstep or walk-in.");
+  const { data: row, error: rErr } = await client.from("bookings")
+    .select("id,pickupdrop,customer_name,user_id").eq("id", id).maybeSingle();
+  if (rErr) throw rErr;
+  if (!row) throw new HttpError(404, "not_found", "Booking not found.");
+
+  const newVal = mode === "doorstep" ? "yes" : null;
+  const { error } = await client.from("bookings").update({ pickupdrop: newVal }).eq("id", id);
+  if (error) throw error;
+
+  await logChange(client, {
+    booking_table: "bookings", booking_id: id, role: "rule",
+    from_id: row.pickupdrop ? "doorstep" : "walkin",
+    to_id: mode,
+    reason: `Pickup/drop changed by ${user.email ?? "staff"}.`,
+    changed_by: user.email ?? null,
+  });
+  return { ok: true, pickupdrop: newVal };
+}
+
 async function fleetMarkCollected(client: SupabaseClient, body: Row, user: User) {
   const id = String(body.id ?? "");
   if (!id) throw new HttpError(400, "bad_request", "Missing bill.");
@@ -1171,6 +1199,8 @@ Deno.serve(async (req: Request) => {
         return json(await fleetCodDetail(client, body));
       case "fleet_mark_collected":
         return json(await fleetMarkCollected(client, body, user));
+      case "pickup_toggle":
+        return json(await pickupToggle(client, body, user));
       case "invoice_issue": {
         const table = String(body.table ?? "");
         const id = String(body.id ?? "");
