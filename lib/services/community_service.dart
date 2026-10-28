@@ -211,8 +211,15 @@ class CommunityService {
       origin = box.localToGlobal(Offset.zero) & box.size;
     }
     final messenger = ScaffoldMessenger.maybeOf(context);
+    // Keep the message short — a long URL looks spammy in WhatsApp/SMS. The
+    // deep link (…/community/reel/<id>) is dropped on purpose; the shortest
+    // link that still auto-links on every chat app is the bare domain.
+    // Everyone who taps the link lands on the Reperi home page.
+    const siteLink = 'reperi.in';
     final caption = _shorten(text.trim());
-    final message = caption.isEmpty ? 'See this on Reperi: $link' : '$caption\n\nSee it on Reperi: $link';
+    final message = caption.isEmpty
+        ? 'VISIT REPERI → $siteLink'
+        : '$caption\n\nVISIT REPERI → $siteLink';
     try {
       await SharePlus.instance.share(ShareParams(
         text: message,
@@ -220,8 +227,8 @@ class CommunityService {
         sharePositionOrigin: origin,
       ));
     } catch (_) {
-      // No share sheet (e.g. some desktop browsers) — copy the link instead.
-      await Clipboard.setData(ClipboardData(text: link.toString()));
+      // No share sheet (e.g. some desktop browsers) — copy the short link.
+      await Clipboard.setData(const ClipboardData(text: 'https://$siteLink'));
       messenger?.showSnackBar(
         const SnackBar(content: Text('Link copied — paste it anywhere to share.')),
       );

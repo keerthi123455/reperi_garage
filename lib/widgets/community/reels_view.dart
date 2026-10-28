@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shimmer/shimmer.dart';
@@ -120,9 +119,11 @@ class _ReelsViewState extends State<ReelsView> {
   bool _end = false;
   String? _error;
 
-  /// Browsers only autoplay muted videos, so the website starts muted and
-  /// the first tap turns the sound on. The app plays with sound.
-  bool _muted = kIsWeb;
+  /// Sound ON by default on both the app and the website. On a browser
+  /// that still blocks unmuted autoplay (the autoplay policy varies by
+  /// browser and the viewer's recent engagement), the first frame shows
+  /// paused — a single tap starts it with the sound already on.
+  bool _muted = false;
   bool _soundFlash = false;
   Timer? _soundFlashTimer;
   bool _userPaused = false;

@@ -1,5 +1,4 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -383,7 +382,9 @@ class _ViewerVideoState extends State<_ViewerVideo> {
   VideoPlayerController? _c;
   bool _failed = false;
   bool _paused = false;
-  bool _muted = kIsWeb;
+  // Sound ON by default on both the app and the website. The viewer can
+  // still tap the speaker to mute at any time.
+  bool _muted = false;
 
   @override
   void initState() {
