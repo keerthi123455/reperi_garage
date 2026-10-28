@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'payment_screen.dart';
+import '../services/booking_api.dart';
 import '../theme/fleet_theme.dart';
 import '../theme/garage_theme.dart' show G, GaragePlate;
 import '../widgets/error_display.dart';
@@ -1687,56 +1688,145 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
             ],
           ),
           const SizedBox(height: 14),
-          if (toPay)
-            SizedBox(
-              height: 58,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: F.yellow,
-                  foregroundColor: F.navy,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                icon: const Icon(Icons.lock_rounded, size: 20),
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PaymentScreen(
-                        title: 'Fleet Service — ${req['company_name'] ?? ''}',
-                        duration: '',
-                        vehicleId: '',
-                        vehicleRequired: false,
-                        // Priced by the server from this request's
-                        // total_amount / bill_items (set by the
-                        // garage) and marked paid there after the
-                        // payment is verified.
-                        fleetRequestId: '${req['id']}',
-                      ),
-                    ),
-                  );
-                  if (mounted) setState(() {});
-                  await _refreshLive();
-                },
-                label: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text('PAY ${_rupees(req['total_amount'])}',
-                      maxLines: 1, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                ),
-              ),
-            )
+          if (toPay && _v('payment_method') == 'cash')
+            // Fleet already picked Cash on Delivery — not paid yet; the
+            // garage/delivery partner records cash collection in the CRM.
+            Row(children: [
+              Icon(Icons.payments_rounded, color: F.amber, size: 22),
+              const SizedBox(width: 8),
+              Expanded(child: Text("Cash on delivery — ${_rupees(req['total_amount'])} on drop-off",
+                maxLines: 2,
+                style: TextStyle(color: F.amber, fontWeight: FontWeight.w900, fontSize: 16, height: 1.3))),
+            ])
+          else if (toPay)
+            _payRow(req)
           else
             Row(
               children: [
                 Icon(Icons.check_circle_rounded, color: F.green, size: 22),
                 const SizedBox(width: 8),
-                Text('Paid', style: TextStyle(color: F.green, fontWeight: FontWeight.w900, fontSize: 17)),
+                Text(_v('payment_method') == 'cash' ? 'Paid (cash)' : 'Paid',
+                  style: TextStyle(color: F.green, fontWeight: FontWeight.w900, fontSize: 17)),
               ],
             ),
         ],
       ),
     );
   }
+
+  /// The fleet picks how to settle this bill: pay now with Razorpay, or
+  /// pay cash when the car is delivered back. Cash doesn't go through
+  /// Razorpay at all; the amount is just logged against the fleet
+  /// account for the CRM to collect.
+  Widget _payRow(Map req) {
+    return SizedBox(
+      height: 58,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: F.yellow,
+          foregroundColor: F.navy,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        icon: const Icon(Icons.payments_rounded, size: 20),
+        onPressed: _isSubmitting ? null : () => _choosePayment(req),
+        label: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text('PAY ${_rupees(req['total_amount'])}',
+            maxLines: 1, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _choosePayment(Map req) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: F.card,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Container(width: 44, height: 4, margin: const EdgeInsets.only(bottom: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: F.line, borderRadius: BorderRadius.circular(2))),
+            Center(child: Text('How would you like to pay?',
+              style: TextStyle(color: F.txt, fontSize: 19, fontWeight: FontWeight.w900))),
+            const SizedBox(height: 4),
+            Center(child: Text(_rupees(req['total_amount']),
+              style: TextStyle(color: F.accent, fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -0.5))),
+            const SizedBox(height: 14),
+            _payChoice(ctx, 'razorpay', Icons.lock_rounded, 'Pay now',
+              'UPI, card or net banking · instant'),
+            const SizedBox(height: 10),
+            _payChoice(ctx, 'cash', Icons.payments_rounded, 'Cash on delivery',
+              'Hand it over when the car is dropped back'),
+          ]),
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+
+    if (choice == 'razorpay') {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PaymentScreen(
+            title: 'Fleet Service — ${req['company_name'] ?? ''}',
+            duration: '',
+            vehicleId: '',
+            vehicleRequired: false,
+            fleetRequestId: '${req['id']}',
+          ),
+        ),
+      );
+      if (mounted) setState(() {});
+      await _refreshLive();
+      return;
+    }
+
+    // Cash on Delivery — mark it on the row and come back.
+    setState(() => _isSubmitting = true);
+    try {
+      final companyUserId = widget.request['fleet_user_id'];
+      await BookingApi.fleetChooseCod(id: '${req['id']}', fleetUserId: companyUserId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Noted — pay cash when the car is dropped back')),
+      );
+      await _refreshLive();
+    } catch (e) {
+      if (mounted) {
+        ErrorDisplay.showPremiumError(context, error: e,
+          customMessage: e is BookingApiException ? e.message : "Couldn't record Cash on Delivery.");
+      }
+    }
+    if (mounted) setState(() => _isSubmitting = false);
+  }
+
+  Widget _payChoice(BuildContext ctx, String key, IconData icon, String title, String subtitle) =>
+    Material(
+      color: F.sunken, borderRadius: BorderRadius.circular(16),
+      child: InkWell(borderRadius: BorderRadius.circular(16), onTap: () => Navigator.pop(ctx, key),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            Container(width: 44, height: 44, alignment: Alignment.center,
+              decoration: BoxDecoration(color: F.yellow.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+              child: Icon(icon, color: F.accent, size: 24)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: F.txt, fontSize: 16.5, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 2),
+              Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: F.mut, fontSize: 14, fontWeight: FontWeight.w600, height: 1.3)),
+            ])),
+            Icon(Icons.chevron_right_rounded, color: F.mut, size: 24),
+          ]),
+        )),
+    );
 
   /// Approve / reject what the garage sent (or the decision already made).
   Widget _approvalCard(String adminComment, {required bool urgent}) {

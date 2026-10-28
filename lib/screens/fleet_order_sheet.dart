@@ -123,7 +123,7 @@ class _FleetOrderSheetState extends State<FleetOrderSheet> with FleetThemeListen
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content:
-              Text('Pickup requested — we\'ll update you here'),
+              Text('Service requested — we\'ll update you here'),
         ),
       );
 
@@ -135,7 +135,7 @@ class _FleetOrderSheetState extends State<FleetOrderSheet> with FleetThemeListen
         ErrorDisplay.showPremiumError(
           context,
           error: e,
-          customMessage: e is BookingApiException ? e.message : 'Could not submit your pickup request. Please try again.',
+          customMessage: e is BookingApiException ? e.message : 'Could not submit your service request. Please try again.',
         );
       }
 
@@ -173,7 +173,7 @@ class _FleetOrderSheetState extends State<FleetOrderSheet> with FleetThemeListen
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Request pickup',
+                            'Request service',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(color: F.txt, fontSize: 21, fontWeight: FontWeight.w900),
@@ -232,7 +232,7 @@ class _FleetOrderSheetState extends State<FleetOrderSheet> with FleetThemeListen
                                     )
                                   : const FittedBox(
                                       fit: BoxFit.scaleDown,
-                                      child: Text('REQUEST PICKUP',
+                                      child: Text('REQUEST SERVICE',
                                           maxLines: 1,
                                           style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, letterSpacing: 0.4)),
                                     ),

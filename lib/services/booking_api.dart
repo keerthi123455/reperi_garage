@@ -126,6 +126,113 @@ class BookingApi {
     return (j['id'] ?? '').toString();
   }
 
+  // ── Yellow Board: Request Quotation ──
+  // 1 photo + description required; brand/model optional.
+  static Future<String> fleetQuotationCreate({
+    required Object? fleetUserId,
+    String? companyName,
+    String? username,
+    String? vehicleBrand,
+    String? vehicleModel,
+    required String photoPath,
+    required String description,
+  }) async {
+    final j = await _call({
+      'action': 'fleet_quotation_create',
+      'fleet_user_id': fleetUserId,
+      'company_name': companyName,
+      'username': username,
+      'vehicle_brand': vehicleBrand,
+      'vehicle_model': vehicleModel,
+      'photo_path': photoPath,
+      'description': description,
+    });
+    return (j['id'] ?? '').toString();
+  }
+
+  /// Fleet taps Accept on a priced quotation. CRM then assigns a garage.
+  static Future<void> fleetQuotationAccept({
+    required String id,
+    required Object? fleetUserId,
+  }) async {
+    await _call({
+      'action': 'fleet_quotation_accept',
+      'id': id,
+      'fleet_user_id': fleetUserId,
+    });
+  }
+
+  // ── Yellow Board: Request Washing ──
+  static Future<String> fleetWashingCreate({
+    required Object? fleetUserId,
+    String? companyName,
+    String? username,
+    String? vehicleBrand,
+    required String vehicleModel,
+    required String carNumber,
+    String? vehiclePhotoPath,
+  }) async {
+    final j = await _call({
+      'action': 'fleet_washing_create',
+      'fleet_user_id': fleetUserId,
+      'company_name': companyName,
+      'username': username,
+      'vehicle_brand': vehicleBrand,
+      'vehicle_model': vehicleModel,
+      'car_number': carNumber,
+      'vehicle_photo_url': vehiclePhotoPath,
+    });
+    return (j['id'] ?? '').toString();
+  }
+
+  /// Fleet taps "Pay now" → the server opens a Razorpay order.
+  static Future<CreateResult> fleetWashingPayStart({
+    required String id,
+    required Object? fleetUserId,
+  }) async {
+    final j = await _call({
+      'action': 'fleet_washing_pay_start',
+      'id': id,
+      'fleet_user_id': fleetUserId,
+    });
+    return CreateResult(
+      intentId: '',
+      orderId: j['order_id']?.toString(),
+      keyId: j['key_id']?.toString(),
+      amountPaise: j['amount_paise'] is int
+          ? j['amount_paise'] as int
+          : int.tryParse('${j['amount_paise']}') ?? 0,
+    );
+  }
+
+  /// Fleet chooses Cash on Delivery for an add-on bill — the row is
+  /// marked `payment_method='cash'`, the status stays 'awaiting_payment'
+  /// until the garage/delivery partner records collection in the CRM.
+  static Future<void> fleetChooseCod({
+    required String id,
+    required Object? fleetUserId,
+  }) async {
+    await _call({
+      'action': 'fleet_choose_cod',
+      'id': id,
+      'fleet_user_id': fleetUserId,
+    });
+  }
+
+  /// After Razorpay checkout: verify + flip the wash's payment_status to paid.
+  static Future<void> fleetWashingPayConfirm({
+    required String orderId,
+    required String paymentId,
+    required String signature,
+  }) async {
+    await _call({
+      'action': 'fleet_washing_pay_confirm',
+      'razorpay_order_id': orderId,
+      'razorpay_payment_id': paymentId,
+      'razorpay_signature': signature,
+    });
+  }
+
   static Future<BookingResult> status(String intentId) async {
     final data = await _call({'action': 'status', 'intent_id': intentId});
     return BookingResult.fromJson(data);

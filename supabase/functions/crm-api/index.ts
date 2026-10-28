@@ -29,17 +29,12 @@
 //      { action: "qr_activate", id } / { action: "qr_delete", id }
 //   → the payment QR shown when garages / delivery partners / washers
 //     collect payment (supabase/payment_collection.sql). One is "in use".
-// POST { action: "community_list" }
-//   → { reels, posts } — everything in the app's Community page, hidden too.
-// POST { action: "community_upload_urls", kind: "reel"|"post", files: [{type, size}] }
-//   → [{ path, signedUrl }] — the CRM uploads each file straight to storage
-//     (community-media) with a PUT, so big videos never pass through here.
-// POST { action: "community_save_reel", video_path, poster_path?, caption, duration?, width?, height?, publish }
-// POST { action: "community_save_post", body, media: [{path, type, width?, height?, poster_path?, duration?}], publish }
-// POST { action: "community_update", kind, id, text?, publish? }
-//   → edit the caption / brief, or show / hide it in the app.
-// POST { action: "community_delete", kind, id }
-//   → removes it from the app and deletes its files.
+// POST { action: "assign", table, id, role: garage|delivery|washer, to, reason? }
+//   → changes who a booking is assigned to (logged in assignment_log, the new
+//     person is notified).
+// POST { action: "rules_get" } / { action: "rules_save", op, ... }
+//   → the automatic assignment rules: pools + members, which pool each
+//     service uses, default fleet garage, garage per fleet company.
 // POST { action: "me" }
 //   → { email } — used by the page to confirm access after sign-in.
 
@@ -357,6 +352,7 @@ async function detail(client: SupabaseClient, body: Row) {
     extra.chats = await safe(errors, "fleet_chat_messages", () =>
       client.from("fleet_chat_messages").select("id,message,sender_type,sender_name,created_at")
         .eq("request_id", id).order("created_at"));
+    (extra as Record<string, unknown>).inspection21 = await inspection21Info(client, rows[0]);
   }
   if (isInvoiceTable(table)) {
     extra.invoices = await safe(errors, "invoices", () =>
@@ -366,6 +362,7 @@ async function detail(client: SupabaseClient, body: Row) {
   const intent = await safe(errors, "payment_intents", () =>
     client.from("payment_intents").select("id,status,amount,payment_method,razorpay_order_id,razorpay_payment_id,error,created_at")
       .eq("booking_table", table).eq("booking_id", id).limit(1));
+  if (ASSIGN_TABLES.has(table)) extra.assignments = await assignmentHistory(client, table, id);
   return { row: rows[0], ...extra, intent: intent[0] ?? null, errors };
 }
 
@@ -500,12 +497,325 @@ async function signedDoc(client: SupabaseClient, body: Row) {
   if (!path || path.includes("..")) throw new HttpError(400, "bad_request", "Invalid document.");
   if (/^https?:\/\//i.test(path)) return { url: path };
   const bucket = body.bucket === "booking-images" || body.bucket === "subscription-services" ||
-      body.bucket === "resolve-media" || body.bucket === "inspection-photos" || body.bucket === "invoices"
+      body.bucket === "resolve-media" || body.bucket === "inspection-photos" || body.bucket === "invoices" ||
+      body.bucket === "fleet-quotations"
     ? String(body.bucket)
     : "insurance-documents";
   const { data, error } = await client.storage.from(bucket).createSignedUrl(path, 300);
   if (error || !data?.signedUrl) throw new HttpError(404, "not_found", "Document not found.");
   return { url: data.signedUrl };
+}
+
+// ── Assignments: override on one booking + the automatic rules ─────────
+// supabase/assignments.sql. Every change is written to assignment_log.
+
+const ASSIGN_COLS = { garage: "assigned_to_admin_id", delivery: "delivery_partner_id", washer: "washer_id" } as const;
+type AssignRole = keyof typeof ASSIGN_COLS;
+const ASSIGN_TABLES = new Set([
+  "bookings", "offer_bookings", "pollution_booking", "inspection_booking",
+  "claim_table", "monthlywash_table", "fleet_pickup_requests",
+]);
+const ONESIGNAL_APP_ID = "6bc39a67-c05a-4ba4-b950-9ccfc8e9b9b6";
+
+async function pushTo(externalId: string, title: string, message: string, data: Row) {
+  const key = Deno.env.get("ONESIGNAL_REST_API_KEY") ?? "";
+  if (!key) return;
+  try {
+    await fetch("https://api.onesignal.com/notifications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Key ${key}` },
+      body: JSON.stringify({
+        app_id: ONESIGNAL_APP_ID,
+        include_aliases: { external_id: [externalId] },
+        target_channel: "push",
+        headings: { en: title },
+        contents: { en: message },
+        data,
+      }),
+    });
+  } catch (e) {
+    console.error("assignment push failed", e);
+  }
+}
+
+/** Display name for a garage / delivery partner / washer id. */
+async function personName(client: SupabaseClient, role: AssignRole, id: string | null): Promise<string | null> {
+  if (!id) return null;
+  if (role === "garage") {
+    const { data } = await client.from("admin").select("username").eq("id", id).maybeSingle();
+    return (data?.username as string) ?? null;
+  }
+  const table = role === "delivery" ? "delivery_partners" : "washers";
+  const { data } = await client.from(table).select("*").eq("id", id).maybeSingle();
+  if (!data) return null;
+  return String(data.name ?? data.full_name ?? data.email ?? data.username ?? `#${id}`);
+}
+
+async function logChange(client: SupabaseClient, entry: Row) {
+  const { error } = await client.from("assignment_log").insert(entry);
+  if (error) console.error("assignment_log insert failed", error);
+}
+
+/** Change the garage / delivery partner / washer on one booking. */
+async function assignOverride(client: SupabaseClient, body: Row, user: User) {
+  const table = String(body.table ?? "");
+  const id = String(body.id ?? "");
+  const role = String(body.role ?? "") as AssignRole;
+  if (!ASSIGN_TABLES.has(table) || !id) throw new HttpError(400, "bad_request", "Unknown booking.");
+  if (!(role in ASSIGN_COLS)) throw new HttpError(400, "bad_request", "Choose garage, delivery partner or washer.");
+  const col = ASSIGN_COLS[role];
+  const to = body.to === null || body.to === "" || body.to === undefined ? null : String(body.to);
+  const reason = String(body.reason ?? "").trim().slice(0, 300) || null;
+
+  const { data: row, error } = await client.from(table).select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!row) throw new HttpError(404, "not_found", "Booking not found.");
+  if (!(col in row)) throw new HttpError(400, "not_used", "This booking type doesn't have that role.");
+  if (role === "delivery" && row.inspection_stage) {
+    throw new HttpError(400, "inspection", "This is an inspection visit — change the expert in the Inspection visit box.");
+  }
+
+  const from = row[col] == null ? null : String(row[col]);
+  if (from === to) return { ok: true, unchanged: true };
+
+  // Check the new person exists.
+  let toName: string | null = null;
+  if (to) {
+    toName = await personName(client, role, to);
+    if (!toName) throw new HttpError(404, "not_found", "That person was not found.");
+  }
+  const fromName = await personName(client, role, from);
+
+  const value = to === null ? null : role === "garage" ? to : Number(to);
+  const patch: Row = { [col]: value };
+  if (role === "garage" && "assigned_at" in row) patch.assigned_at = new Date().toISOString();
+  const { error: upErr } = await client.from(table).update(patch).eq("id", id);
+  if (upErr) throw upErr;
+
+  await logChange(client, {
+    booking_table: table, booking_id: id, role,
+    from_id: from, to_id: to, from_name: fromName, to_name: toName,
+    reason, changed_by: user.email ?? "crm",
+  });
+
+  // Tell the new person.
+  if (to) {
+    const what = String(row.package_name ?? row.vehicle_model ?? row.plan_title ?? "A booking");
+    const data = { type: "assignment", table, id };
+    if (role === "delivery") await pushTo(`delivery_${to}`, "New trip assigned to you", `${what} — open your dashboard for details.`, data);
+    else if (role === "washer") await pushTo(`washer_${to}`, "New wash assigned to you", `${what} — open your dashboard for details.`, data);
+    else await pushTo("admin", "Booking assigned to your garage", `${what} has been assigned to ${toName}.`, data);
+  }
+  return { ok: true, from, to, toName };
+}
+
+async function assignmentHistory(client: SupabaseClient, table: string, id: string) {
+  const { data } = await client.from("assignment_log").select("*")
+    .eq("booking_table", table).eq("booking_id", id).order("created_at", { ascending: false }).limit(50);
+  return data ?? [];
+}
+
+// ── Automatic rules ──
+async function rulesGet(client: SupabaseClient) {
+  const [pools, members, services, admins, delivery, washers, setting, fleetRules, fleetReqs, log] = await Promise.all([
+    client.from("assignment_pools").select("*").order("role").order("key"),
+    client.from("assignment_pool_members").select("*").order("position").order("member_ref"),
+    client.from("services").select("key,name,booking_name,category,active,booking_table,admin_pool,delivery_pool,washer_pool").order("sort_order"),
+    client.from("admin").select("id,username,vehicle").order("username"),
+    client.from("delivery_partners").select("*").order("id"),
+    client.from("washers").select("*").order("id"),
+    client.from("app_settings").select("value").eq("key", "fleet_default_admin_id").maybeSingle(),
+    client.from("fleet_garage_rules").select("*"),
+    client.from("fleet_pickup_requests").select("fleet_user_id,company_name,username,created_at").order("created_at", { ascending: false }).limit(2000),
+    client.from("assignment_log").select("*").eq("role", "rule").order("created_at", { ascending: false }).limit(30),
+  ]);
+  for (const r of [pools, members, services, admins, delivery, washers]) if (r.error) throw r.error;
+  // One row per fleet company that has ever sent a request.
+  const fleets = new Map<string, Row>();
+  for (const f of fleetReqs.data ?? []) {
+    const k = String(f.fleet_user_id ?? "");
+    if (k && !fleets.has(k)) fleets.set(k, { fleet_user_id: k, company_name: f.company_name, username: f.username });
+  }
+  const label = (p: Row) => String(p.name ?? p.full_name ?? p.email ?? p.username ?? `#${p.id}`);
+  return {
+    pools: pools.data, members: members.data, services: services.data,
+    people: {
+      garage: (admins.data ?? []).map((a) => ({ id: String(a.id), name: String(a.username), extra: a.vehicle ?? null })),
+      delivery: (delivery.data ?? []).map((d) => ({ id: String(d.id), name: label(d), extra: null })),
+      washer: (washers.data ?? []).map((w) => ({ id: String(w.id), name: label(w), extra: null })),
+    },
+    fleetDefault: setting.data ? String(setting.data.value ?? "").replace(/"/g, "") : null,
+    fleetRules: fleetRules.data ?? [],
+    fleets: [...fleets.values()],
+    log: log.data ?? [],
+  };
+}
+
+const POOL_ROLES = new Set(["admin", "delivery", "washer"]);
+
+async function rulesSave(client: SupabaseClient, body: Row, user: User) {
+  const op = String(body.op ?? "");
+  const who = user.email ?? "crm";
+  const note = async (text: string) =>
+    logChange(client, { booking_table: "rules", booking_id: "-", role: "rule", reason: text.slice(0, 300), changed_by: who });
+
+  switch (op) {
+    case "pool_create": {
+      const key = String(body.key ?? "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
+      const role = String(body.role ?? "");
+      if (!/^[a-z0-9_]{3,40}$/.test(key)) throw new HttpError(400, "bad_key", "Use 3–40 letters, numbers or _ for the pool name.");
+      if (!POOL_ROLES.has(role)) throw new HttpError(400, "bad_role", "Choose garage, delivery or washer.");
+      const { error } = await client.from("assignment_pools").insert({
+        key, role, batch_size: Math.max(1, Math.min(50, Number(body.batch_size) || 1)),
+        description: String(body.description ?? "").trim().slice(0, 200) || null,
+      });
+      if (error) throw error.code === "23505" ? new HttpError(400, "exists", "A pool with that name already exists.") : error;
+      await note(`Created pool ${key}`);
+      break;
+    }
+    case "pool_update": {
+      const key = String(body.key ?? "");
+      const patch: Row = {};
+      if (typeof body.active === "boolean") patch.active = body.active;
+      if (body.batch_size !== undefined) patch.batch_size = Math.max(1, Math.min(50, Number(body.batch_size) || 1));
+      if (body.description !== undefined) patch.description = String(body.description ?? "").trim().slice(0, 200) || null;
+      const { error } = await client.from("assignment_pools").update(patch).eq("key", key);
+      if (error) throw error;
+      await note(`Pool ${key}: ${JSON.stringify(patch)}`);
+      break;
+    }
+    case "member_add": {
+      const pool = String(body.pool ?? "");
+      const ref = String(body.member ?? "");
+      const { data: p } = await client.from("assignment_pools").select("role").eq("key", pool).maybeSingle();
+      if (!p) throw new HttpError(404, "not_found", "Pool not found.");
+      const role = p.role === "admin" ? "garage" : (p.role as AssignRole);
+      const name = await personName(client, role, ref);
+      if (!name) throw new HttpError(404, "not_found", "That person was not found.");
+      const { data: last } = await client.from("assignment_pool_members").select("position").eq("pool_key", pool)
+        .order("position", { ascending: false }).limit(1);
+      const { error } = await client.from("assignment_pool_members").upsert({
+        pool_key: pool, member_ref: ref, label: name, active: true, position: Number(last?.[0]?.position ?? 0) + 1,
+      });
+      if (error) throw error;
+      await note(`Added ${name} to ${pool}`);
+      break;
+    }
+    case "member_update": {
+      const pool = String(body.pool ?? "");
+      const ref = String(body.member ?? "");
+      if (body.remove === true) {
+        const { error } = await client.from("assignment_pool_members").delete().eq("pool_key", pool).eq("member_ref", ref);
+        if (error) throw error;
+        await note(`Removed ${ref} from ${pool}`);
+      } else if (typeof body.active === "boolean") {
+        const { error } = await client.from("assignment_pool_members").update({ active: body.active })
+          .eq("pool_key", pool).eq("member_ref", ref);
+        if (error) throw error;
+        await note(`${body.active ? "Turned on" : "Turned off"} ${ref} in ${pool}`);
+      } else if (body.move === "up" || body.move === "down") {
+        // Re-number the pool in its current order, then swap.
+        const { data: list, error } = await client.from("assignment_pool_members").select("member_ref,position")
+          .eq("pool_key", pool).order("position").order("member_ref");
+        if (error) throw error;
+        const refs = (list ?? []).map((m) => String(m.member_ref));
+        const i = refs.indexOf(ref);
+        const j = body.move === "up" ? i - 1 : i + 1;
+        if (i >= 0 && j >= 0 && j < refs.length) {
+          [refs[i], refs[j]] = [refs[j], refs[i]];
+          for (let k = 0; k < refs.length; k++) {
+            await client.from("assignment_pool_members").update({ position: k + 1 }).eq("pool_key", pool).eq("member_ref", refs[k]);
+          }
+          await note(`Moved ${ref} ${body.move} in ${pool}`);
+        }
+      }
+      break;
+    }
+    case "service_pool": {
+      const key = String(body.service ?? "");
+      const field = String(body.field ?? "");
+      if (!["admin_pool", "delivery_pool", "washer_pool"].includes(field)) throw new HttpError(400, "bad_request", "Unknown field.");
+      const value = body.value === null || body.value === "" ? null : String(body.value);
+      if (value && !value.includes("{vehicle}")) {
+        const { data: p } = await client.from("assignment_pools").select("key").eq("key", value).maybeSingle();
+        if (!p) throw new HttpError(404, "not_found", "Pool not found.");
+      }
+      const { error } = await client.from("services").update({ [field]: value }).eq("key", key);
+      if (error) throw error;
+      await note(`Service ${key}: ${field} → ${value ?? "none"}`);
+      break;
+    }
+    case "fleet_default": {
+      const id = String(body.admin_id ?? "");
+      const name = await personName(client, "garage", id);
+      if (!name) throw new HttpError(404, "not_found", "Garage not found.");
+      const { error } = await client.from("app_settings").upsert({ key: "fleet_default_admin_id", value: id });
+      if (error) throw error;
+      await note(`Default fleet garage → ${name}`);
+      break;
+    }
+    case "fleet_rule": {
+      const fleetId = String(body.fleet_user_id ?? "");
+      if (!fleetId) throw new HttpError(400, "bad_request", "Missing fleet.");
+      if (body.admin_id === null || body.admin_id === "") {
+        const { error } = await client.from("fleet_garage_rules").delete().eq("fleet_user_id", fleetId);
+        if (error) throw error;
+        await note(`Fleet ${body.company_name ?? fleetId} → default garage`);
+      } else {
+        const id = String(body.admin_id);
+        const name = await personName(client, "garage", id);
+        if (!name) throw new HttpError(404, "not_found", "Garage not found.");
+        const { error } = await client.from("fleet_garage_rules").upsert({
+          fleet_user_id: fleetId, admin_id: id, company_name: body.company_name ?? null,
+          updated_by: who, updated_at: new Date().toISOString(),
+        });
+        if (error) throw error;
+        await note(`Fleet ${body.company_name ?? fleetId} → ${name}`);
+      }
+      break;
+    }
+    default:
+      throw new HttpError(400, "invalid_action", "Unknown change.");
+  }
+  return await rulesGet(client);
+}
+
+// ── Fleet 21-point inspection report (supabase/fleet_inspection.sql) ──
+// Like the fleet, the CRM can open the report only once the bill is paid.
+async function inspection21Info(client: SupabaseClient, row: Row) {
+  const photos = Object.keys((row.inspection21_photos ?? {}) as Row).length;
+  const info: Row = {
+    status: row.inspection21_status ?? null,
+    photos,
+    paid: row.payment_status === "paid",
+    error: row.inspection21_error ?? null,
+    summary: row.inspection21_summary ?? null,
+    url: null,
+  };
+  if (info.paid && row.inspection21_status === "ready" && row.inspection21_pdf_path) {
+    const { data } = await client.storage.from("fleet-inspections").createSignedUrl(String(row.inspection21_pdf_path), 600);
+    info.url = data?.signedUrl ?? null;
+  }
+  return info;
+}
+
+/** Make the report again (e.g. after a failure). */
+async function inspection21Retry(client: SupabaseClient, body: Row) {
+  const id = String(body.id ?? "");
+  const { data: row } = await client.from("fleet_pickup_requests").select("id,inspection21_photos").eq("id", id).maybeSingle();
+  if (!row) throw new HttpError(404, "not_found", "Request not found.");
+  if (Object.keys((row.inspection21_photos ?? {}) as Row).length < 21) {
+    throw new HttpError(400, "not_ready", "All 21 photos aren't in yet.");
+  }
+  const { data: s } = await client.from("app_settings").select("value").eq("key", "cron_secret").maybeSingle();
+  await client.from("fleet_pickup_requests").update({ inspection21_status: "processing", inspection21_error: null }).eq("id", id);
+  const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/fleet-inspection`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-inspection-secret": typeof s?.value === "string" ? s.value : "" },
+    body: JSON.stringify({ action: "generate", id }),
+  });
+  if (!res.ok) throw new HttpError(502, "failed", "Couldn't start the report. Is the fleet-inspection function deployed?");
+  return { ok: true };
 }
 
 // ── Payment QR (UPI collection at the door / garage) ──────────────────
@@ -564,162 +874,243 @@ async function qrDelete(client: SupabaseClient, body: Row) {
   return await qrList(client);
 }
 
-// ── Community (app: Content reels + Recent work posts) ────────────────
-// Tables + bucket: supabase/community.sql. Files are uploaded by the CRM
-// page straight to storage with one-time signed upload URLs from here.
-const COMMUNITY_BUCKET = "community-media";
-const COMMUNITY_MAX_BYTES = 50 * 1024 * 1024;
-const COMMUNITY_TYPES: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "video/mp4": "mp4",
-  "video/quicktime": "mov",
-  "video/webm": "webm",
-};
-const COMMUNITY_TABLE = { reel: "community_reels", post: "community_posts" } as const;
-type CommunityKind = keyof typeof COMMUNITY_TABLE;
+// ── Yellow Board: Quotations + Washing (fleet_services.sql) ─────────
+// The fleet lists their own in the app. CRM lists ALL of them here.
 
-function communityKind(v: unknown): CommunityKind {
-  if (v === "reel" || v === "post") return v;
-  throw new HttpError(400, "bad_request", "Unknown item type.");
-}
-
-/** A path we handed out ourselves: reels/… or posts/… with a known extension. */
-function communityPath(v: unknown, folder: "reels" | "posts", what: string): string {
-  const p = String(v ?? "");
-  if (!new RegExp(`^${folder}/\\d{4}/\\d{2}/[0-9a-f-]{36}\\.(jpg|png|webp|mp4|mov|webm)$`).test(p)) {
-    throw new HttpError(400, "bad_file", `The ${what} didn't upload properly. Please choose it again.`);
-  }
-  return p;
-}
-
-function numOrNull(v: unknown, max = 100000): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 && n <= max ? Math.round(n * 100) / 100 : null;
-}
-
-async function communityList(client: SupabaseClient) {
-  const [reels, posts] = await Promise.all([
-    client.from("community_reels").select("*").order("created_at", { ascending: false }).limit(500),
-    client.from("community_posts").select("*").order("created_at", { ascending: false }).limit(500),
-  ]);
-  if (reels.error) throw reels.error;
-  if (posts.error) throw posts.error;
-  return { reels: reels.data ?? [], posts: posts.data ?? [] };
-}
-
-async function communityUploadUrls(client: SupabaseClient, body: Row) {
-  const kind = communityKind(body.kind);
-  const files = Array.isArray(body.files) ? body.files : [];
-  // A post: up to 10 photos/videos plus a cover image for each video.
-  if (!files.length || files.length > 20) throw new HttpError(400, "bad_request", "Too many files at once — 10 photos or videos per post.");
-  const folder = kind === "reel" ? "reels" : "posts";
-  const now = new Date();
-  const month = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-  const out: { path: string; signedUrl: string }[] = [];
-  for (const f of files) {
-    const type = String(f?.type ?? "").toLowerCase();
-    const ext = COMMUNITY_TYPES[type];
-    if (!ext) throw new HttpError(400, "bad_type", "Only JPG, PNG, WebP photos and MP4, MOV, WebM videos can be uploaded.");
-    const size = Number(f?.size ?? 0);
-    if (!(size > 0)) throw new HttpError(400, "bad_file", "One of the files is empty.");
-    if (size > COMMUNITY_MAX_BYTES) throw new HttpError(400, "too_big", "Each file must be 50 MB or less.");
-    const path = `${folder}/${month}/${crypto.randomUUID()}.${ext}`;
-    const { data, error } = await client.storage.from(COMMUNITY_BUCKET).createSignedUploadUrl(path);
-    if (error || !data) throw error ?? new Error("Could not prepare the upload.");
-    out.push({ path, signedUrl: data.signedUrl });
-  }
-  return { uploads: out };
-}
-
-async function communitySaveReel(client: SupabaseClient, body: Row, user: User) {
-  const caption = String(body.caption ?? "").trim().slice(0, 2200);
-  const row = {
-    video_path: communityPath(body.video_path, "reels", "video"),
-    poster_path: body.poster_path ? communityPath(body.poster_path, "reels", "cover image") : null,
-    caption,
-    duration_seconds: numOrNull(body.duration, 3600),
-    width: numOrNull(body.width, 10000),
-    height: numOrNull(body.height, 10000),
-    is_published: body.publish !== false,
-    created_by: user.email ?? null,
-  };
-  const { error } = await client.from("community_reels").insert(row);
+async function fleetQuotationList(client: SupabaseClient, body: Row) {
+  const status = typeof body.status === "string" ? String(body.status) : "";
+  let q = client.from("fleet_quotation_requests")
+    .select("id,fleet_user_id,company_name,username,vehicle_brand,vehicle_model,description,photo_path,status,price,assigned_to_admin_id,fleet_booking_id,created_at,accepted_at,priced_at")
+    .order("created_at", { ascending: false }).limit(300);
+  if (status === "pending") q = q.eq("status", "pending");
+  else if (status === "priced") q = q.eq("status", "priced");
+  else if (status === "accepted") q = q.eq("status", "accepted");
+  const { data, error } = await q;
   if (error) throw error;
-  return await communityList(client);
-}
-
-async function communitySavePost(client: SupabaseClient, body: Row, user: User) {
-  const text = String(body.body ?? "").trim().slice(0, 5000);
-  if (!text) throw new HttpError(400, "bad_request", "Write a short brief about the work.");
-  const items = Array.isArray(body.media) ? body.media : [];
-  if (items.length < 1 || items.length > 10) throw new HttpError(400, "bad_request", "Add between 1 and 10 photos or videos.");
-  const media = items.map((m: Row) => {
-    const type = m?.type === "video" ? "video" : "image";
-    const item: Row = {
-      path: communityPath(m?.path, "posts", type === "video" ? "video" : "photo"),
-      type,
-      width: numOrNull(m?.width, 10000),
-      height: numOrNull(m?.height, 10000),
-    };
-    if (type === "video") {
-      item.poster_path = m?.poster_path ? communityPath(m.poster_path, "posts", "video cover") : null;
-      item.duration = numOrNull(m?.duration, 3600);
-    }
-    return item;
-  });
-  const { error } = await client.from("community_posts").insert({
-    body: text,
-    media,
-    is_published: body.publish !== false,
-    created_by: user.email ?? null,
-  });
-  if (error) throw error;
-  return await communityList(client);
-}
-
-async function communityUpdate(client: SupabaseClient, body: Row) {
-  const kind = communityKind(body.kind);
-  const id = String(body.id ?? "");
-  const patch: Row = {};
-  if (typeof body.text === "string") {
-    const text = body.text.trim();
-    if (kind === "post" && !text) throw new HttpError(400, "bad_request", "The brief can't be empty.");
-    patch[kind === "reel" ? "caption" : "body"] = text.slice(0, kind === "reel" ? 2200 : 5000);
-  }
-  if (typeof body.publish === "boolean") patch.is_published = body.publish;
-  if (!id || !Object.keys(patch).length) throw new HttpError(400, "bad_request", "Nothing to change.");
-  const { data, error } = await client.from(COMMUNITY_TABLE[kind]).update(patch).eq("id", id).select("id");
-  if (error) throw error;
-  if (!data?.length) throw new HttpError(404, "not_found", "That item no longer exists.");
-  return await communityList(client);
-}
-
-async function communityDelete(client: SupabaseClient, body: Row) {
-  const kind = communityKind(body.kind);
-  const id = String(body.id ?? "");
-  const { data: row, error: readErr } = await client.from(COMMUNITY_TABLE[kind]).select("*").eq("id", id).maybeSingle();
-  if (readErr) throw readErr;
-  if (!row) throw new HttpError(404, "not_found", "That item no longer exists.");
-  const paths: string[] = [];
-  if (kind === "reel") {
-    if (row.video_path) paths.push(String(row.video_path));
-    if (row.poster_path) paths.push(String(row.poster_path));
-  } else {
-    for (const m of (Array.isArray(row.media) ? row.media : []) as Row[]) {
-      if (m?.path) paths.push(String(m.path));
-      if (m?.poster_path) paths.push(String(m.poster_path));
-    }
-  }
-  const { error } = await client.from(COMMUNITY_TABLE[kind]).delete().eq("id", id);
-  if (error) throw error;
-  // Files last: a failed cleanup never leaves a broken item in the app.
+  // signed urls for the photos
+  const rows = (data ?? []) as Row[];
+  const urls: Record<string, string> = {};
+  const paths = rows.map((r) => String(r.photo_path ?? "")).filter(Boolean);
   if (paths.length) {
-    const { error: rmErr } = await client.storage.from(COMMUNITY_BUCKET).remove(paths);
-    if (rmErr) console.error("community_delete: files not removed", rmErr);
+    const { data: signed } = await client.storage.from("fleet-quotations").createSignedUrls(paths, 300);
+    for (const s of signed ?? []) if (s.path && s.signedUrl) urls[s.path] = s.signedUrl;
   }
-  return await communityList(client);
+  return { quotations: rows.map((r) => ({ ...r, photo_url: urls[String(r.photo_path ?? "")] ?? null })) };
+}
+
+/** CRM sets the price on a quotation → fleet sees "priced". */
+async function fleetQuotationPrice(client: SupabaseClient, body: Row, user: User) {
+  const id = String(body.id ?? "");
+  const price = Math.round(Number(body.price));
+  if (!id) throw new HttpError(400, "bad_request", "Missing quotation.");
+  if (!Number.isFinite(price) || price < 1) throw new HttpError(400, "bad_request", "Enter a valid price.");
+  const { data: row, error: rErr } = await client.from("fleet_quotation_requests")
+    .select("id,status,fleet_user_id").eq("id", id).maybeSingle();
+  if (rErr) throw rErr;
+  if (!row) throw new HttpError(404, "not_found", "Quotation not found.");
+  if (!(row.status === "pending" || row.status === "priced")) {
+    throw new HttpError(409, "wrong_state", "This quotation already moved on.");
+  }
+  const { error } = await client.from("fleet_quotation_requests").update({
+    status: "priced",
+    price,
+    priced_at: new Date().toISOString(),
+    priced_by: user.email ?? null,
+    has_unread_update: true,
+    latest_update_type: "PRICED",
+  }).eq("id", id);
+  if (error) throw error;
+  return { ok: true };
+}
+
+/** CRM assigns a garage to an ACCEPTED quotation → creates a fleet_pickup_requests row. */
+async function fleetQuotationAssignGarage(client: SupabaseClient, body: Row, user: User) {
+  const id = String(body.id ?? "");
+  const adminId = typeof body.admin_id === "string" ? body.admin_id.trim() : "";
+  if (!id || !adminId) throw new HttpError(400, "bad_request", "Pick a garage.");
+  const { data: q, error: qErr } = await client.from("fleet_quotation_requests")
+    .select("*").eq("id", id).maybeSingle();
+  if (qErr) throw qErr;
+  if (!q) throw new HttpError(404, "not_found", "Quotation not found.");
+  if (q.status !== "accepted") throw new HttpError(409, "wrong_state", "The fleet hasn't accepted this quotation yet.");
+
+  // Pick a delivery partner from the fleet rotation.
+  const { data: partnerText } = await client.rpc("next_pool_member", { p_pool: "delivery_fleet" });
+  const partnerId = partnerText && Number.isInteger(Number(partnerText)) ? Number(partnerText) : null;
+  const now = new Date().toISOString();
+  const vehicleModel = String(q.vehicle_model ?? q.vehicle_brand ?? "Vehicle");
+
+  // Create the fleet pickup row. No photo-url (no photo of the whole car yet;
+  // delivery partner takes the 21 inspection photos at pickup).
+  const { data: ins, error: iErr } = await client.from("fleet_pickup_requests").insert({
+    fleet_user_id: q.fleet_user_id,
+    company_name: q.company_name,
+    username: q.username,
+    vehicle_model: vehicleModel,
+    car_number: "SET AT PICKUP",
+    vehicle_photo_url: q.photo_path ? `quotation:${q.photo_path}` : null,
+    status: "Pending",
+    // The quote price is NOT the bill — it is kept as a reference only.
+    // The garage builds the actual bill via add-ons, which the fleet
+    // pays by Razorpay or Cash on Delivery.
+    quoted_amount: q.price,
+    quotation_id: id,
+    assigned_to_admin_id: adminId,
+    assigned_at: now,
+    ...(partnerId !== null ? { delivery_partner_id: partnerId, delivery_stage: "assigned", stage_assigned_at: now } : {}),
+  }).select("id").single();
+  if (iErr) throw iErr;
+
+  await client.from("fleet_quotation_requests").update({
+    status: "assigned",
+    assigned_to_admin_id: adminId,
+    fleet_booking_id: ins.id,
+    has_unread_update: true,
+    latest_update_type: "GARAGE ASSIGNED",
+  }).eq("id", id);
+
+  await logChange(client, {
+    booking_table: "fleet_quotation_requests", booking_id: id, role: "garage",
+    from_id: null, to_id: adminId,
+    reason: `Garage assigned by ${user.email ?? "staff"}. Created booking ${ins.id}.`,
+    changed_by: user.email ?? null,
+  });
+
+  return { ok: true, fleet_booking_id: ins.id };
+}
+
+/** CRM declines a quotation (customer won't pay — stop it here). */
+async function fleetQuotationDecline(client: SupabaseClient, body: Row) {
+  const id = String(body.id ?? "");
+  if (!id) throw new HttpError(400, "bad_request", "Missing quotation.");
+  const { error } = await client.from("fleet_quotation_requests").update({
+    status: "declined",
+    declined_at: new Date().toISOString(),
+    declined_reason: String(body.reason ?? "").slice(0, 300) || null,
+    has_unread_update: true,
+    latest_update_type: "DECLINED",
+  }).eq("id", id);
+  if (error) throw error;
+  return { ok: true };
+}
+
+async function fleetWashingList(client: SupabaseClient, body: Row) {
+  const paid = body.paid === true;
+  let q = client.from("fleet_washing_requests")
+    .select("id,fleet_user_id,company_name,username,vehicle_brand,vehicle_model,car_number,vehicle_photo_path,washer_id,amount,payment_status,status,created_at,assigned_at,paid_at")
+    .order("created_at", { ascending: false }).limit(300);
+  if (paid) q = q.eq("payment_status", "paid");
+  const { data, error } = await q;
+  if (error) throw error;
+  return { washes: data ?? [] };
+}
+
+/** CRM assigns a washer and (optionally) adjusts the price. */
+async function fleetWashingAssign(client: SupabaseClient, body: Row, user: User) {
+  const id = String(body.id ?? "");
+  const washerId = body.washer_id === null || body.washer_id === "" ? null :
+    (Number.isInteger(Number(body.washer_id)) ? Number(body.washer_id) : null);
+  if (!id) throw new HttpError(400, "bad_request", "Missing wash.");
+  const { data: row, error: rErr } = await client.from("fleet_washing_requests")
+    .select("*").eq("id", id).maybeSingle();
+  if (rErr) throw rErr;
+  if (!row) throw new HttpError(404, "not_found", "Wash not found.");
+
+  const update: Row = {};
+  if (washerId !== row.washer_id) {
+    update.washer_id = washerId;
+    update.assigned_at = washerId !== null ? new Date().toISOString() : null;
+    update.status = washerId !== null ? "assigned" : "pending";
+  }
+  if (body.amount !== undefined && body.amount !== null && body.amount !== "") {
+    const amount = Math.round(Number(body.amount));
+    if (!Number.isFinite(amount) || amount < 1) throw new HttpError(400, "bad_request", "Enter a valid price.");
+    // Changing the price after a Razorpay order was opened would charge the
+    // wrong amount, so clear the order.
+    if (row.payment_status !== "paid" && amount !== Number(row.amount)) {
+      update.amount = amount;
+      update.razorpay_order_id = null;
+      update.has_unread_update = true;
+      update.latest_update_type = "PRICE CHANGED";
+    }
+  }
+  if (!Object.keys(update).length) return { ok: true };
+
+  const { error } = await client.from("fleet_washing_requests").update(update).eq("id", id);
+  if (error) throw error;
+
+  await logChange(client, {
+    booking_table: "fleet_washing_requests", booking_id: id,
+    role: washerId !== row.washer_id ? "washer" : "rule",
+    from_id: row.washer_id == null ? null : String(row.washer_id),
+    to_id: washerId == null ? null : String(washerId),
+    reason: `${washerId !== row.washer_id ? "Washer changed" : "Price changed"} by ${user.email ?? "staff"}.`,
+    changed_by: user.email ?? null,
+  });
+  return { ok: true };
+}
+
+// ── Yellow Board: outstanding Cash on Delivery balances ──────────────
+// Rolled up per fleet account (fleet_user_id). "Outstanding" = fleet
+// picked Cash on Delivery for a bill that isn't paid yet.
+
+async function fleetCodSummary(client: SupabaseClient) {
+  // Pull every unpaid fleet bill that's on COD, roll up per fleet.
+  const { data, error } = await client.from("fleet_pickup_requests")
+    .select("fleet_user_id,company_name,username,total_amount")
+    .eq("payment_method", "cash")
+    .eq("payment_status", "awaiting_payment");
+  if (error) throw error;
+  const by: Record<string, Row> = {};
+  for (const r of (data ?? []) as Row[]) {
+    const key = String(r.fleet_user_id ?? "");
+    if (!by[key]) by[key] = {
+      fleet_user_id: r.fleet_user_id,
+      company_name: r.company_name ?? r.username ?? `Fleet #${key}`,
+      username: r.username ?? null,
+      cod_amount: 0,
+      bills: 0,
+    };
+    by[key].cod_amount = Number(by[key].cod_amount) + Math.round(Number(r.total_amount ?? 0));
+    by[key].bills = Number(by[key].bills) + 1;
+  }
+  const summary = Object.values(by).sort((a, b) => Number(b.cod_amount) - Number(a.cod_amount));
+  return { summary };
+}
+
+async function fleetCodDetail(client: SupabaseClient, body: Row) {
+  const fleetUserId = String(body.fleet_user_id ?? "");
+  if (!fleetUserId) throw new HttpError(400, "bad_request", "Missing fleet.");
+  const { data, error } = await client.from("fleet_pickup_requests")
+    .select("id,vehicle_model,car_number,total_amount,created_at,payment_method,payment_status,cash_collected_at,quoted_amount")
+    .eq("fleet_user_id", fleetUserId)
+    .eq("payment_method", "cash")
+    .order("created_at", { ascending: false }).limit(200);
+  if (error) throw error;
+  return { bills: data ?? [] };
+}
+
+/** CRM marks a cash bill collected (payment_status flips to paid). */
+async function fleetMarkCollected(client: SupabaseClient, body: Row, user: User) {
+  const id = String(body.id ?? "");
+  if (!id) throw new HttpError(400, "bad_request", "Missing bill.");
+  const { data: row, error: rErr } = await client.from("fleet_pickup_requests")
+    .select("id,payment_status,payment_method,total_amount").eq("id", id).maybeSingle();
+  if (rErr) throw rErr;
+  if (!row) throw new HttpError(404, "not_found", "Bill not found.");
+  if (row.payment_method !== "cash") throw new HttpError(400, "not_cod", "This bill is not on Cash on Delivery.");
+  if (row.payment_status === "paid") return { ok: true };
+
+  const now = new Date().toISOString();
+  const { error } = await client.from("fleet_pickup_requests").update({
+    payment_status: "paid",
+    cash_collected_at: now,
+    cash_collected_by: user.email ?? null,
+    has_unread_update: true,
+    latest_update_type: "CASH COLLECTED",
+  }).eq("id", id);
+  if (error) throw error;
+  return { ok: true };
 }
 
 Deno.serve(async (req: Request) => {
@@ -746,6 +1137,14 @@ Deno.serve(async (req: Request) => {
         return json(await inspectionAssign(client, body));
       case "inspection_photos":
         return json(await inspectionPhotos(client, body));
+      case "assign":
+        return json(await assignOverride(client, body, user));
+      case "rules_get":
+        return json(await rulesGet(client));
+      case "rules_save":
+        return json(await rulesSave(client, body, user));
+      case "inspection21_retry":
+        return json(await inspection21Retry(client, body));
       case "qr_list":
         return json(await qrList(client));
       case "qr_add":
@@ -754,18 +1153,24 @@ Deno.serve(async (req: Request) => {
         return json(await qrActivate(client, body));
       case "qr_delete":
         return json(await qrDelete(client, body));
-      case "community_list":
-        return json(await communityList(client));
-      case "community_upload_urls":
-        return json(await communityUploadUrls(client, body));
-      case "community_save_reel":
-        return json(await communitySaveReel(client, body, user));
-      case "community_save_post":
-        return json(await communitySavePost(client, body, user));
-      case "community_update":
-        return json(await communityUpdate(client, body));
-      case "community_delete":
-        return json(await communityDelete(client, body));
+      case "quotation_list":
+        return json(await fleetQuotationList(client, body));
+      case "quotation_price":
+        return json(await fleetQuotationPrice(client, body, user));
+      case "quotation_assign_garage":
+        return json(await fleetQuotationAssignGarage(client, body, user));
+      case "quotation_decline":
+        return json(await fleetQuotationDecline(client, body));
+      case "washing_list":
+        return json(await fleetWashingList(client, body));
+      case "washing_assign":
+        return json(await fleetWashingAssign(client, body, user));
+      case "fleet_cod_summary":
+        return json(await fleetCodSummary(client));
+      case "fleet_cod_detail":
+        return json(await fleetCodDetail(client, body));
+      case "fleet_mark_collected":
+        return json(await fleetMarkCollected(client, body, user));
       case "invoice_issue": {
         const table = String(body.table ?? "");
         const id = String(body.id ?? "");

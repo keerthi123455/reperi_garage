@@ -26,7 +26,13 @@ import {
   buildQuote,
   corsHeaders,
   createAddonIntent,
+  acceptFleetQuotation,
+  confirmFleetWashingPayment,
   createFleetPickup,
+  createFleetQuotation,
+  createFleetWashing,
+  fleetChooseCod,
+  startFleetWashingPayment,
   createIntent,
   createRenewalIntent,
   createRazorpayOrder,
@@ -104,6 +110,30 @@ Deno.serve(async (req: Request) => {
 
       case "fleet_pickup_create": {
         return json(await createFleetPickup(db, body, settings));
+      }
+
+      case "fleet_quotation_create": {
+        return json(await createFleetQuotation(db, body));
+      }
+
+      case "fleet_quotation_accept": {
+        return json(await acceptFleetQuotation(db, body));
+      }
+
+      case "fleet_washing_create": {
+        return json(await createFleetWashing(db, body));
+      }
+
+      case "fleet_washing_pay_start": {
+        return json(await startFleetWashingPayment(db, body));
+      }
+
+      case "fleet_washing_pay_confirm": {
+        return json(await confirmFleetWashingPayment(db, body));
+      }
+
+      case "fleet_choose_cod": {
+        return json(await fleetChooseCod(db, body));
       }
 
       case "renew_create": {

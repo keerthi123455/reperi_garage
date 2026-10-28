@@ -1064,6 +1064,236 @@ export async function createFleetPickup(
 
 const toInt = (v: string | null) => (v === null ? null : Number.isInteger(Number(v)) ? Number(v) : null);
 
+// ── Yellow Board: Request Quotation ───────────────────────────────────
+// (fleet_services.sql — fleet_quotation_requests)
+//
+// Fleet sends: photo + description + optional brand/model → the CRM.
+// CRM sets a price (crm-api → quotation_price). Fleet taps Accept here;
+// CRM then picks a garage, which creates the fleet_pickup_requests row.
+
+export async function createFleetQuotation(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<{ id: string }> {
+  const rawFleetId = body.fleet_user_id;
+  const fleetUserId = rawFleetId === null || rawFleetId === undefined ? "" : String(rawFleetId).trim();
+  const username = String(body.username ?? "").trim();
+  const company = String(body.company_name ?? "").trim().slice(0, 120);
+  const brand = String(body.vehicle_brand ?? "").trim().slice(0, 60);
+  const model = String(body.vehicle_model ?? "").trim().slice(0, 80);
+  const photo = String(body.photo_path ?? "").trim();
+  const description = String(body.description ?? "").trim().slice(0, 2000);
+  if (!fleetUserId) throw new ApiError("sign_in_required", "Please log in to your fleet account again.", 401);
+  if (!photo || photo.includes("..") || !photo.startsWith(`${fleetUserId}/`)) {
+    throw new ApiError("invalid_request", "Add a photo of the vehicle.");
+  }
+  if (!description) throw new ApiError("invalid_request", "Describe the problem.");
+
+  const { data, error } = await db.from("fleet_quotation_requests").insert({
+    fleet_user_id: rawFleetId,
+    company_name: company || null,
+    username: username || null,
+    vehicle_brand: brand || null,
+    vehicle_model: model || null,
+    photo_path: photo,
+    description,
+    status: "pending",
+    latest_update_type: "NEW QUOTATION",
+    has_unread_update: false,                         // the fleet already saw it (they just made it)
+  }).select("id").single();
+  if (error) throw error;
+  return { id: String(data.id) };
+}
+
+/** Fleet taps Accept on a priced quotation. CRM then assigns a garage. */
+export async function acceptFleetQuotation(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<{ ok: true }> {
+  const id = String(body.id ?? "").trim();
+  const rawFleetId = body.fleet_user_id;
+  const fleetUserId = rawFleetId === null || rawFleetId === undefined ? "" : String(rawFleetId).trim();
+  if (!id || !fleetUserId) throw new ApiError("invalid_request", "Missing quotation.");
+  const { data: q, error } = await db.from("fleet_quotation_requests")
+    .select("id,status,fleet_user_id").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!q || String(q.fleet_user_id ?? "") !== fleetUserId) {
+    throw new ApiError("not_found", "Quotation not found.", 404);
+  }
+  if (q.status !== "priced") throw new ApiError("not_ready", "This quotation is not ready to accept.", 409);
+  const { error: uErr } = await db.from("fleet_quotation_requests").update({
+    status: "accepted",
+    accepted_at: new Date().toISOString(),
+    has_unread_update: true,
+    latest_update_type: "ACCEPTED",
+  }).eq("id", id);
+  if (uErr) throw uErr;
+  return { ok: true };
+}
+
+// ── Yellow Board: Request Washing ─────────────────────────────────────
+// (fleet_services.sql — fleet_washing_requests)
+//
+// Fleet sends a short form at ₹699 default; CRM can bump the price and
+// assigns a washer. Fleet taps Pay now → Razorpay order → confirm
+// → payment_status = 'paid', the wash shows in the washer's dashboard.
+
+export async function createFleetWashing(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<{ id: string }> {
+  const rawFleetId = body.fleet_user_id;
+  const fleetUserId = rawFleetId === null || rawFleetId === undefined ? "" : String(rawFleetId).trim();
+  const username = String(body.username ?? "").trim();
+  const company = String(body.company_name ?? "").trim().slice(0, 120);
+  const brand = String(body.vehicle_brand ?? "").trim().slice(0, 60);
+  const model = String(body.vehicle_model ?? "").trim().slice(0, 80);
+  const number = String(body.car_number ?? "").trim().toUpperCase().replace(/\s+/g, " ").slice(0, 20);
+  const photo = String(body.vehicle_photo_url ?? "").trim();
+  if (!fleetUserId) throw new ApiError("sign_in_required", "Please log in to your fleet account again.", 401);
+  if (!model) throw new ApiError("invalid_request", "Enter the vehicle model.");
+  if (!number) throw new ApiError("invalid_request", "Enter the vehicle number.");
+  if (photo && (!photo.startsWith("fleet/") || photo.includes(".."))) {
+    throw new ApiError("invalid_request", "Photo is invalid.");
+  }
+
+  const { data, error } = await db.from("fleet_washing_requests").insert({
+    fleet_user_id: rawFleetId,
+    company_name: company || null,
+    username: username || null,
+    vehicle_brand: brand || null,
+    vehicle_model: model,
+    car_number: number,
+    vehicle_photo_path: photo || null,
+    amount: 699,                                            // CRM can bump this
+    payment_status: "awaiting_payment",
+    status: "pending",
+    latest_update_type: "NEW WASH",
+    has_unread_update: false,
+  }).select("id").single();
+  if (error) throw error;
+  return { id: String(data.id) };
+}
+
+/** Fleet taps Pay now → start a Razorpay order for the washing bill. */
+export async function startFleetWashingPayment(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<{ order_id: string; key_id: string; amount_paise: number }> {
+  const id = String(body.id ?? "").trim();
+  const rawFleetId = body.fleet_user_id;
+  const fleetUserId = rawFleetId === null || rawFleetId === undefined ? "" : String(rawFleetId).trim();
+  if (!id || !fleetUserId) throw new ApiError("invalid_request", "Missing wash.");
+
+  const { data: row, error } = await db.from("fleet_washing_requests")
+    .select("id,fleet_user_id,amount,payment_status,razorpay_order_id")
+    .eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!row || String(row.fleet_user_id ?? "") !== fleetUserId) {
+    throw new ApiError("not_found", "Wash not found.", 404);
+  }
+  if (row.payment_status === "paid") throw new ApiError("already_paid", "This wash is already paid.", 409);
+  const amount = Math.round(Number(row.amount));
+  if (!Number.isFinite(amount) || amount < 1) throw new ApiError("invalid_request", "Amount isn't set yet.");
+
+  const keyId = Deno.env.get("RAZORPAY_KEY_ID");
+  const secret = Deno.env.get("RAZORPAY_KEY_SECRET");
+  if (!keyId || !secret) throw new Error("RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set");
+  const res = await fetch("https://api.razorpay.com/v1/orders", {
+    method: "POST",
+    headers: { Authorization: `Basic ${btoa(`${keyId}:${secret}`)}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      amount: amount * 100,
+      currency: "INR",
+      receipt: `fw_${id.replace(/-/g, "").slice(0, 28)}`,
+      notes: { fleet_washing_id: id, kind: "fleet_washing" },
+    }),
+  });
+  const resBody = await res.json().catch(() => ({}));
+  if (!res.ok || !resBody?.id) {
+    console.error("Fleet washing Razorpay order failed", res.status, resBody);
+    throw new ApiError("payment_unavailable", "Couldn't start the payment. Please try again.", 502);
+  }
+  const orderId = String(resBody.id);
+  const { error: uErr } = await db.from("fleet_washing_requests")
+    .update({ razorpay_order_id: orderId }).eq("id", id);
+  if (uErr) throw uErr;
+
+  return { order_id: orderId, key_id: keyId, amount_paise: amount * 100 };
+}
+
+/** The fleet picked Cash on Delivery for an add-on bill on their pickup.
+ * No payment runs — the row is marked `payment_method: 'cash'`, status
+ * stays `awaiting_payment`. The CRM / delivery partner marks collected
+ * when the cash is handed over. The quotation ACCEPT itself is not
+ * payable — it just agreed to a minimum; actual charges come from
+ * add-ons the garage adds and this is where the fleet chooses how to
+ * settle those. */
+export async function fleetChooseCod(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<{ ok: true }> {
+  const id = String(body.id ?? "").trim();
+  const rawFleetId = body.fleet_user_id;
+  const fleetUserId = rawFleetId === null || rawFleetId === undefined ? "" : String(rawFleetId).trim();
+  if (!id || !fleetUserId) throw new ApiError("invalid_request", "Missing bill.");
+  const { data: row, error } = await db.from("fleet_pickup_requests")
+    .select("id,fleet_user_id,payment_status,total_amount")
+    .eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!row || String(row.fleet_user_id ?? "") !== fleetUserId) {
+    throw new ApiError("not_found", "Bill not found.", 404);
+  }
+  if (row.payment_status === "paid") throw new ApiError("already_paid", "This bill is already paid.", 409);
+  const total = Math.round(Number(row.total_amount ?? 0));
+  if (!Number.isFinite(total) || total <= 0) {
+    throw new ApiError("not_payable", "The garage hasn't added charges to this bill yet.");
+  }
+  const { error: uErr } = await db.from("fleet_pickup_requests").update({
+    payment_method: "cash",
+    has_unread_update: true,
+    latest_update_type: "COD CHOSEN",
+  }).eq("id", id);
+  if (uErr) throw uErr;
+  return { ok: true };
+}
+
+/** Verify the Razorpay signature, mark the wash paid. */
+export async function confirmFleetWashingPayment(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<{ ok: true }> {
+  const orderId = String(body.razorpay_order_id ?? "").trim();
+  const paymentId = String(body.razorpay_payment_id ?? "").trim();
+  const signature = String(body.razorpay_signature ?? "").trim();
+  if (!orderId || !paymentId || !signature) throw new ApiError("invalid_payment", "Missing payment details.");
+  if (!(await verifyCheckoutSignature(orderId, paymentId, signature))) {
+    throw new ApiError("invalid_signature", "We couldn't verify this payment.", 400);
+  }
+  const { data: row, error } = await db.from("fleet_washing_requests")
+    .select("id,washer_id,payment_status").eq("razorpay_order_id", orderId).maybeSingle();
+  if (error) throw error;
+  if (!row) throw new ApiError("not_found", "Wash not found.", 404);
+  if (row.payment_status !== "paid") {
+    const { error: uErr } = await db.from("fleet_washing_requests").update({
+      payment_status: "paid",
+      razorpay_payment_id: paymentId,
+      razorpay_signature: signature,
+      paid_at: new Date().toISOString(),
+      has_unread_update: true,
+      latest_update_type: "PAID",
+    }).eq("id", row.id);
+    if (uErr) throw uErr;
+    if (row.washer_id) {
+      await pushTo(`washer_${row.washer_id}`,
+        "New fleet wash 🫧",
+        "A fleet booking just paid — it's on your list.",
+        { type: "fleet_washing", id: String(row.id) });
+    }
+  }
+  return { ok: true };
+}
+
 // ── Finalize (create the booking) ──────────────────────────────────────
 
 /** Coupon applied to this checkout, if any. */
@@ -1192,12 +1422,19 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
     return String(data);
   }
 
-  // ── Fleet "Pay Now" ──
+  // ── Fleet "Pay Now" (Razorpay only — the Cash on Delivery path is
+  // fleetChooseCod() and never gets here, since COD doesn't open a
+  // payment intent at all for fleet bills).
   if (intent.kind === "fleet") {
     const requestId = String(intent.options["fleet_request_id"]);
     const { error } = await db
       .from("fleet_pickup_requests")
-      .update({ payment_status: "paid", razorpay_order_id: intent.razorpay_order_id, razorpay_payment_id: paymentId })
+      .update({
+        payment_status: "paid",
+        payment_method: "razorpay",
+        razorpay_order_id: intent.razorpay_order_id,
+        razorpay_payment_id: paymentId,
+      })
       .eq("id", requestId);
     if (error) throw error;
     return requestId;

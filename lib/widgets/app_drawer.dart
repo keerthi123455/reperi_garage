@@ -85,8 +85,8 @@ class AppDrawer extends StatelessWidget {
                     onTap: () => _select(context, onAiAdvisor),
                   ),
                   _DrawerTile(
-                    icon: Symbols.local_shipping,
-                    label: 'Fleet Login',
+                    icon: Symbols.local_taxi,
+                    label: 'Yellow Board',
                     onTap: () => _select(context, onFleetLogin),
                   ),
                   _DrawerTile(
