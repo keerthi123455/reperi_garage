@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../services/community_service.dart';
 import 'community_ui.dart';
+import 'report_sheet.dart';
 
 /// Content tab: vertical 9:16 videos, swiped up/down like TikTok.
 ///
@@ -726,6 +727,27 @@ class _ReelPage extends StatelessWidget {
                 ),
               ),
             ),
+
+            // Report — Apple Review Guideline 1.2. A compact "⋮" circle to
+            // the LEFT of Share opens a bottom sheet with reasons. Keeps
+            // the obvious tap target (Share) in place and tucks the
+            // less-common action behind one tap.
+            Positioned(
+              left: l.rowLeft + l.rowW - _kShareSize - 8 - _kShareSize,
+              top: l.captionTop + (l.captionH - _kShareSize) / 2,
+              child: _ShowWhenCurrent(
+                visible: isCurrent,
+                child: Builder(
+                  builder: (btnContext) => GlassCircleButton(
+                    icon: Icons.more_horiz_rounded,
+                    iconSize: 20,
+                    size: _kShareSize,
+                    tooltip: 'More',
+                    onTap: () => _showReelActions(btnContext, reel),
+                  ),
+                ),
+              ),
+            ),
           ],
         );
       },
@@ -1128,4 +1150,15 @@ class _ReelsSkeleton extends StatelessWidget {
       },
     );
   }
+}
+
+/// Report sheet for the currently-viewed Reel. Keeps the overlay above
+/// the fullscreen video while the sheet is up.
+Future<void> _showReelActions(BuildContext context, CommunityReel reel) async {
+  await showCommunityReportSheet(
+    context,
+    targetType: 'reel',
+    targetId: reel.id,
+    targetName: reel.caption.isNotEmpty ? reel.caption : 'Reel',
+  );
 }

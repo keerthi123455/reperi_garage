@@ -241,6 +241,49 @@ class CommunityService {
     final space = cut.lastIndexOf(' ');
     return '${(space > 160 ? cut.substring(0, space) : cut).trimRight()}…';
   }
+
+  // ── Report (Apple Review Guideline 1.2) ───────────────────────────────
+  // Reasons shown in the Report sheet — kept short and plain-language.
+  // Add here if you want more granular categories; the CRM queue just
+  // shows whatever string the user picked.
+  static const List<String> reportReasons = [
+    'Spam or scam',
+    'Hate speech or discrimination',
+    'Nudity or sexual content',
+    'Violence or dangerous activity',
+    'Harassment or bullying',
+    "It's mine, used without permission",
+    'Something else',
+  ];
+
+  /// User tapped Report on a Reel or Post. Stores a row in
+  /// `community_reports` so the team can review in the CRM. Returns true
+  /// when stored, false when the user is signed out (we treat that as
+  /// "already handled" to keep the UX friendly).
+  static Future<bool> reportReel(String id, {required String reason, String? details}) =>
+      _reportTarget(targetType: 'reel', targetId: id, reason: reason, details: details);
+
+  static Future<bool> reportPost(String id, {required String reason, String? details}) =>
+      _reportTarget(targetType: 'post', targetId: id, reason: reason, details: details);
+
+  static Future<bool> _reportTarget({
+    required String targetType,
+    required String targetId,
+    required String reason,
+    String? details,
+  }) async {
+    final auth = _db.auth.currentUser;
+    if (auth == null) return false;
+    await _db.from('community_reports').insert({
+      'reporter_id': auth.id,
+      'target_type': targetType,
+      'target_id': targetId,
+      'reason': reason,
+      'details': (details ?? '').trim().isEmpty ? null : details!.trim(),
+      'reporter_hint': auth.email,
+    });
+    return true;
+  }
 }
 
 /// "Just now", "5m", "3h", "Yesterday", "3 days ago", "2 weeks ago", "12 Oct".

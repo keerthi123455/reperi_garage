@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../services/community_service.dart';
 import 'community_ui.dart';
+import 'report_sheet.dart';
 
 /// Full-screen viewer for a Recent work post: swipe between its photos and
 /// videos, pinch or double-tap to zoom, drag down to close. Photos fly in
@@ -149,6 +150,21 @@ class _CommunityMediaViewerState extends State<CommunityMediaViewer> with Single
                           style: communityText(size: 15, weight: FontWeight.w800, color: Colors.white),
                         ),
                       ),
+                      // Report — Apple Review Guideline 1.2 (UGC must be reportable).
+                      GlassCircleButton(
+                        icon: Icons.flag_outlined,
+                        iconSize: 19,
+                        tooltip: 'Report this post',
+                        onTap: () => showCommunityReportSheet(
+                          context,
+                          targetType: 'post',
+                          targetId: widget.post.id,
+                          targetName: widget.post.body.isNotEmpty
+                              ? (widget.post.body.length > 60 ? '${widget.post.body.substring(0, 60)}…' : widget.post.body)
+                              : 'Post',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Builder(
                         builder: (btnContext) => GlassCircleButton(
                           icon: Icons.share_rounded,

@@ -8,6 +8,7 @@ import '../../services/community_service.dart';
 import '../../theme/app_colors.dart';
 import 'community_ui.dart';
 import 'media_viewer.dart';
+import 'report_sheet.dart';
 
 /// Recent work tab: a Facebook-style feed of posts — a brief and 1–10
 /// photos/videos each. Tap any photo to open it full screen.
@@ -354,15 +355,30 @@ class CommunityPostCard extends StatelessWidget {
                 children: [
                   const SizedBox(height: 10),
                   Divider(height: 1, thickness: 1, color: AppColors.line),
-                  Builder(
-                    builder: (btnContext) => _ShareButton(
-                      onTap: () => CommunityService.share(
-                        btnContext,
-                        text: post.body,
-                        link: CommunityService.postLink(post.id),
+                  Row(children: [
+                    Expanded(
+                      child: Builder(
+                        builder: (btnContext) => _ShareButton(
+                          onTap: () => CommunityService.share(
+                            btnContext,
+                            text: post.body,
+                            link: CommunityService.postLink(post.id),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                    // Report — Apple Review Guideline 1.2.
+                    _ReportButton(
+                      onTap: () => showCommunityReportSheet(
+                        context,
+                        targetType: 'post',
+                        targetId: post.id,
+                        targetName: post.body.isNotEmpty
+                          ? (post.body.length > 60 ? '${post.body.substring(0, 60)}…' : post.body)
+                          : 'Post',
+                      ),
+                    ),
+                  ]),
                 ],
               ),
             ),
@@ -402,6 +418,30 @@ class _ShareButton extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Report button that sits next to Share on each post. Compact so it
+/// doesn't crowd Share.
+class _ReportButton extends StatelessWidget {
+  const _ReportButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        splashColor: kCommunityGold.withValues(alpha: 0.18),
+        highlightColor: kCommunityGold.withValues(alpha: 0.08),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Icon(Icons.flag_outlined, size: 20, color: AppColors.mut),
         ),
       ),
     );

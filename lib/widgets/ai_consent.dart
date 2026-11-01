@@ -4,13 +4,18 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../theme/app_colors.dart';
 
-/// Explicit opt-in before anything is sent to the third-party AI service
-/// (Anthropic's Claude API, via our `ask-ai-chat` function).
+/// Explicit opt-in before anything is sent to the third-party AI service.
 ///
-/// Shown the first time the customer opens Ask AI. Nothing is sent until
-/// they tap "Accept & Enable AI Features". "Not now" closes it and the AI
-/// chat does not open. The answer is remembered on this device.
-const String _kAiConsentKey = 'ai_consent_accepted_v1';
+/// This file is written to satisfy App Store Review Guidelines 5.1.1(i)
+/// and 5.1.2(i): the dialog must NAME the third party (not "our AI
+/// partner"), say WHAT is sent, confirm WHAT ISN'T sent, and link to the
+/// Privacy Policy — all BEFORE the Accept button. The choice is remembered
+/// per device and can be revoked from the drawer / Settings.
+///
+/// Bumped from v1 to v2 the day we changed the dialog to NAME Anthropic
+/// (Claude) explicitly, so every existing user is re-prompted with the
+/// new, Apple-compliant wording even if they'd already accepted v1.
+const String _kAiConsentKey = 'ai_consent_accepted_v2';
 
 Future<bool> hasAiConsent() async {
   try {
@@ -21,7 +26,8 @@ Future<bool> hasAiConsent() async {
   }
 }
 
-/// Turns AI features off again (e.g. from a settings toggle).
+/// Turns AI features off again (e.g. from the drawer / a settings toggle).
+/// After this the next Ask AI tap shows the consent dialog again.
 Future<void> revokeAiConsent() async {
   try {
     final prefs = await SharedPreferences.getInstance();
@@ -52,6 +58,7 @@ class _AiConsentDialog extends StatelessWidget {
   const _AiConsentDialog();
 
   static final Uri _privacy = Uri.parse('https://reperi.in/privacy-policy.html');
+  static final Uri _anthropicPrivacy = Uri.parse('https://www.anthropic.com/legal/privacy');
 
   @override
   Widget build(BuildContext context) {
@@ -98,27 +105,63 @@ class _AiConsentDialog extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               Text(
-                'Get instant help from Ask AI',
+                'Enable Ask AI',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.txt, fontSize: 20, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 8),
               Text(
-                'Describe the problem or snap a photo — Ask AI suggests the right fix in seconds. '
-                'It\'s powered by our trusted AI partner.',
+                "Describe the problem or snap a photo and Ask AI will suggest the right fix in seconds.",
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.txt.withOpacity(0.8), fontSize: 13.5, height: 1.45),
               ),
-              const SizedBox(height: 18),
-              point(Icons.chat_bubble_outline_rounded, AppColors.accent, 'Only this is shared with our AI partner',
-                  'Your Ask AI chat, any photo you add, and your vehicle\'s make & model.'),
-              point(Icons.lock_rounded, const Color(0xFF1FAA59), 'Your details stay private',
-                  'No name, phone, email, address or payment details.'),
+              // ── Named recipient — the Apple-required bit ──────────────
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.accent.withOpacity(0.35)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Icon(Icons.send_rounded, size: 18, color: AppColors.accent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text('Where this goes',
+                            style: TextStyle(color: AppColors.txt, fontSize: 13.5, fontWeight: FontWeight.w900, letterSpacing: 0.3)),
+                      ),
+                    ]),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Your Ask AI messages are sent to Anthropic (makers of Claude), which generates the reply using the Claude Haiku model. "
+                      "Anthropic does not use your messages to train its models.",
+                      style: TextStyle(color: AppColors.txt.withOpacity(0.9), fontSize: 13, height: 1.5),
+                    ),
+                    const SizedBox(height: 6),
+                    GestureDetector(
+                      onTap: () => launchUrl(_anthropicPrivacy, mode: LaunchMode.externalApplication),
+                      child: Text("Read Anthropic's privacy policy",
+                          style: TextStyle(color: AppColors.accent, fontSize: 12.5, fontWeight: FontWeight.w800, decoration: TextDecoration.underline)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              point(Icons.chat_bubble_outline_rounded, AppColors.accent, 'What Anthropic receives',
+                  "Your Ask AI chat text, any photo you choose to add, and your vehicle's make and model."),
+              point(Icons.lock_rounded, const Color(0xFF1FAA59), 'What is NEVER sent',
+                  'Your name, phone number, email address, home address, vehicle number, or any payment details.'),
+              point(Icons.toggle_off_outlined, AppColors.mut, 'You can turn this off any time',
+                  'Side menu → "Disable Ask AI" removes the opt-in on this device.'),
               const SizedBox(height: 2),
               Center(
                 child: TextButton(
                   onPressed: () => launchUrl(_privacy, mode: LaunchMode.externalApplication),
-                  child: Text('Read our Privacy Policy',
+                  child: Text("Read Reperi's Privacy Policy",
                       style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w700, decoration: TextDecoration.underline)),
                 ),
               ),
@@ -134,7 +177,7 @@ class _AiConsentDialog extends StatelessWidget {
                   onPressed: () => Navigator.of(context).pop(true),
                   child: const FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text('Accept & Enable AI Features',
+                    child: Text('I agree — share with Anthropic',
                         maxLines: 1, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
                   ),
                 ),
