@@ -1459,8 +1459,21 @@ async function insertBooking(db: SupabaseClient, intent: Intent, settings: Setti
   const inspectionVisit = route.details?.["inspection_visit"] === true;
   const visitCols = inspectionVisit ? { inspection_stage: "assigning" } : {};
 
-  const adminRef = route.admin_pool && !inspectionVisit
-    ? await assign(db, "admin", route.admin_pool, intent, settings)
+  // For Roadside Assistance (`roadside_assistance`), the subtype the
+  // customer picked (Flat Tyre / Dead Battery / etc.) lives in
+  // options.label. Each subtype has its own assignment pool via the
+  // emergency_type_routing table — look it up and override admin_pool.
+  // Any label without a row falls back to the service's default pool.
+  let adminPoolForThis = route.admin_pool;
+  if (route.key === "roadside_assistance") {
+    const emLabel = typeof intent.options["label"] === "string" ? intent.options["label"] as string : "";
+    if (emLabel) {
+      const { data: emPool } = await db.rpc("emergency_pool_for", { p_label: emLabel });
+      if (typeof emPool === "string" && emPool) adminPoolForThis = emPool;
+    }
+  }
+  const adminRef = adminPoolForThis && !inspectionVisit
+    ? await assign(db, "admin", adminPoolForThis, intent, settings)
     : null;
   const deliveryRef = intent.pickup_drop && route.delivery_pool && !inspectionVisit
     ? await assign(db, "delivery", route.delivery_pool, intent, settings)

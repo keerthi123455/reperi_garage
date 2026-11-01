@@ -303,14 +303,25 @@ class _BannerSlide extends StatelessWidget {
                   ),
                 ],
         ),
-        child: Image.asset(
-          assetPath,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => PlaceholderBox(
-            label: assetPath.split('/').last,
-            borderRadius: 0,
-          ),
-        ),
+        // Handle both bundled assets AND network images (home_content CMS
+        // uploads come back as public URLs from the home-content bucket).
+        child: assetPath.startsWith('http://') || assetPath.startsWith('https://')
+            ? Image.network(
+                assetPath,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => PlaceholderBox(
+                  label: Uri.tryParse(assetPath)?.pathSegments.last ?? 'image',
+                  borderRadius: 0,
+                ),
+              )
+            : Image.asset(
+                assetPath,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => PlaceholderBox(
+                  label: assetPath.split('/').last,
+                  borderRadius: 0,
+                ),
+              ),
       ),
     );
   }

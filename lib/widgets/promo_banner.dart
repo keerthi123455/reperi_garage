@@ -20,19 +20,32 @@ class PromoBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Empty assetPath = the home_content CMS row for this banner is set
+    // offline. Render nothing (and nothing around it either — the parent
+    // Padding/SizedBox stays, but a zero-size widget means no gap).
+    if (assetPath.isEmpty) return const SizedBox.shrink();
+
+    final image = assetPath.startsWith('http://') || assetPath.startsWith('https://')
+        ? Image.network(
+            assetPath,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => PlaceholderBox(
+              label: Uri.tryParse(assetPath)?.pathSegments.last ?? 'banner',
+              borderRadius: 0,
+            ),
+          )
+        : Image.asset(
+            assetPath,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => PlaceholderBox(
+              label: assetPath.split('/').last,
+              borderRadius: 0,
+            ),
+          );
+
     final banner = ClipRRect(
       borderRadius: BorderRadius.circular(16),
-      child: AspectRatio(
-        aspectRatio: aspectRatio,
-        child: Image.asset(
-          assetPath,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => PlaceholderBox(
-            label: assetPath.split('/').last,
-            borderRadius: 0,
-          ),
-        ),
-      ),
+      child: AspectRatio(aspectRatio: aspectRatio, child: image),
     );
 
     if (onTap == null) return banner;

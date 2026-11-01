@@ -793,6 +793,8 @@ const TABS = [
   ['quotations', 'Yellow Board quotes'], ['ywashes', 'Yellow Board washes'],
   ['ybcod', 'Yellow Board COD'],
   ['rules', 'Assignment rules'], ['payqr', 'Payment QR'],
+  ['homecms', 'Home content'],
+  ['prices', 'Prices'],
 ];
 function buildChrome() {
   document.querySelectorAll('#rangeSeg button').forEach((b) => {
@@ -1259,7 +1261,7 @@ function render() {
   $('pageTitle').textContent = label;
   const errs = Object.keys(state.data.errors || {});
   const banner = errs.length ? `<div class="banner">Some data couldn't be loaded (${esc(errs.join(', '))}). Everything else is accurate.</div>` : '';
-  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons, inspections, quotations, ywashes, ybcod, rules, payqr }[state.tab] || overview;
+  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons, inspections, quotations, ywashes, ybcod, rules, payqr, homecms, prices }[state.tab] || overview;
   $('content').innerHTML = banner + view();
   bindRows();
   afterRender.splice(0).forEach((fn) => fn());
@@ -2046,6 +2048,291 @@ function bindYbCod() {
       if (openId) await loadYbCodDetail(openId);
     } catch (e) { alert(e.message || "Couldn't mark collected"); b.disabled = false; b.textContent = 'Mark collected'; }
   });
+}
+
+// ── Home content CMS (home_content.sql + crm-api content_*) ──
+// Lists every image on the home screen. Toggle live/offline, change the
+// image, rename. Every save needs a 6-digit code sent to
+// admin@trustkon.com. The code uses the same Supabase Auth email path
+// as signup / password-reset today.
+let cmsState = { list: null, err: '', editing: null, otpSentAt: 0, otp: '' };
+function homecms() {
+  afterRender.push(() => { if (!cmsState.list && !cmsState.err) loadCms(); else bindCms(); });
+  return `<div style="max-width:1100px;display:grid;gap:16px">
+    <div class="card pad"><h3 style="margin:0 0 4px">Home screen content</h3>
+      <div class="secondary">Toggle a tile offline → it disappears from the app home screen AND booking-api refuses new bookings for its service (existing bookings continue). Every change needs a 6-digit code sent to <b>admin@trustkon.com</b>.</div></div>
+    <div id="cmsBody">${cmsBodyHtml()}</div>
+  </div>`;
+}
+const CMS_SECTIONS = {
+  coverflow: '4-wheeler coverflow',
+  tile: 'Service tiles',
+  banner: 'Standalone banners',
+  twowheeler: '2-wheeler coverflow',
+};
+function cmsBodyHtml() {
+  if (cmsState.err) return `<div class="banner">${esc(cmsState.err)}</div><button class="btn" data-cms-retry>Try again</button>`;
+  if (!cmsState.list) return '<div class="secondary">Loading…</div>';
+  const bySection = {};
+  for (const r of cmsState.list) (bySection[r.section] = bySection[r.section] || []).push(r);
+  return Object.entries(CMS_SECTIONS).map(([key, label]) => {
+    const rows = (bySection[key] || []).sort((a, b) => a.position - b.position);
+    return `<div class="card" style="padding:0;margin-bottom:14px">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line);font-weight:800">${esc(label)} <span class="secondary">(${rows.length})</span></div>
+      ${rows.map(cmsRowHtml).join('')}
+    </div>`;
+  }).join('');
+}
+function cmsRowHtml(r) {
+  const img = r.image_url || (r.legacy_asset ? '' : '');
+  const live = r.is_active;
+  return `<div style="display:grid;grid-template-columns:80px 1fr 110px 100px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)">
+    <div style="width:80px;height:56px;border-radius:6px;border:1px solid var(--line);${img ? `background:url('${esc(img)}') center/cover` : 'background:#f0eee6'};display:flex;align-items:center;justify-content:center;font-size:10px;color:#999">
+      ${img ? '' : (r.legacy_asset ? 'asset' : 'empty')}
+    </div>
+    <div>
+      <div style="font-weight:700">${esc(r.name)}</div>
+      <div class="secondary" style="font-size:11px">${esc(r.key)} · ${r.width}×${r.height}${r.service_key ? ' · service: ' + esc(r.service_key) : ''}</div>
+    </div>
+    <div style="padding:5px 10px;border-radius:999px;font-size:11px;font-weight:800;text-align:center;${live ? 'background:#dcfce7;color:#166534' : 'background:#fee2e2;color:#991b1b'}">${live ? '● LIVE' : '○ OFFLINE'}</div>
+    <div style="display:flex;gap:4px;justify-content:flex-end">
+      <button class="btn" data-cms-toggle="${esc(r.id)}">${live ? 'Offline' : 'Live'}</button>
+      <button class="btn btn-primary" data-cms-edit="${esc(r.id)}">Edit</button>
+    </div>
+  </div>`;
+}
+async function loadCms() {
+  try { cmsState.list = (await api('content_list')).items || []; }
+  catch (e) { cmsState.err = e.message || "Couldn't load home content"; }
+  const el = document.getElementById('cmsBody'); if (el) el.innerHTML = cmsBodyHtml();
+  bindCms();
+}
+function bindCms() {
+  document.querySelectorAll('[data-cms-retry]').forEach((b) => b.onclick = () => { cmsState = { list: null, err: '', editing: null, otpSentAt: 0, otp: '' }; loadCms(); });
+  document.querySelectorAll('[data-cms-toggle]').forEach((b) => b.onclick = () => cmsConfirmOtp({ kind: 'toggle', id: b.dataset.cmsToggle }));
+  document.querySelectorAll('[data-cms-edit]').forEach((b) => b.onclick = () => cmsOpenEditor(b.dataset.cmsEdit));
+}
+
+/** Open the Edit modal with the current image shown next to a drop zone
+ * for the new image. The drop zone measures the picked image's actual
+ * dimensions and refuses if they don't match the required size. */
+function cmsOpenEditor(id) {
+  const row = cmsState.list.find((r) => r.id === id);
+  if (!row) return;
+  const current = row.image_url || '';
+  const legacyNote = row.image_url ? '' : (row.legacy_asset ? `<div class="secondary" style="font-size:11px;margin-top:4px">Current: app asset <code>${esc(row.legacy_asset)}</code> (no custom image uploaded yet).</div>` : '');
+  const html = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999" id="cmsEditor">
+    <div style="width:560px;background:var(--bg);border-radius:14px;padding:20px;max-height:90vh;overflow:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h3 style="margin:0">${esc(row.name)}</h3>
+        <button class="btn" data-cms-close>✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="background:#faf7ec;border:1px solid var(--line);border-radius:10px;padding:10px">
+          <div class="secondary" style="font-size:10px;font-weight:800;letter-spacing:1.5px">CURRENT</div>
+          <div style="width:100%;aspect-ratio:${row.width}/${row.height};background:${current ? `url('${esc(current)}') center/cover` : '#ddd'};border-radius:6px;margin-top:4px"></div>
+          ${legacyNote}
+        </div>
+        <div style="background:#faf7ec;border:1px solid var(--line);border-radius:10px;padding:10px">
+          <div class="secondary" style="font-size:10px;font-weight:800;letter-spacing:1.5px">NEW</div>
+          <div id="cmsPreview" style="width:100%;aspect-ratio:${row.width}/${row.height};background:#eee;border-radius:6px;margin-top:4px;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;cursor:pointer" onclick="document.getElementById('cmsFile').click()">Click to pick an image</div>
+          <input type="file" id="cmsFile" accept="image/jpeg,image/png,image/webp" style="display:none">
+          <div class="secondary" id="cmsMeta" style="font-size:11px;margin-top:4px">Required: <b>${row.width}×${row.height}</b> · under 1.5 MB</div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <label class="secondary" style="font-size:11px">Display name</label>
+        <input class="input" id="cmsName" value="${esc(row.name)}" style="height:38px;margin-top:4px">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn" data-cms-close>Cancel</button>
+        <button class="btn btn-primary" id="cmsSave">Save changes</button>
+      </div>
+    </div></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  cmsState.editing = { id, newData: null, newW: 0, newH: 0 };
+  document.querySelectorAll('[data-cms-close]').forEach((b) => b.onclick = cmsCloseEditor);
+  document.getElementById('cmsFile').onchange = (e) => cmsPickImage(e.target.files?.[0], row);
+  document.getElementById('cmsSave').onclick = () => cmsSaveEdit(row);
+}
+function cmsCloseEditor() {
+  document.getElementById('cmsEditor')?.remove();
+  cmsState.editing = null;
+}
+function cmsPickImage(file, row) {
+  if (!file) return;
+  const meta = document.getElementById('cmsMeta');
+  if (file.size > 1_500_000) { meta.textContent = `❌ ${(file.size/1024|0)} KB — over 1.5 MB`; meta.style.color = 'var(--red)'; return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const ok = img.width === row.width && img.height === row.height;
+      const preview = document.getElementById('cmsPreview');
+      preview.style.background = `url('${reader.result}') center/cover`;
+      preview.textContent = '';
+      meta.innerHTML = `Picked: <b>${img.width}×${img.height}</b> · ${(file.size/1024|0)} KB ${ok ? '✓' : '— must be ' + row.width + '×' + row.height}`;
+      meta.style.color = ok ? 'var(--green)' : 'var(--red)';
+      if (ok) cmsState.editing = { ...cmsState.editing, newData: reader.result, newW: img.width, newH: img.height };
+      else cmsState.editing = { ...cmsState.editing, newData: null };
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+async function cmsSaveEdit(row) {
+  const name = document.getElementById('cmsName').value.trim();
+  const hasImage = cmsState.editing?.newData != null;
+  if (name === row.name && !hasImage) return alert('Nothing changed.');
+  const op = { kind: 'edit', id: row.id, name, image: hasImage ? cmsState.editing.newData : null,
+               actual_width: cmsState.editing?.newW, actual_height: cmsState.editing?.newH };
+  cmsCloseEditor();
+  cmsConfirmOtp(op);
+}
+
+/** OTP modal — common entry point for every write. If no fresh OTP yet,
+ * sends one; shows input; on verify, runs the op. */
+async function cmsConfirmOtp(op) {
+  // Clear any previous modal.
+  document.getElementById('cmsOtp')?.remove();
+  const html = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999" id="cmsOtp">
+    <div style="width:420px;background:var(--bg);border-radius:14px;padding:24px">
+      <h3 style="margin:0 0 8px">🔐 Verify to save</h3>
+      <p class="secondary" style="margin:0 0 14px;line-height:1.5">
+        A 6-digit code was sent to <b>admin@trustkon.com</b>. Check that inbox and type it below. Code expires in 10 minutes.
+      </p>
+      <input class="input" id="cmsOtpInput" inputmode="numeric" maxlength="6" placeholder="123456"
+        style="height:50px;font-size:22px;font-weight:800;letter-spacing:6px;text-align:center">
+      <div id="cmsOtpMsg" class="secondary" style="font-size:12px;margin-top:8px;text-align:center"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn" id="cmsOtpResend">Resend code</button>
+        <button class="btn" id="cmsOtpCancel">Cancel</button>
+        <button class="btn btn-primary" id="cmsOtpVerify">Verify &amp; save</button>
+      </div>
+    </div></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  const msg = document.getElementById('cmsOtpMsg');
+  const sendCode = async () => {
+    msg.style.color = ''; msg.textContent = 'Sending code to admin@trustkon.com…';
+    try { await api('content_otp_send'); msg.style.color = 'var(--green)'; msg.textContent = 'Code sent. Check the inbox.'; }
+    catch (e) { msg.style.color = 'var(--red)'; msg.textContent = e.message || "Couldn't send code"; }
+  };
+  await sendCode();
+  document.getElementById('cmsOtpResend').onclick = sendCode;
+  document.getElementById('cmsOtpCancel').onclick = () => document.getElementById('cmsOtp')?.remove();
+  document.getElementById('cmsOtpVerify').onclick = async () => {
+    const otp = document.getElementById('cmsOtpInput').value.trim();
+    if (!/^\d{6}$/.test(otp)) { msg.style.color = 'var(--red)'; msg.textContent = 'Enter the 6-digit code.'; return; }
+    msg.style.color = ''; msg.textContent = 'Saving…';
+    try {
+      if (op.kind === 'toggle') {
+        await api('content_toggle', { id: op.id, otp });
+      } else if (op.kind === 'edit') {
+        if (op.image) {
+          await api('content_image_upload', { id: op.id, otp,
+            image_data_url: op.image,
+            actual_width: op.actual_width, actual_height: op.actual_height });
+        }
+        if (op.name) await api('content_update', { id: op.id, otp, name: op.name });
+      } else if (op.kind === 'price') {
+        await api('services_price_update', { key: op.key, price: op.price, otp });
+      }
+      document.getElementById('cmsOtp')?.remove();
+      if (op.kind === 'price') {
+        priceState = { list: null, err: '', q: priceState.q };
+        await loadPrices();
+      } else {
+        cmsState = { list: null, err: '', editing: null, otpSentAt: 0, otp: '' };
+        await loadCms();
+      }
+    } catch (e) { msg.style.color = 'var(--red)'; msg.textContent = e.message || 'Save failed'; }
+  };
+}
+
+// ── Service prices CMS (services table) ──
+// Lists every bookable service. Each row shows the current price and a
+// Change button that pops the SAME OTP modal the Home content tab uses.
+let priceState = { list: null, err: '', q: '' };
+function prices() {
+  afterRender.push(() => { if (!priceState.list && !priceState.err) loadPrices(); else bindPrices(); });
+  return `<div style="max-width:1100px;display:grid;gap:16px">
+    <div class="card pad"><h3 style="margin:0 0 4px">Service prices</h3>
+      <div class="secondary">The <code>price</code> on each service. Change needs a 6-digit code sent to <b>admin@trustkon.com</b> (same OTP as Home content). "—" means priced after inspection; set a number here to make it bookable online.</div></div>
+    <div style="padding:0 2px"><input class="input" id="priceSearch" placeholder="Search by name or key…" value="${esc(priceState.q)}" style="height:40px"></div>
+    <div id="priceBody">${priceBodyHtml()}</div>
+  </div>`;
+}
+function priceBodyHtml() {
+  if (priceState.err) return `<div class="banner">${esc(priceState.err)}</div><button class="btn" data-price-retry>Try again</button>`;
+  const list = priceState.list;
+  if (!list) return '<div class="secondary">Loading…</div>';
+  const q = priceState.q.trim().toLowerCase();
+  const shown = q ? list.filter((s) => (s.name + ' ' + s.key).toLowerCase().includes(q)) : list;
+  const byType = { 'Main services': [], 'Add-ons': [] };
+  for (const s of shown) (s.is_addon ? byType['Add-ons'] : byType['Main services']).push(s);
+  const section = (label, rows) => rows.length ? `<div class="card" style="padding:0;margin-bottom:14px">
+    <div style="padding:14px 16px;border-bottom:1px solid var(--line);font-weight:800">${esc(label)} <span class="secondary">(${rows.length})</span></div>
+    ${rows.map(priceRowHtml).join('')}
+  </div>` : '';
+  return section('Main services', byType['Main services']) + section('Add-ons', byType['Add-ons']);
+}
+function priceRowHtml(s) {
+  const priceText = s.price == null ? '<span class="secondary">— (quote after inspection)</span>'
+    : `<b>₹${Number(s.price).toLocaleString('en-IN')}</b>`;
+  const screens = Array.isArray(s.screens) ? s.screens.filter(Boolean).join(', ') : '';
+  return `<div style="display:grid;grid-template-columns:1fr 150px 100px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)">
+    <div>
+      <div style="font-weight:700">${esc(s.name)} ${s.active ? '' : '<span class="pill" style="color:var(--red);margin-left:6px">INACTIVE</span>'}</div>
+      <div class="secondary" style="font-size:11px">${esc(s.key)}${screens ? ' · ' + esc(screens) : ''}</div>
+    </div>
+    <div style="text-align:right;font-size:16px">${priceText}</div>
+    <div style="text-align:right"><button class="btn btn-primary" data-price-edit="${esc(s.key)}">Change</button></div>
+  </div>`;
+}
+async function loadPrices() {
+  try { priceState.list = (await api('services_list')).services || []; }
+  catch (e) { priceState.err = e.message || "Couldn't load services"; }
+  const el = document.getElementById('priceBody'); if (el) el.innerHTML = priceBodyHtml();
+  bindPrices();
+}
+function bindPrices() {
+  document.querySelectorAll('[data-price-retry]').forEach((b) => b.onclick = () => { priceState = { list: null, err: '', q: priceState.q }; loadPrices(); });
+  const search = document.getElementById('priceSearch');
+  if (search) search.oninput = () => { priceState.q = search.value; const el = document.getElementById('priceBody'); if (el) el.innerHTML = priceBodyHtml(); bindPrices(); };
+  document.querySelectorAll('[data-price-edit]').forEach((b) => b.onclick = () => priceOpenEditor(b.dataset.priceEdit));
+}
+function priceOpenEditor(key) {
+  const row = priceState.list.find((s) => s.key === key);
+  if (!row) return;
+  const current = row.price == null ? '' : String(row.price);
+  const html = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999" id="priceEditor">
+    <div style="width:420px;background:var(--bg);border-radius:14px;padding:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h3 style="margin:0">${esc(row.name)}</h3>
+        <button class="btn" data-price-close>✕</button>
+      </div>
+      <div class="secondary" style="font-size:11px">${esc(row.key)}</div>
+      <div style="margin-top:14px">
+        <label class="secondary" style="font-size:12px">New price (₹) — leave blank for "quote after inspection"</label>
+        <input class="input" id="priceInput" type="number" min="0" step="1" value="${esc(current)}" placeholder="e.g. 2500" style="height:44px;margin-top:4px;font-size:18px;font-weight:700">
+      </div>
+      <div class="secondary" style="font-size:11px;margin-top:8px">Current: ${row.price == null ? '— (quote after inspection)' : '₹' + Number(row.price).toLocaleString('en-IN')}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn" data-price-close>Cancel</button>
+        <button class="btn btn-primary" id="priceSave">Save</button>
+      </div>
+    </div></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  const close = () => document.getElementById('priceEditor')?.remove();
+  document.querySelectorAll('[data-price-close]').forEach((b) => b.onclick = close);
+  document.getElementById('priceSave').onclick = () => {
+    const raw = document.getElementById('priceInput').value.trim();
+    const price = raw === '' ? null : Number(raw);
+    if (price !== null && (!Number.isFinite(price) || price < 0)) return alert('Enter a valid price.');
+    if (Number(row.price ?? null) === Number(price ?? null)) return alert('Price unchanged.');
+    close();
+    cmsConfirmOtp({ kind: 'price', key: row.key, price });
+  };
 }
 
 // Shrinks a photo in the browser before sending it (max 1600px JPEG).

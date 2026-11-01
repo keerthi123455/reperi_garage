@@ -16,6 +16,7 @@ import '../services/guest_mode.dart';
 import '../services/ai_chat_session.dart';
 import '../services/push_notification_service.dart';
 import '../services/vehicle_change_bus.dart';
+import '../services/home_content_service.dart';
 import '../services/vehicle_update_tracker.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
@@ -232,6 +233,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadRidePref();
     _loadProfile();
     _loadServiceAddress();
+    // Pull the latest home_content (CMS-controlled tiles & banners), then
+    // re-render so anything turned on/off from the CRM takes effect
+    // without needing an app restart.
+    HomeContentService.ensureLoaded().then((_) {
+      if (mounted) setState(() {});
+    });
     _maybeShowNotificationPrimer();
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (!mounted) return;

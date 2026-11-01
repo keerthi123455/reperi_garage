@@ -1141,6 +1141,208 @@ async function fleetMarkCollected(client: SupabaseClient, body: Row, user: User)
   return { ok: true };
 }
 
+// ── Home content CMS (home_content.sql) ─────────────────────────────
+// List, toggle, update and image upload. Every write requires a 6-digit
+// OTP sent to admin@trustkon.com via Supabase Auth email, same channel
+// as the signup / password-reset emails the app sends today.
+
+const ADMIN_EMAIL = "admin@trustkon.com";
+const CMS_BUCKET = "home-content";
+
+function newOtpCode(): string {
+  const n = Math.floor(100000 + Math.random() * 900000);
+  return String(n);
+}
+
+async function contentList(client: SupabaseClient) {
+  const { data, error } = await client.from("home_content")
+    .select("id,key,section,position,name,subtitle,image_path,image_url,width,height,is_active,service_key,legacy_asset,updated_by,updated_at")
+    .order("section", { ascending: true }).order("position", { ascending: true });
+  if (error) throw error;
+  return { items: data ?? [] };
+}
+
+/** CRM clicks "Send code" → generate 6-digit code, store with expiry,
+ * email it to admin@trustkon.com. The email is sent through the same
+ * Supabase Auth email channel the app's signup / password-reset emails
+ * use — same from-address, same provider, same template style. */
+async function contentOtpSend(client: SupabaseClient, user: User) {
+  if (String(user.email ?? "").toLowerCase() !== ADMIN_EMAIL) {
+    throw new HttpError(403, "forbidden", "Only admin@trustkon.com can request this code.");
+  }
+  const code = newOtpCode();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
+  const { error } = await client.from("home_content_otp").insert({
+    email: ADMIN_EMAIL, code, expires_at: expiresAt,
+  });
+  if (error) throw error;
+  // Send via Supabase Auth (reuses the project's email configuration).
+  const authUrl = Deno.env.get("SUPABASE_URL");
+  const svcKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (authUrl && svcKey) {
+    try {
+      await fetch(`${authUrl}/auth/v1/otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": svcKey,
+          "Authorization": `Bearer ${svcKey}`,
+        },
+        body: JSON.stringify({
+          email: ADMIN_EMAIL,
+          create_user: false,
+          data: { home_cms_code: code },
+        }),
+      });
+    } catch (e) {
+      console.warn("CMS OTP email send failed:", e);
+    }
+  }
+  // Returning the code in dev is a security hole; return only acknowledgement.
+  return { ok: true, expires_at: expiresAt };
+}
+
+/** Checks a submitted 6-digit code. Marks it used so it can't be replayed. */
+async function requireOtp(client: SupabaseClient, body: Row): Promise<void> {
+  const code = String(body.otp ?? "").trim();
+  if (!/^\d{6}$/.test(code)) throw new HttpError(400, "bad_otp", "Enter the 6-digit code.");
+  const { data, error } = await client.from("home_content_otp")
+    .select("id,expires_at,used_at").eq("email", ADMIN_EMAIL).eq("code", code)
+    .is("used_at", null).gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new HttpError(401, "bad_otp", "The code is wrong, used, or expired. Send a new one.");
+  await client.from("home_content_otp").update({ used_at: new Date().toISOString() }).eq("id", data.id);
+}
+
+/** Toggle a tile between live and offline. OTP required. */
+async function contentToggle(client: SupabaseClient, body: Row, user: User) {
+  await requireOtp(client, body);
+  const id = String(body.id ?? "");
+  if (!id) throw new HttpError(400, "bad_request", "Missing tile.");
+  const { data: row, error: rErr } = await client.from("home_content")
+    .select("is_active,name").eq("id", id).maybeSingle();
+  if (rErr) throw rErr;
+  if (!row) throw new HttpError(404, "not_found", "Tile not found.");
+  const next = !row.is_active;
+  const { error } = await client.from("home_content").update({
+    is_active: next,
+    updated_by: user.email ?? "staff",
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+  if (error) throw error;
+  return { ok: true, is_active: next };
+}
+
+/** Edit the display name / position / service_key. OTP required. */
+async function contentUpdate(client: SupabaseClient, body: Row, user: User) {
+  await requireOtp(client, body);
+  const id = String(body.id ?? "");
+  if (!id) throw new HttpError(400, "bad_request", "Missing tile.");
+  const patch: Row = { updated_by: user.email ?? "staff", updated_at: new Date().toISOString() };
+  if (typeof body.name === "string") patch.name = body.name.trim().slice(0, 120);
+  if (typeof body.subtitle === "string") patch.subtitle = body.subtitle.trim().slice(0, 240);
+  if (typeof body.position === "number") patch.position = Math.round(body.position);
+  if (typeof body.service_key === "string") patch.service_key = body.service_key.trim() || null;
+  const { error } = await client.from("home_content").update(patch).eq("id", id);
+  if (error) throw error;
+  return { ok: true };
+}
+
+/** Upload a new image. OTP required. Dimensions enforced. */
+async function contentImageUpload(client: SupabaseClient, body: Row, user: User) {
+  await requireOtp(client, body);
+  const id = String(body.id ?? "");
+  const dataUrl = String(body.image_data_url ?? "");
+  const uploadedWidth = Number(body.actual_width);
+  const uploadedHeight = Number(body.actual_height);
+  if (!id || !dataUrl.startsWith("data:image/")) {
+    throw new HttpError(400, "bad_request", "Pick an image to upload.");
+  }
+  const { data: row, error: rErr } = await client.from("home_content")
+    .select("key,width,height").eq("id", id).maybeSingle();
+  if (rErr) throw rErr;
+  if (!row) throw new HttpError(404, "not_found", "Tile not found.");
+
+  // Dimension check — we trust the browser's measurement sent in the body.
+  if (!Number.isFinite(uploadedWidth) || !Number.isFinite(uploadedHeight)
+      || Math.round(uploadedWidth) !== Number(row.width)
+      || Math.round(uploadedHeight) !== Number(row.height)) {
+    throw new HttpError(400, "bad_dimensions",
+      `Image must be ${row.width}×${row.height}px (got ${uploadedWidth}×${uploadedHeight}).`);
+  }
+
+  // Decode and upload.
+  const match = dataUrl.match(/^data:(image\/[a-z+.-]+);base64,(.+)$/i);
+  if (!match) throw new HttpError(400, "bad_request", "Image format not recognised.");
+  const mime = match[1];
+  const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+  const bytes = Uint8Array.from(atob(match[2]), (c) => c.charCodeAt(0));
+  if (bytes.length > 1_500_000) {
+    throw new HttpError(400, "too_large", "Image is over 1.5 MB. Compress it first.");
+  }
+  const path = `${row.key.replace(/[^a-z0-9]/gi, "_")}-${Date.now()}.${ext}`;
+  const { error: upErr } = await client.storage.from(CMS_BUCKET).upload(path, bytes, {
+    contentType: mime, upsert: true,
+  });
+  if (upErr) throw upErr;
+  const { data: pub } = client.storage.from(CMS_BUCKET).getPublicUrl(path);
+  const publicUrl = pub?.publicUrl ?? null;
+  const { error: uErr } = await client.from("home_content").update({
+    image_path: path,
+    image_url: publicUrl,
+    updated_by: user.email ?? "staff",
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+  if (uErr) throw uErr;
+  return { ok: true, image_url: publicUrl };
+}
+
+// ── Service prices CMS (uses the existing `services` table) ─────────
+// Lists every service with its current price and lets you change it. Same
+// 6-digit admin OTP as the Home content CMS — no separate flow.
+
+async function servicesList(client: SupabaseClient) {
+  // Shape matches ServiceRow in _shared/booking.ts; only the fields the
+  // CRM needs to show.
+  const { data, error } = await client.from("services")
+    .select("key,name,booking_name,screens,price,active,is_addon,bookable")
+    .order("is_addon", { ascending: true })
+    .order("screens", { ascending: true })
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return { services: data ?? [] };
+}
+
+/** Change a service's price. OTP required (reuses requireOtp from the Home
+ * content CMS). Logged in assignment_log so you can see the history. */
+async function servicesPriceUpdate(client: SupabaseClient, body: Row, user: User) {
+  await requireOtp(client, body);
+  const key = String(body.key ?? "").trim();
+  if (!key) throw new HttpError(400, "bad_request", "Missing service.");
+  const raw = body.price;
+  const price = raw === null || raw === "" ? null : Math.round(Number(raw));
+  if (price !== null && (!Number.isFinite(price) || price < 0)) {
+    throw new HttpError(400, "bad_request", "Enter a valid price.");
+  }
+  const { data: row, error: rErr } = await client.from("services")
+    .select("key,name,price").eq("key", key).maybeSingle();
+  if (rErr) throw rErr;
+  if (!row) throw new HttpError(404, "not_found", "Service not found.");
+  if (Number(row.price) === price) return { ok: true };
+
+  const { error } = await client.from("services").update({ price }).eq("key", key);
+  if (error) throw error;
+  await logChange(client, {
+    booking_table: "services", booking_id: key, role: "rule",
+    from_id: row.price == null ? null : String(row.price),
+    to_id: price == null ? null : String(price),
+    reason: `Price changed by ${user.email ?? "staff"}: ${row.price ?? 'null'} → ${price ?? 'null'}`,
+    changed_by: user.email ?? null,
+  });
+  return { ok: true };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -1201,6 +1403,20 @@ Deno.serve(async (req: Request) => {
         return json(await fleetMarkCollected(client, body, user));
       case "pickup_toggle":
         return json(await pickupToggle(client, body, user));
+      case "content_list":
+        return json(await contentList(client));
+      case "content_otp_send":
+        return json(await contentOtpSend(client, user));
+      case "content_toggle":
+        return json(await contentToggle(client, body, user));
+      case "content_update":
+        return json(await contentUpdate(client, body, user));
+      case "content_image_upload":
+        return json(await contentImageUpload(client, body, user));
+      case "services_list":
+        return json(await servicesList(client));
+      case "services_price_update":
+        return json(await servicesPriceUpdate(client, body, user));
       case "invoice_issue": {
         const table = String(body.table ?? "");
         const id = String(body.id ?? "");
