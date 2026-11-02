@@ -603,7 +603,7 @@ async function assignOverride(client: SupabaseClient, body: Row, user: User) {
     const data = { type: "assignment", table, id };
     if (role === "delivery") await pushTo(`delivery_${to}`, "New trip assigned to you", `${what} — open your dashboard for details.`, data);
     else if (role === "washer") await pushTo(`washer_${to}`, "New wash assigned to you", `${what} — open your dashboard for details.`, data);
-    else await pushTo("admin", "Booking assigned to your garage", `${what} has been assigned to ${toName}.`, data);
+    else await pushTo(`admin_${to}`, "Booking assigned to your garage", `${what} has been assigned to ${toName}.`, data);
   }
   return { ok: true, from, to, toName };
 }

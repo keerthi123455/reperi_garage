@@ -877,9 +877,9 @@ class _BookBar extends StatelessWidget {
                   ),
                 ),
               ),
-              // Green "Call an expert" hub — bottom-right corner of the screen.
+              // Green "Call an expert" button — still (no rings / glow / hop).
               const SizedBox(width: 12),
-              const CallExpertButton(showLabel: false),
+              const CallExpertButton(showLabel: false, animated: false),
             ],
           ),
         ),

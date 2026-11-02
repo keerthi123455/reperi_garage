@@ -49,7 +49,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    PushNotificationService.loginAsAdmin();
+    // Log this device in as this garage only, so booking pushes reach the
+    // garage they're assigned to (not every garage).
+    PushNotificationService.loginAsAdmin(widget.adminId);
     fetchBookings();
   }
 

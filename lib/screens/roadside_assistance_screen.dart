@@ -235,7 +235,9 @@ class _RoadsideAssistanceScreenState
                     title: 'Roadside Assistance - $issueTitle',
                     duration: CatalogService.byKey('roadside_assistance')?.duration ?? 'On-demand',
                     vehicleId: '',
-                    vehicleRequired: false,
+                    // Ask for the vehicle so the booking is saved against it
+                    // (shows in that vehicle's Past tab and invoices).
+                    vehicleRequired: true,
                     // The server routes this to the emergency technician
                     // (services.admin_pool = garage_emergency), always adds
                     // the doorstep fee (pickup_mode = locked) and assigns no

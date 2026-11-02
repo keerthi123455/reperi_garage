@@ -75,8 +75,8 @@ class PushNotificationService {
     _login('fleet_$fleetUserId');
   }
 
-  static void loginAsAdmin() {
-    _login('admin');
+  static void loginAsAdmin(String adminId) {
+    _login('admin_$adminId');
   }
 
   static void _login(String externalId) {

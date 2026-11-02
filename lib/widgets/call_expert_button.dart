@@ -19,9 +19,14 @@ class CallExpertButton extends StatefulWidget {
     this.phone = kExpertPhone,
     this.labelOnLeft = true,
     this.showLabel = true,
+    this.animated = true,
   });
 
   final String phone;
+
+  /// Off = a plain, still green circle: no hop, ring waves, glow pulse,
+  /// wiggle, shine or sliding label (e.g. the Other Services bottom bar).
+  final bool animated;
 
   /// Off when the button sits inside a bar (the sliding label would push
   /// the other buttons around).
@@ -49,6 +54,16 @@ class _CallExpertButtonState extends State<CallExpertButton> with TickerProvider
       AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat(reverse: true);
 
   @override
+  void initState() {
+    super.initState();
+    // A still button doesn't need its timers running at all.
+    if (!widget.animated) {
+      _c.stop();
+      _glow.stop();
+    }
+  }
+
+  @override
   void dispose() {
     _c.dispose();
     _glow.dispose();
@@ -70,7 +85,9 @@ class _CallExpertButtonState extends State<CallExpertButton> with TickerProvider
 
   @override
   Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    // A still button draws exactly like "reduce motion": no rings, hop,
+    // wiggle, shine or label — and the glow below is fixed.
+    final reduceMotion = !widget.animated || MediaQuery.of(context).disableAnimations;
     return Semantics(
       button: true,
       label: 'Call an expert',
@@ -147,11 +164,12 @@ class _CallExpertButtonState extends State<CallExpertButton> with TickerProvider
                         ),
                         border: Border.all(color: Colors.white.withOpacity(0.75), width: 2),
                         boxShadow: [
-                          BoxShadow(
-                            color: _green.withOpacity(0.3 + 0.3 * _glow.value),
-                            blurRadius: 14 + 10 * _glow.value,
-                            spreadRadius: 1 + 3 * _glow.value,
-                          ),
+                          if (widget.animated)
+                            BoxShadow(
+                              color: _green.withOpacity(0.3 + 0.3 * _glow.value),
+                              blurRadius: 14 + 10 * _glow.value,
+                              spreadRadius: 1 + 3 * _glow.value,
+                            ),
                           BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6)),
                         ],
                       ),

@@ -106,9 +106,14 @@ Deno.serve(async (req) => {
         if (type === "INSERT") {
           const packageName = String(record.package_name ?? "your service");
           const when = slotText(record);
+          // Tell the garage it was assigned to (each garage logs in as
+          // admin_<id>); fall back to the generic admin audience if unassigned.
+          const garageTarget = record.assigned_to_admin_id
+            ? `admin_${record.assigned_to_admin_id}`
+            : "admin";
           await Promise.all([
             sendPush(
-              "admin",
+              garageTarget,
               "New booking",
               `${packageName}${when} — a new booking just came in.`,
               { type: "booking", bookingId: record.id },

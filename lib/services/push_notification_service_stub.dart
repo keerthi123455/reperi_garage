@@ -16,7 +16,7 @@ class PushNotificationService {
 
   static void loginAsFleet(String fleetUserId) {}
 
-  static void loginAsAdmin() {}
+  static void loginAsAdmin(String adminId) {}
 
   static void logout() {}
 }
