@@ -177,7 +177,7 @@ class _AiConsentDialog extends StatelessWidget {
                   onPressed: () => Navigator.of(context).pop(true),
                   child: const FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text('I agree — share with Anthropic',
+                    child: Text('I agree',
                         maxLines: 1, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
                   ),
                 ),

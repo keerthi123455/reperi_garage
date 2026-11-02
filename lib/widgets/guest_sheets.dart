@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/guest_mode.dart';
+import '../screens/login_screen.dart';
 
 // Two playful yellow bottom sheets:
 //
@@ -440,6 +441,31 @@ class _AccountSheetState extends State<_AccountSheet> {
             _InkButton(label: 'Send code', icon: Icons.send_rounded, busy: _busy, onTap: _sendCode),
             const SizedBox(height: 10),
             _hint('Already have an account? Use the same email — we\'ll log you in.'),
+            const SizedBox(height: 12),
+            // Full login screen (email + password OR OTP), for returning
+            // customers who prefer their password over a one-time code.
+            Center(
+              child: TextButton(
+                onPressed: () async {
+                  // Push the full Login screen (which supports email +
+                  // password and the OTP code). When it returns, pop this
+                  // sheet with whether the user is now actually signed in
+                  // — so requireAccount's caller continues cleanly.
+                  await Navigator.of(context, rootNavigator: true).push(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  );
+                  if (!context.mounted) return;
+                  Navigator.of(context).pop(_auth.currentUser != null);
+                },
+                child: Text(
+                  'Log in with email & password instead',
+                  style: GoogleFonts.manrope(
+                    fontSize: 13.5, fontWeight: FontWeight.w800,
+                    color: _ink, decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ),
           ],
         );
       case _Step.code:

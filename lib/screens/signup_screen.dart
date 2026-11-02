@@ -52,13 +52,8 @@ class _SignupScreenState extends State<SignupScreen>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
-
-    // "Sign in as guest — do the boring stuff later" (once per launch).
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future.delayed(const Duration(milliseconds: 700));
-      if (!mounted) return;
-      showGuestInvite(context, screen: 'signup', onGuest: _continueAsGuest);
-    });
+    // The yellow "Sign in as guest" sheet is now shown ONLY when the user
+    // explicitly taps the Continue as guest button (see _guestTapped).
   }
 
   void _continueAsGuest() {
