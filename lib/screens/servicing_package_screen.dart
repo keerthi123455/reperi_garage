@@ -5,6 +5,7 @@ import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../widgets/catalog_gate.dart';
+import '../services/contact_settings.dart';
 
 /// "Servicing" (21-Step Inspection) packages — names, prices, taglines and
 /// highlights come from the Supabase `services` table (screen 'servicing'),
@@ -169,7 +170,7 @@ class _ServicingPackageScreenState extends State<ServicingPackageScreen>
 
   Future<void> _openWhatsApp() async {
     final uri = Uri.parse(
-      'https://wa.me/919353094672?text=${Uri.encodeComponent("Hi, I have a question about the servicing packages.")}',
+      ContactSettings.whatsappUrl("Hi, I have a question about the servicing packages."),
     );
     try {
       if (await canLaunchUrl(uri)) {

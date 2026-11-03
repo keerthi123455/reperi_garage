@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/placeholder_box.dart';
+import '../services/contact_settings.dart';
 
 /// Static catalog data — deliberately NOT fetched from Supabase, matching
 /// the same pattern as the two-wheeler servicing/washing screens.
@@ -59,8 +60,7 @@ const _kFilterParts = [
   ),
 ];
 
-const String _kSupportPhone = '9353094672';
-const String _kSupportWhatsApp = '919353094672';
+String get _kSupportPhone => ContactSettings.phone;
 const Color _kAccent = Color(0xFFD4A017);
 
 class SparesScreen extends StatefulWidget {
@@ -380,7 +380,7 @@ class _SparePartSheet extends StatelessWidget {
 
   Future<void> _enquire(BuildContext context) async {
     final uri = Uri.parse(
-      'https://wa.me/$_kSupportWhatsApp?text=${Uri.encodeComponent("Hi, I'd like to enquire about the ${part.name}.")}',
+      ContactSettings.whatsappUrl("Hi, I'd like to enquire about the ${part.name}."),
     );
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);

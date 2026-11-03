@@ -12,6 +12,7 @@ import '../widgets/booking_addons.dart';
 import '../widgets/inspection_view_widget.dart';
 import '../widgets/error_display.dart';
 import '../widgets/slot_picker.dart';
+import '../services/contact_settings.dart';
 
 /// Live updates for one booking: a summary card with the status in plain
 /// words and a progress bar, the garage's updates newest-first (tap a photo
@@ -33,7 +34,7 @@ class BookingTrackingScreen extends StatefulWidget {
 
 class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   static const _signedUrlExpirySeconds = 300;
-  static const _supportNumber = '9353094672';
+  static String get _supportNumber => ContactSettings.phone;
 
   static const Color _gold = Color(0xFFD4A017);
   static const Color _green = Color(0xFF1FAA59);

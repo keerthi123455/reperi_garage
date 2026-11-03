@@ -10,6 +10,7 @@ import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/error_display.dart';
 import '../widgets/requirements.dart';
+import '../services/contact_settings.dart';
 import 'services_screen.dart'
     show exportPackageCatalogForAi, buildPackageScreenFor, categoryAccentColor, categoryIconFor;
 
@@ -34,7 +35,7 @@ import 'services_screen.dart'
 //   </queries>
 // ─────────────────────────────────────────────────────────────────────────────
 
-const String _expertPhone = '9353094672';
+String get _expertPhone => ContactSettings.phone;
 
 class AiAdvisorSheet extends StatefulWidget {
   /// Pass the active vehicle map from HomeScreen so LEARN MORE can forward

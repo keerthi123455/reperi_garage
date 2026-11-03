@@ -26,7 +26,34 @@
        page at desktop width (zoomed out) until Flutter adds its own tag. These
        are the same values Flutter uses, so nothing jumps when it takes over. -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="description" content="Reperi — premium vehicle care and garage services.">
+  <meta name="description" content="Reperi — car & bike care at your doorstep in Bengaluru. Car service, AC, wash, monthly wash, detailing, ceramic coating, inspections and 24×7 roadside help. Upfront prices, book in the app.">
+
+  <!-- ── SEO: canonical, link previews, search logo (Reperi yellow + blue
+       spanner). Every service also has its own crawlable page — see
+       /services/ and seo/build.py. ── -->
+  <link rel="canonical" href="https://reperi.in/">
+  <meta name="theme-color" content="#FDF003">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Reperi">
+  <meta property="og:title" content="Reperi — Car & Bike Care at Your Doorstep in Bengaluru">
+  <meta property="og:description" content="Car service, wash, detailing, inspections and roadside help — upfront prices, booked in one app.">
+  <meta property="og:url" content="https://reperi.in/">
+  <meta property="og:image" content="https://reperi.in/seo/og-reperi.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="en_IN">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Organization","@id":"https://reperi.in/#org","name":"Reperi","alternateName":["Reperi Car Care","Reperi by Trustkon"],
+     "url":"https://reperi.in/","logo":"https://reperi.in/seo/reperi-logo-512.png","email":"admin@trustkon.com","telephone":"+919353094672",
+     "parentOrganization":{"@type":"Organization","name":"Trustkon Technologies LLP"},
+     "contactPoint":{"@type":"ContactPoint","telephone":"+919353094672","contactType":"customer service","areaServed":"IN"}},
+    {"@type":"WebSite","@id":"https://reperi.in/#website","url":"https://reperi.in/","name":"Reperi","publisher":{"@id":"https://reperi.in/#org"}}
+  ]}
+  </script>
+  <!-- Google Analytics / Google Ads / Meta Pixel — IDs live in /seo/track.js -->
+  <script src="/seo/track.js?v=1" defer></script>
 
   <!-- Speed: open connections early to the servers the app needs on start-up
        (Flutter's renderer CDN, Google Fonts for Manrope, and Supabase), so
@@ -65,12 +92,15 @@
   <meta name="apple-mobile-web-app-title" content="Reperi">
   <!-- "?v=2" makes phones/browsers fetch the NEW wrench icon instead of the
        old cached one. Bump the number if you ever change the icon again. -->
-  <link rel="apple-touch-icon" href="icons/Icon-192.png?v=2">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3">
 
-  <!-- Favicon (browser tab icon) -->
-  <link rel="icon" type="image/png" href="favicon.png?v=2"/>
+  <!-- Favicon (browser tab + the logo Google shows next to search results;
+       Google wants a multiple of 48 px) -->
+  <link rel="icon" href="/favicon.ico?v=3" sizes="any">
+  <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png?v=3">
+  <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png?v=3">
 
-  <title>Reperi</title>
+  <title>Reperi — Car &amp; Bike Service at Home in Bengaluru</title>
   <link rel="manifest" href="manifest.json">
 
   <!-- ===================================================================

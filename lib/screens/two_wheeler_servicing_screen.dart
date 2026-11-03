@@ -6,6 +6,7 @@ import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../widgets/catalog_gate.dart';
 import '../models/catalog_item.dart';
+import '../services/contact_settings.dart';
 
 /// Engine-capacity tiers, the shared checklist and the oil-change add-on all
 /// come from the Supabase `services` table (screen 'bike_servicing'),
@@ -118,7 +119,7 @@ class _TwoWheelerServicingScreenState
 
   Future<void> _openWhatsApp() async {
     final uri = Uri.parse(
-      'https://wa.me/919353094672?text=${Uri.encodeComponent("Hi, I have a question about the two-wheeler servicing packages.")}',
+      ContactSettings.whatsappUrl("Hi, I have a question about the two-wheeler servicing packages."),
     );
     try {
       if (await canLaunchUrl(uri)) {

@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../services/contact_settings.dart';
 
 class FleetManagementScreen extends StatefulWidget {
   /// This screen has no per-package selection UI (Fleet Management /
@@ -288,7 +289,7 @@ class _FleetManagementScreenState extends State<FleetManagementScreen> {
                         height: 56,
                         child: ElevatedButton.icon(
                           onPressed: () async {
-                            final uri = Uri(scheme: 'tel', path: '9353094672');
+                            final uri = ContactSettings.telUri();
                             try {
                               if (await canLaunchUrl(uri)) {
                                 await launchUrl(uri);

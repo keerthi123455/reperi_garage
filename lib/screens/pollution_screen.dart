@@ -8,6 +8,7 @@ import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../widgets/catalog_gate.dart';
+import '../services/contact_settings.dart';
 
 /// Pollution-certificate pickup/drop-off offer screen.
 ///
@@ -63,7 +64,7 @@ class _PollutionScreenState extends State<PollutionScreen> {
   }
 
   Future<void> _callSupport() async {
-    await launchUrl(Uri(scheme: 'tel', path: '9353094672'));
+    await launchUrl(ContactSettings.telUri());
   }
 
 

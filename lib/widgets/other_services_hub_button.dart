@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../screens/community_screen.dart';
 import '../screens/roadside_assistance_screen.dart';
+import '../services/contact_settings.dart';
 
 /// Round yellow hub button on Home (the spanner that hops and shines).
 ///
@@ -25,7 +26,7 @@ class OtherServicesHubButton extends StatefulWidget {
     super.key,
     required this.onOpen,
     this.onSos,
-    this.phone = '9353094672',
+    this.phone,
   });
 
   /// Called after the banner closes itself, when the banner was tapped.
@@ -34,8 +35,8 @@ class OtherServicesHubButton extends StatefulWidget {
   /// SOS circle — open Roadside Assistance.
   final VoidCallback? onSos;
 
-  /// Number the Call circle dials.
-  final String phone;
+  /// Number the Call circle dials. Empty = the CRM-controlled contact number.
+  final String? phone;
 
   static const String imagePath = 'assets/images/other_reperi_services_banner_16x9.jpeg';
   static const double bannerAspect = 16 / 9;
@@ -114,10 +115,10 @@ class _OtherServicesHubButtonState extends State<OtherServicesHubButton> with Ti
       case _HubAction.call:
         setState(() => _open = false);
         try {
-          await launchUrl(Uri(scheme: 'tel', path: widget.phone));
+          await launchUrl(Uri(scheme: 'tel', path: widget.phone ?? ContactSettings.phone));
         } catch (_) {
           if (mounted) {
-            ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('Call us on ${widget.phone}')));
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('Call us on ${widget.phone ?? ContactSettings.phone}')));
           }
         }
         return;

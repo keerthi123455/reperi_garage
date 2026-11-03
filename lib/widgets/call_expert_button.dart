@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/contact_settings.dart';
+
 /// Green round "Call an expert" hub button.
 ///
 /// A green circle with a phone that hops and rings (little wiggle + sound
@@ -16,13 +18,14 @@ import 'package:url_launcher/url_launcher.dart';
 class CallExpertButton extends StatefulWidget {
   const CallExpertButton({
     super.key,
-    this.phone = kExpertPhone,
+    this.phone,
     this.labelOnLeft = true,
     this.showLabel = true,
     this.animated = true,
   });
 
-  final String phone;
+  /// Number to dial. Leave empty to use the CRM-controlled contact number.
+  final String? phone;
 
   /// Off = a plain, still green circle: no hop, ring waves, glow pulse,
   /// wiggle, shine or sliding label (e.g. the Other Services bottom bar).
@@ -36,7 +39,8 @@ class CallExpertButton extends StatefulWidget {
   /// edge) or to the right (button on the left edge).
   final bool labelOnLeft;
 
-  static const String kExpertPhone = '9353094672';
+  /// The CRM-controlled contact number (see ContactSettings).
+  static String get kExpertPhone => ContactSettings.phone;
 
   @override
   State<CallExpertButton> createState() => _CallExpertButtonState();
@@ -70,15 +74,17 @@ class _CallExpertButtonState extends State<CallExpertButton> with TickerProvider
     super.dispose();
   }
 
+  String get _phone => widget.phone ?? ContactSettings.phone;
+
   Future<void> _call() async {
     HapticFeedback.mediumImpact();
-    final uri = Uri.parse('tel:${widget.phone}');
+    final uri = Uri.parse('tel:$_phone');
     try {
       if (!await launchUrl(uri)) throw 'no dialer';
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text('Call us on ${widget.phone}')),
+        SnackBar(content: Text('Call us on $_phone')),
       );
     }
   }

@@ -5,6 +5,7 @@ import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../widgets/catalog_gate.dart';
+import '../services/contact_settings.dart';
 
 /// "Wheel Management" (WheelzCare) packages, live from the Supabase `services`
 /// table (screen 'wheel') — same structural pattern as Servicing/Washing: typographic
@@ -155,7 +156,7 @@ class _WheelManagementPackageScreenState
 
   Future<void> _openWhatsApp() async {
     final uri = Uri.parse(
-      'https://wa.me/919353094672?text=${Uri.encodeComponent("Hi, I have a question about the wheel management packages.")}',
+      ContactSettings.whatsappUrl("Hi, I have a question about the wheel management packages."),
     );
     try {
       if (await canLaunchUrl(uri)) {

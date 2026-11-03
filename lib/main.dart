@@ -12,6 +12,7 @@ import 'services/guest_mode.dart';
 import 'services/push_notification_service.dart';
 import 'services/web_display.dart';
 import 'theme/theme_controller.dart';
+import 'services/contact_settings.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -50,6 +51,8 @@ Future<void> main() async {
   // start loading them now (from the on-device cache first, then the
   // network) so package screens open instantly.
   CatalogService.ensureLoaded().catchError((_) {});
+  // Call / WhatsApp numbers set in the CRM (app_settings).
+  ContactSettings.ensureLoaded();
 
   // Shared Community links (reperi.in/community/reel|post/...) open the
   // app on that reel / post — caught here, opened after the splash.

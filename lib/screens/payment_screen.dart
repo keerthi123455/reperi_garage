@@ -16,6 +16,7 @@ import '/services/service_area.dart';
 import '../widgets/error_display.dart';
 import '../widgets/requirements.dart';
 import '../widgets/slot_picker.dart';
+import '../services/contact_settings.dart';
 
 /// Fixed white/blue corporate palette for this screen — set explicitly
 /// rather than pulled from Theme.of(context), so checkout looks identical
@@ -849,7 +850,7 @@ class _PaymentScreenState extends State<PaymentScreen>
     );
     if (retry == true) return true;
     try {
-      await launchUrl(Uri(scheme: 'tel', path: '9353094672'));
+      await launchUrl(ContactSettings.telUri());
     } catch (_) {}
     return false;
   }

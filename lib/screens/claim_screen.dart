@@ -12,6 +12,7 @@ import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../widgets/catalog_gate.dart';
 import '../widgets/requirements.dart';
+import '../services/contact_settings.dart';
 
 class ClaimScreen extends StatefulWidget {
   final String vehicleId;
@@ -76,7 +77,7 @@ class _ClaimScreenState extends State<ClaimScreen> {
 
   // Same support number home_screen.dart's _callSupport already calls —
   // reused here for the circular call button below.
-  static const String _supportPhone = '9353094672';
+  static String get _supportPhone => ContactSettings.phone;
 
   @override
   void initState() {

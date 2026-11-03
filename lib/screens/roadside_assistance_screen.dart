@@ -9,6 +9,7 @@ import 'payment_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../services/catalog_service.dart';
+import '../services/contact_settings.dart';
 
 class RoadsideAssistanceScreen extends StatefulWidget {
   /// This screen represents a single service with no sub-packages to
@@ -152,7 +153,7 @@ class _RoadsideAssistanceScreenState
   }
 
   Future<void> _callSupport() async {
-    final uri = Uri(scheme: 'tel', path: '9353094672');
+    final uri = ContactSettings.telUri();
     await launchUrl(uri);
   }
 

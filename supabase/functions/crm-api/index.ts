@@ -1343,6 +1343,55 @@ async function servicesPriceUpdate(client: SupabaseClient, body: Row, user: User
   return { ok: true };
 }
 
+// ── Contact numbers (app_settings) ──
+// contact_phone / contact_whatsapp are shown to customers in the app and on
+// reperi.in; ops_alert_whatsapp gets the "needs assigning" WhatsApp alerts.
+// Changing any of them needs the admin@trustkon.com code (same OTP as
+// prices), because a wrong number would send customers' calls elsewhere.
+const CONTACT_KEYS = ["contact_phone", "contact_whatsapp", "ops_alert_whatsapp"] as const;
+type ContactKey = typeof CONTACT_KEYS[number];
+
+/** Indian mobile / landline → "+91XXXXXXXXXX" (phone) or "91XXXXXXXXXX" (WhatsApp). */
+function normalizeContact(key: ContactKey, raw: unknown): string {
+  let d = String(raw ?? "").replace(/\D/g, "");
+  if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
+  if (d.length === 10) d = "91" + d;
+  if (!/^91[6-9]\d{9}$/.test(d) && !/^91\d{10}$/.test(d)) {
+    throw new HttpError(400, "bad_number", "Enter a 10-digit Indian number, e.g. 9180605225.");
+  }
+  return key === "contact_phone" ? "+" + d : d;
+}
+
+async function contactGet(client: SupabaseClient) {
+  const { data, error } = await client.from("app_settings")
+    .select("key,value,updated_at").in("key", [...CONTACT_KEYS]);
+  if (error) throw error;
+  const out: Row = {};
+  for (const r of data ?? []) out[String(r.key)] = { value: r.value, updated_at: r.updated_at };
+  return { contacts: out };
+}
+
+async function contactUpdate(client: SupabaseClient, body: Row, user: User) {
+  await requireOtp(client, body);
+  const key = String(body.key ?? "") as ContactKey;
+  if (!CONTACT_KEYS.includes(key)) throw new HttpError(400, "bad_request", "Unknown number.");
+  const value = normalizeContact(key, body.value);
+  const { data: cur } = await client.from("app_settings").select("value").eq("key", key).maybeSingle();
+  const before = cur?.value == null ? null : String(cur.value);
+  if (before === value) return { ok: true, value };
+  const { error } = await client.from("app_settings").upsert({
+    key, value, is_public: key !== "ops_alert_whatsapp",
+  });
+  if (error) throw error;
+  await logChange(client, {
+    booking_table: "app_settings", booking_id: key, role: "rule",
+    from_id: before, to_id: value,
+    reason: `${key} changed by ${user.email ?? "staff"}: ${before ?? "none"} → ${value}`,
+    changed_by: user.email ?? null,
+  });
+  return { ok: true, value };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -1417,6 +1466,10 @@ Deno.serve(async (req: Request) => {
         return json(await servicesList(client));
       case "services_price_update":
         return json(await servicesPriceUpdate(client, body, user));
+      case "contact_get":
+        return json(await contactGet(client));
+      case "contact_update":
+        return json(await contactUpdate(client, body, user));
       case "invoice_issue": {
         const table = String(body.table ?? "");
         const id = String(body.id ?? "");

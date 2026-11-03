@@ -7,6 +7,7 @@ import '../widgets/error_display.dart';
 import '../services/catalog_service.dart';
 import '../widgets/catalog_gate.dart';
 import '../models/catalog_item.dart';
+import '../services/contact_settings.dart';
 
 /// "Paint Care" (Car360) packages and add-ons, live from the Supabase
 /// `services` table (screen 'paint_package'; add-ons have is_addon = true) —
@@ -215,7 +216,7 @@ class _PaintCarePackageScreenState extends State<PaintCarePackageScreen> {
 
   Future<void> _openWhatsApp() async {
     final uri = Uri.parse(
-      'https://wa.me/919353094672?text=${Uri.encodeComponent("Hi, I have a question about the paint care packages.")}',
+      ContactSettings.whatsappUrl("Hi, I have a question about the paint care packages."),
     );
     try {
       if (await canLaunchUrl(uri)) {

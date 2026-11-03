@@ -1,9 +1,9 @@
 {
-    "name": "Reperi Garage",
-    "short_name": "Reperi Garage",
+    "name": "Reperi — Car & Bike Care",
+    "short_name": "Reperi",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#080808",
+    "background_color": "#FDF003",
     "theme_color": "#D4A017",
     "description": "Book trusted vehicle servicing, car spa, tyre care, paint care, and roadside assistance — all in one app.",
     "icons": [

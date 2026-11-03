@@ -28,8 +28,9 @@ import 'washing_package_screen.dart';
 import 'wheel_management_package_screen.dart';
 import '../services/catalog_service.dart';
 import '../widgets/catalog_gate.dart';
+import '../services/contact_settings.dart';
 
-const String _expertPhone = '9353094672';
+String get _expertPhone => ContactSettings.phone;
 
 /// Builds the "More Details" / "Book Now" destination screen for a
 /// [_Package], given the account's active vehicle (may be null).

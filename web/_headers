@@ -21,3 +21,20 @@
 # links; Apple expects it served as JSON.
 /.well-known/apple-app-site-association
   Content-Type: application/json
+
+# Staff-only pages: keep them out of Google search results. (Only adds an
+# X-Robots-Tag, so it merges cleanly with the Cache-Control rule above.)
+/crm.html
+  X-Robots-Tag: noindex, nofollow
+/crm-api/*
+  X-Robots-Tag: noindex, nofollow
+/delivery.html
+  X-Robots-Tag: noindex, nofollow
+/deliverydashboard.html
+  X-Robots-Tag: noindex, nofollow
+/washerdashboard.html
+  X-Robots-Tag: noindex, nofollow
+/washerlogin.html
+  X-Robots-Tag: noindex, nofollow
+/delete-account.html
+  X-Robots-Tag: noindex

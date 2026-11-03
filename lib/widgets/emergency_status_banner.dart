@@ -13,8 +13,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../services/contact_settings.dart';
 
-const String kEmergencySupportNumber = '9353094672';
+String get kEmergencySupportNumber => ContactSettings.phoneLocal;
 
 /// Package-name prefix every Roadside Assistance booking is saved under
 /// (see roadside_assistance_screen.dart) — the only marker distinguishing

@@ -795,6 +795,7 @@ const TABS = [
   ['rules', 'Assignment rules'], ['payqr', 'Payment QR'],
   ['homecms', 'Home content'],
   ['prices', 'Prices'],
+  ['contacts', 'Contact numbers'],
 ];
 function buildChrome() {
   document.querySelectorAll('#rangeSeg button').forEach((b) => {
@@ -1261,7 +1262,7 @@ function render() {
   $('pageTitle').textContent = label;
   const errs = Object.keys(state.data.errors || {});
   const banner = errs.length ? `<div class="banner">Some data couldn't be loaded (${esc(errs.join(', '))}). Everything else is accurate.</div>` : '';
-  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons, inspections, quotations, ywashes, ybcod, rules, payqr, homecms, prices }[state.tab] || overview;
+  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons, inspections, quotations, ywashes, ybcod, rules, payqr, homecms, prices, contacts }[state.tab] || overview;
   $('content').innerHTML = banner + view();
   bindRows();
   afterRender.splice(0).forEach((fn) => fn());
@@ -2236,9 +2237,14 @@ async function cmsConfirmOtp(op) {
         if (op.name) await api('content_update', { id: op.id, otp, name: op.name });
       } else if (op.kind === 'price') {
         await api('services_price_update', { key: op.key, price: op.price, otp });
+      } else if (op.kind === 'contact') {
+        await api('contact_update', { key: op.key, value: op.value, otp });
       }
       document.getElementById('cmsOtp')?.remove();
-      if (op.kind === 'price') {
+      if (op.kind === 'contact') {
+        contactState = { data: null, err: '' };
+        await loadContacts();
+      } else if (op.kind === 'price') {
         priceState = { list: null, err: '', q: priceState.q };
         await loadPrices();
       } else {
@@ -2246,6 +2252,99 @@ async function cmsConfirmOtp(op) {
         await loadCms();
       }
     } catch (e) { msg.style.color = 'var(--red)'; msg.textContent = e.message || 'Save failed'; }
+  };
+}
+
+// ── Contact numbers (app_settings) ──
+// The Call / WhatsApp numbers customers see in the app and on reperi.in,
+// plus the WhatsApp number that gets "needs assigning" alerts. Saving
+// needs the same admin@trustkon.com code as Prices.
+const CONTACT_FIELDS = [
+  ['contact_phone', 'Customer call number', 'Every "Call" button in the app and on reperi.in dials this.', 'tel'],
+  ['contact_whatsapp', 'Customer WhatsApp number', 'Every "WhatsApp" button in the app and on reperi.in opens a chat with this number. It must be on WhatsApp (app or Business app).', 'wa'],
+  ['ops_alert_whatsapp', 'Alerts go to (WhatsApp)', 'Gets a WhatsApp message when a booking comes in with no garage, so someone assigns it. Not shown to customers.', 'wa'],
+];
+let contactState = { data: null, err: '' };
+function contactPretty(v) {
+  const d = String(v ?? '').replace(/\D/g, '');
+  if (d.length === 12 && d.startsWith('91')) return '+91 ' + d.slice(2, 7) + ' ' + d.slice(7);
+  return v ? String(v) : '';
+}
+function contacts() {
+  afterRender.push(() => { if (!contactState.data && !contactState.err) loadContacts(); else bindContacts(); });
+  return `<div style="max-width:820px;display:grid;gap:16px">
+    <div class="card pad"><h3 style="margin:0 0 4px">Contact numbers</h3>
+      <div class="secondary">Change a number here and the app and reperi.in use it straight away — no app update or website deploy needed (the app picks it up next time it opens). Saving needs a 6-digit code sent to <b>admin@trustkon.com</b>.</div></div>
+    <div id="contactBody">${contactBodyHtml()}</div>
+  </div>`;
+}
+function contactBodyHtml() {
+  if (contactState.err) return `<div class="banner">${esc(contactState.err)}</div><button class="btn" data-contact-retry>Try again</button>`;
+  const d = contactState.data;
+  if (!d) return '<div class="secondary">Loading…</div>';
+  return `<div class="card" style="padding:0">${CONTACT_FIELDS.map(([key, label, help, kind]) => {
+    const cur = d[key]?.value;
+    const digits = String(cur ?? '').replace(/\D/g, '');
+    const test = !cur ? '' : kind === 'tel'
+      ? `<a class="secondary" style="font-size:12px" href="tel:+${esc(digits)}">Test call</a>`
+      : `<a class="secondary" style="font-size:12px" target="_blank" rel="noopener" href="https://wa.me/${esc(digits)}">Test WhatsApp</a>`;
+    const when = d[key]?.updated_at ? 'Changed ' + new Date(d[key].updated_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+    return `<div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:16px;border-bottom:1px solid var(--line)">
+      <div style="min-width:0">
+        <div style="font-weight:800">${esc(label)}</div>
+        <div class="secondary" style="font-size:12px;margin:2px 0 6px;line-height:1.45">${esc(help)}</div>
+        <div style="font-size:18px;font-weight:800">${cur ? esc(contactPretty(cur)) : '<span class="secondary">Not set — run supabase/contact_numbers.sql</span>'}</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">${test}<span class="secondary" style="font-size:12px">${esc(when)}</span></div>
+      </div>
+      <button class="btn btn-primary" data-contact-edit="${esc(key)}">Change</button>
+    </div>`;
+  }).join('')}</div>`;
+}
+async function loadContacts() {
+  try { contactState.data = (await api('contact_get')).contacts || {}; }
+  catch (e) { contactState.err = e.message || "Couldn't load numbers"; }
+  const el = document.getElementById('contactBody'); if (el) el.innerHTML = contactBodyHtml();
+  bindContacts();
+}
+function bindContacts() {
+  document.querySelectorAll('[data-contact-retry]').forEach((b) => b.onclick = () => { contactState = { data: null, err: '' }; loadContacts(); });
+  document.querySelectorAll('[data-contact-edit]').forEach((b) => b.onclick = () => contactOpenEditor(b.dataset.contactEdit));
+}
+function contactOpenEditor(key) {
+  const f = CONTACT_FIELDS.find((x) => x[0] === key); if (!f) return;
+  const cur = contactState.data?.[key]?.value;
+  const digits = String(cur ?? '').replace(/\D/g, '');
+  const local = digits.length === 12 && digits.startsWith('91') ? digits.slice(2) : digits;
+  const html = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999" id="contactEditor">
+    <div style="width:420px;max-width:calc(100vw - 32px);background:var(--bg);border-radius:14px;padding:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h3 style="margin:0">${esc(f[1])}</h3>
+        <button class="btn" data-contact-close>✕</button>
+      </div>
+      <div class="secondary" style="font-size:12px;line-height:1.45">${esc(f[2])}</div>
+      <label class="secondary" style="font-size:12px;display:block;margin-top:14px">New number (10 digits, India)</label>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+        <span style="font-weight:800">+91</span>
+        <input class="input" id="contactInput" inputmode="numeric" maxlength="14" value="${esc(local)}" placeholder="9180605225" style="height:44px;font-size:18px;font-weight:700;flex:1">
+      </div>
+      <div id="contactMsg" class="secondary" style="font-size:12px;margin-top:8px">Current: ${cur ? esc(contactPretty(cur)) : 'not set'}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn" data-contact-close>Cancel</button>
+        <button class="btn btn-primary" id="contactSave">Save</button>
+      </div>
+    </div></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  const close = () => document.getElementById('contactEditor')?.remove();
+  document.querySelectorAll('[data-contact-close]').forEach((b) => b.onclick = close);
+  document.getElementById('contactSave').onclick = () => {
+    let d = document.getElementById('contactInput').value.replace(/\D/g, '');
+    if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+    if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+    if (!/^\d{10}$/.test(d)) {
+      const m = document.getElementById('contactMsg'); m.style.color = 'var(--red)'; m.textContent = 'Enter a 10-digit number.'; return;
+    }
+    close();
+    cmsConfirmOtp({ kind: 'contact', key, value: d });
   };
 }
 

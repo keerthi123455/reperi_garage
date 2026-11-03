@@ -7,6 +7,7 @@ import '../widgets/error_display.dart';
 import '../services/catalog_service.dart';
 import '../widgets/catalog_gate.dart';
 import '../widgets/requirements.dart';
+import '../services/contact_settings.dart';
 
 class DetailingPackagesScreen extends StatefulWidget {
   /// When set, opens the matching category tab (PPF / Ceramic / Graphene /
@@ -62,7 +63,7 @@ class _DetailingPackagesScreenState extends State<DetailingPackagesScreen>
   }
 
   Future<void> _callExpert() async {
-    final uri = Uri.parse('tel:9353094672');
+    final uri = ContactSettings.telUri();
     try {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri);

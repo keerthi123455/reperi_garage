@@ -6,6 +6,7 @@ import '../services/catalog_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/catalog_gate.dart';
+import '../services/contact_settings.dart';
 
 class TyreCareScreen extends StatefulWidget {
   final Map<String, dynamic> vehicle;
@@ -169,7 +170,7 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
   }
 
   Future<void> _callExpert() async {
-    await launchUrl(Uri.parse('tel:9353094672'));
+    await launchUrl(ContactSettings.telUri());
   }
 
   /// This is a custom-quote request, not a fixed price — there is no
@@ -188,7 +189,7 @@ class _TyreCareScreenState extends State<TyreCareScreen> {
         ? "Hi, I'd like a quote for a tyre change."
         : "Hi, I'd like a quote for a tyre change. $details.";
     final uri = Uri.parse(
-      'https://wa.me/919353094672?text=${Uri.encodeComponent(message)}',
+      ContactSettings.whatsappUrl(message),
     );
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);

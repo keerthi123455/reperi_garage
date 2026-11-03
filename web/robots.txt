@@ -1,0 +1,7 @@
+# Reperi — reperi.in
+# Staff dashboards are kept out of Google with an X-Robots-Tag: noindex
+# header (see _headers), so they stay crawlable here on purpose.
+User-agent: *
+Allow: /
+
+Sitemap: https://reperi.in/sitemap.xml

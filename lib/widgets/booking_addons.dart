@@ -7,6 +7,7 @@ import '../services/booking_api.dart';
 import '../services/payment_service.dart';
 import '../services/payment_service_factory.dart';
 import '../theme/app_colors.dart';
+import '../services/contact_settings.dart';
 
 /// Add-ons the garage asked for on one booking, shown inside that booking's
 /// tile on the vehicle dashboard:
@@ -285,7 +286,7 @@ class AddonReviewDialog extends StatefulWidget {
 
   final Map<String, dynamic> addon;
 
-  static const String kSupportPhone = '9353094672';
+  static String get kSupportPhone => ContactSettings.phone;
 
   @override
   State<AddonReviewDialog> createState() => _AddonReviewDialogState();
@@ -452,7 +453,7 @@ class _AddonReviewDialogState extends State<AddonReviewDialog> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(content: Text('Call us on ${AddonReviewDialog.kSupportPhone}')),
+        SnackBar(content: Text('Call us on ${AddonReviewDialog.kSupportPhone}')),
       );
     }
   }

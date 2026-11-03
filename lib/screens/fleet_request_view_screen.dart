@@ -8,6 +8,7 @@ import '../services/booking_api.dart';
 import '../theme/fleet_theme.dart';
 import '../theme/garage_theme.dart' show G, GaragePlate;
 import '../widgets/error_display.dart';
+import '../services/contact_settings.dart';
 
 class FleetRequestViewScreen extends StatefulWidget {
   final Map request;
@@ -163,7 +164,7 @@ class _FleetRequestViewScreenState extends State<FleetRequestViewScreen>
   // ── Call garage ──
 
   Future<void> _callGarage() async {
-    final uri = Uri.parse('tel:9353094672');
+    final uri = ContactSettings.telUri();
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {

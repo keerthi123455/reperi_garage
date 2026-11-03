@@ -5,6 +5,7 @@ import '../theme/theme_controller.dart';
 import 'payment_screen.dart';
 import '../services/catalog_service.dart';
 import '../widgets/catalog_gate.dart';
+import '../services/contact_settings.dart';
 
 /// "Washing" (QuickCare) packages — names, prices and highlights come from
 /// the Supabase `services` table (screen 'washing'). Who each wash goes to
@@ -155,7 +156,7 @@ class _WashingPackageScreenState extends State<WashingPackageScreen>
 
   Future<void> _openWhatsApp() async {
     final uri = Uri.parse(
-      'https://wa.me/919353094672?text=${Uri.encodeComponent("Hi, I have a question about the washing packages.")}',
+      ContactSettings.whatsappUrl("Hi, I have a question about the washing packages."),
     );
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }

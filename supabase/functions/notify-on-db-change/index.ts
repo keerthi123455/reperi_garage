@@ -6,13 +6,17 @@
 //   fleet_pickup_requests (INSERT, UPDATE)
 //   fleet_chat_messages (INSERT)
 //   inspection_visit    (from the inspection_visit_notify DB trigger)
+//   inspection_booking_new (from the inspection_booking_new_notify trigger)
+//   resolve_requests    (INSERT, UPDATE)
 //
 // Resolves who should be notified for each event and sends a push via
 // OneSignal's REST API, targeting the same external-id scheme used by
 // the Flutter app's PushNotificationService:
 //   customer -> 'customer_<supabase_auth_user_id>'
 //   fleet    -> 'fleet_<fleet_users.id>'
-//   admin    -> 'admin'  (single fixed admin identity today)
+//   garage   -> 'admin_<admin.id>'  (each garage logs in as itself)
+// Anything with no garage yet (and CRM-only jobs) goes to the ops number
+// on WhatsApp instead — see alertOps().
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -73,6 +77,115 @@ async function sendPush(
   }
 }
 
+// ── WhatsApp alerts to the ops number (jobs nobody is assigned to yet) ──
+// Uses the approved utility template `ops_alert` (see supabase/ops_alerts.sql
+// for the exact template text to create in WhatsApp Manager):
+//   "Reperi alert: {{1}}  Details: {{2}}  Please open the Reperi CRM and assign this."
+// Secrets: WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID (required),
+// WHATSAPP_OPS_TEMPLATE (default ops_alert), WHATSAPP_OPS_TEMPLATE_LANG
+// (default en). The number alerts go to is set in the CRM → Contact numbers
+// (app_settings.ops_alert_whatsapp); OPS_WHATSAPP_TO is only the fallback.
+const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_TOKEN") ?? "";
+const WHATSAPP_PHONE_NUMBER_ID = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "";
+const OPS_WHATSAPP_TO = (Deno.env.get("OPS_WHATSAPP_TO") ?? "919353094672").replace(/\D/g, "");
+const OPS_TEMPLATE = Deno.env.get("WHATSAPP_OPS_TEMPLATE") ?? "ops_alert";
+const OPS_TEMPLATE_LANG = Deno.env.get("WHATSAPP_OPS_TEMPLATE_LANG") ?? "en";
+
+/** WhatsApp template parameters can't hold new lines, tabs or 4+ spaces. */
+function waParam(text: string, max: number): string {
+  const t = text.replace(/[\r\n\t]+/g, " · ").replace(/ {4,}/g, "   ").trim();
+  return (t.length > max ? `${t.slice(0, max - 1)}…` : t) || "-";
+}
+
+// The alert number from the CRM, cached for a minute per warm instance.
+let opsToCache: { value: string; at: number } | null = null;
+async function opsWhatsAppTo(): Promise<string> {
+  if (opsToCache && Date.now() - opsToCache.at < 60_000) return opsToCache.value;
+  let value = OPS_WHATSAPP_TO;
+  try {
+    const { data } = await supabaseAdmin.from("app_settings")
+      .select("value").eq("key", "ops_alert_whatsapp").maybeSingle();
+    let d = String((data as { value?: unknown } | null)?.value ?? "").replace(/\D/g, "");
+    if (d.length === 10) d = "91" + d;
+    if (d.length >= 11) value = d;
+  } catch (e) {
+    console.error("ops_alert_whatsapp lookup failed — using fallback", e);
+  }
+  opsToCache = { value, at: Date.now() };
+  return value;
+}
+
+async function alertOps(title: string, details: string): Promise<void> {
+  const to = await opsWhatsAppTo();
+  if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_NUMBER_ID || !to) {
+    console.error("WhatsApp ops alert skipped — WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID not set", { title });
+    return;
+  }
+  try {
+    const res = await fetch(`https://graph.facebook.com/v25.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${WHATSAPP_TOKEN}` },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "template",
+        template: {
+          name: OPS_TEMPLATE,
+          language: { code: OPS_TEMPLATE_LANG },
+          components: [{
+            type: "body",
+            parameters: [
+              { type: "text", text: waParam(title, 120) },
+              { type: "text", text: waParam(details, 600) },
+            ],
+          }],
+        },
+      }),
+    });
+    if (!res.ok) console.error("WhatsApp ops alert failed", res.status, await res.text());
+  } catch (e) {
+    // Never let an alert problem break the customer's notifications.
+    console.error("WhatsApp ops alert error", e);
+  }
+}
+
+/** "Keerthi · 98xxxxxx · HSR Layout · Wed 22 Oct, 11 AM – 1 PM" for the ops alert. */
+function bookingDetails(record: Record<string, unknown>): string {
+  const when = slotText(record).replace(/^ for /, "");
+  return [
+    record.customer_name,
+    record.customer_phone,
+    record.pickup_address,
+    when,
+    record.package_price,
+  ].map((v) => (v == null ? "" : String(v).trim()))
+    .filter((v) => v && v !== "Unknown" && v !== "Not specified")
+    .join(" · ") || `Booking ${String(record.id ?? "")}`;
+}
+
+/** The garage (admin id) a row is assigned to, or null. */
+async function garageOf(table: string, id: unknown): Promise<string | null> {
+  if (id == null || id === "") return null;
+  const { data } = await supabaseAdmin
+    .from(table)
+    .select("assigned_to_admin_id")
+    .eq("id", String(id))
+    .maybeSingle();
+  const v = (data as { assigned_to_admin_id?: unknown } | null)?.assigned_to_admin_id;
+  return v == null || v === "" ? null : String(v);
+}
+
+/** Push the assigned garage; if there's none yet, WhatsApp the ops number. */
+async function toGarageOrOps(
+  adminId: string | null,
+  title: string,
+  body: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  if (adminId) return sendPush(`admin_${adminId}`, title, body, data);
+  return alertOps(title, body);
+}
+
 /** " for Wed 22 Oct, 11:00 AM – 01:00 PM" — empty when no slot was picked. */
 function slotText(record: Record<string, unknown>): string {
   const date = record.slot_date ? String(record.slot_date).slice(0, 10) : "";
@@ -106,18 +219,22 @@ Deno.serve(async (req) => {
         if (type === "INSERT") {
           const packageName = String(record.package_name ?? "your service");
           const when = slotText(record);
-          // Tell the garage it was assigned to (each garage logs in as
-          // admin_<id>); fall back to the generic admin audience if unassigned.
-          const garageTarget = record.assigned_to_admin_id
-            ? `admin_${record.assigned_to_admin_id}`
-            : "admin";
+          // Garage assigned → push to that garage (admin_<id>).
+          // Nobody assigned (doorstep inspection, unknown roadside issue, empty
+          // pool) → WhatsApp the ops number so someone assigns it in the CRM.
+          const garageJob = record.assigned_to_admin_id
+            ? sendPush(
+                `admin_${record.assigned_to_admin_id}`,
+                "New booking",
+                `${packageName}${when} — a new booking just came in.`,
+                { type: "booking", bookingId: record.id },
+              )
+            : alertOps(
+                `New ${packageName} booking needs assigning`,
+                bookingDetails(record),
+              );
           await Promise.all([
-            sendPush(
-              garageTarget,
-              "New booking",
-              `${packageName}${when} — a new booking just came in.`,
-              { type: "booking", bookingId: record.id },
-            ),
+            garageJob,
             record.user_id
               ? sendPush(
                   `customer_${record.user_id}`,
@@ -155,13 +272,20 @@ Deno.serve(async (req) => {
         const when = slotText(record);
 
         if (type === "INSERT") {
+          // Garage → push it. No garage and no washer → WhatsApp ops to assign.
+          // (A washer-only wash is already handled by the washer push below.)
+          const garageJob = record.assigned_to_admin_id
+            ? sendPush(
+                `admin_${record.assigned_to_admin_id}`,
+                "New offer booking",
+                `${packageName} at ${apartment}${when} — a new offer booking just came in.`,
+                data,
+              )
+            : !record.washer_id
+              ? alertOps(`New ${packageName} at ${apartment} needs a washer`, bookingDetails(record))
+              : Promise.resolve();
           await Promise.all([
-            sendPush(
-              "admin",
-              "New offer booking",
-              `${packageName} at ${apartment}${when} — a new offer booking just came in.`,
-              data,
-            ),
+            garageJob,
             record.user_id
               ? sendPush(
                   `customer_${record.user_id}`,
@@ -206,7 +330,12 @@ Deno.serve(async (req) => {
         // Garage add-on, or one a washer added to a doorstep wash.
         const washerId = record.washer_id ? String(record.washer_id) : "";
         const who = washerId ? "washer" : "garage";
-        const team = washerId ? `washer_${washerId}` : "admin";
+        // Washer add-on → that washer. Garage add-on → the booking's garage
+        // (or the ops WhatsApp if the booking has no garage).
+        const tellTeam = async (title: string, body: string) =>
+          washerId
+            ? sendPush(`washer_${washerId}`, title, body, data)
+            : toGarageOrOps(await garageOf("bookings", record.booking_id), title, body, data);
 
         if (type === "INSERT" && record.user_id && status === "Free") {
           // ₹0 extra — nothing to approve or pay.
@@ -227,18 +356,14 @@ Deno.serve(async (req) => {
           const customer = String(record.customer_name ?? "The customer");
           if (status === "Rejected") {
             const reason = String(record.reject_reason ?? "").trim();
-            await sendPush(
-              team,
+            await tellTeam(
               "Add-on rejected",
               `${customer} rejected "${title}"${reason ? `: ${reason}` : "."}`,
-              data,
             );
           } else if (status === "Paid") {
-            await sendPush(
-              team,
+            await tellTeam(
               "Add-on approved & paid",
               `${customer} approved and paid ${price || "for"} "${title}". Go ahead with the work.`,
-              data,
             );
           }
         }
@@ -276,10 +401,12 @@ Deno.serve(async (req) => {
         if (type === "INSERT") {
           const message = String(record.message ?? "");
           if (record.sender === "consumer") {
-            await sendPush("admin", "New message", message, {
-              type: "booking_chat",
-              bookingId: record.booking_id,
-            });
+            await toGarageOrOps(
+              await garageOf("bookings", record.booking_id),
+              "New message from a customer",
+              message,
+              { type: "booking_chat", bookingId: record.booking_id },
+            );
           } else if (record.sender === "admin") {
             const { data: booking } = await supabaseAdmin
               .from("bookings")
@@ -306,10 +433,11 @@ Deno.serve(async (req) => {
           const companyName = String(
             record.company_name ?? "A fleet operator",
           );
-          await sendPush(
-            "admin",
+          const model = [record.vehicle_model, record.car_number].filter(Boolean).join(" ");
+          await toGarageOrOps(
+            record.assigned_to_admin_id == null ? null : String(record.assigned_to_admin_id),
             "New fleet pickup request",
-            `${companyName} submitted a new pickup request.`,
+            `${companyName} submitted a new pickup request${model ? ` for ${model}` : ""}.`,
             { type: "fleet_request", requestId: record.id },
           );
         } else if (type === "UPDATE") {
@@ -333,10 +461,12 @@ Deno.serve(async (req) => {
         if (type === "INSERT") {
           const message = String(record.message ?? "");
           if (record.sender_type === "fleet") {
-            await sendPush("admin", "New fleet message", message, {
-              type: "fleet_chat",
-              requestId: record.request_id,
-            });
+            await toGarageOrOps(
+              await garageOf("fleet_pickup_requests", record.request_id),
+              "New fleet message",
+              message,
+              { type: "fleet_chat", requestId: record.request_id },
+            );
           } else if (record.sender_type === "admin") {
             const { data: reqRow } = await supabaseAdmin
               .from("fleet_pickup_requests")
@@ -367,7 +497,11 @@ Deno.serve(async (req) => {
 
         if (type === "INSERT") {
           await Promise.all([
-            sendPush("admin", "New ReperiResolve request", `${car}: ${what}. Send them a price.`, data),
+            // Priced by your team in the CRM → WhatsApp the ops number.
+            alertOps(
+              "New ReperiResolve request",
+              `${car}: ${what}. ${[record.customer_name, record.customer_phone].filter(Boolean).join(" · ")} Send them a price in the CRM.`,
+            ),
             record.user_id
               ? sendPush(
                   `customer_${record.user_id}`,
@@ -396,11 +530,9 @@ Deno.serve(async (req) => {
           }
           if (accepted) {
             const who = [record.customer_name, record.customer_phone].filter(Boolean).join(" · ");
-            await sendPush(
-              "admin",
+            await alertOps(
               "ReperiResolve price accepted",
-              `${who || "Customer"} accepted ₹${Number(record.quoted_price) + Number(record.pickup_fee ?? 0)} for ${car}. Pickup is being arranged.`,
-              data,
+              `${who || "Customer"} accepted ₹${Number(record.quoted_price) + Number(record.pickup_fee ?? 0)} for ${car}. Arrange the pickup in the CRM.`,
             );
           }
         }
@@ -411,6 +543,17 @@ Deno.serve(async (req) => {
       // Sent by the inspection_visit_notify DB trigger (inspection_visits.sql)
       // on every expert assignment and step change. Customer always; the
       // newly assigned delivery partner too.
+      // ── New Vehicle Health Check (inspection_booking INSERT) ──
+      // Sent by the inspection_booking_new_notify trigger (ops_alerts.sql).
+      // Nobody is auto-assigned, so the ops number gets a WhatsApp to assign
+      // an expert in the CRM. (Doorstep Car Inspection lives in `bookings`
+      // and is covered by the bookings INSERT case above.)
+      case "inspection_booking_new": {
+        const kind = record.vehicle_type ? ` (${String(record.vehicle_type)})` : "";
+        await alertOps(`New Vehicle Health Check${kind} needs an expert`, bookingDetails(record));
+        break;
+      }
+
       case "inspection_visit": {
         const stage = String(record.inspection_stage ?? "");
         const partner = record.delivery_partner_id == null ? "" : String(record.delivery_partner_id);

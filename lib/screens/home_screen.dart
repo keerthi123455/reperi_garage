@@ -80,6 +80,7 @@ import 'vehicle_bookings_screen.dart';
 import 'washing_package_screen.dart';
 import 'wheel_management_package_screen.dart';
 import '../widgets/requirements.dart';
+import '../services/contact_settings.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -740,7 +741,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _callSupport() async {
     try {
-      await launchUrl(Uri.parse('tel:9353094672'));
+      await launchUrl(ContactSettings.telUri());
     } catch (_) {
       if (!mounted) return;
       _flash('Could not start call');
