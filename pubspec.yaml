@@ -3,7 +3,7 @@ description: "Reperi Garage - Vehicle Service Booking App"
 
 publish_to: 'none'
 
-version: 2.1.0+29
+version: 2.2.0+30
 
 environment:
   sdk: ^3.12.0
@@ -31,6 +31,12 @@ dependencies:
   file_selector: ^1.1.0
   intl: ^0.19.0
   url_launcher: ^6.2.5
+
+  ## APP UPDATE POPUP — installed version, Play Store update check,
+  ## App Store version lookup
+  package_info_plus: ">=8.0.0 <10.0.0"
+  in_app_update: ^4.2.3
+  http: ^1.2.0
 
   geolocator: ^14.0.2
   

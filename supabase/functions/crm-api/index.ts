@@ -1392,6 +1392,54 @@ async function contactUpdate(client: SupabaseClient, body: Row, user: User) {
   return { ok: true, value };
 }
 
+// ── App update popup (app_settings) ──
+// app_min_version   — apps older than this MUST update (no "Later").
+//                     "0.0.0" (or blank) = nobody is forced.
+// app_update_notes  — "What's new" lines in the popup, one per line.
+// Both are public (the app reads them). Saving needs the same OTP as prices,
+// since a wrong minimum version would lock every customer out of the app.
+const APP_UPDATE_KEYS = ["app_min_version", "app_update_notes"] as const;
+type AppUpdateKey = typeof APP_UPDATE_KEYS[number];
+
+async function appUpdateGet(client: SupabaseClient) {
+  const { data, error } = await client.from("app_settings")
+    .select("key,value,updated_at").in("key", [...APP_UPDATE_KEYS]);
+  if (error) throw error;
+  const out: Row = {};
+  for (const r of data ?? []) out[String(r.key)] = { value: r.value, updated_at: r.updated_at };
+  return { settings: out };
+}
+
+async function appUpdateUpdate(client: SupabaseClient, body: Row, user: User) {
+  await requireOtp(client, body);
+  const key = String(body.key ?? "") as AppUpdateKey;
+  if (!APP_UPDATE_KEYS.includes(key)) throw new HttpError(400, "bad_request", "Unknown setting.");
+  let value: string;
+  if (key === "app_min_version") {
+    const v = String(body.value ?? "").trim();
+    value = v === "" ? "0.0.0" : v;
+    if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value)) {
+      throw new HttpError(400, "bad_version", "Enter a version like 2.2.0 (or 0.0.0 to turn it off).");
+    }
+  } else {
+    value = String(body.value ?? "")
+      .split("\n").map((l) => l.trim()).filter((l) => l.length > 0).slice(0, 5)
+      .map((l) => l.slice(0, 80)).join("\n");
+  }
+  const { data: cur } = await client.from("app_settings").select("value").eq("key", key).maybeSingle();
+  const before = cur?.value == null ? null : String(cur.value);
+  if (before === value) return { ok: true, value };
+  const { error } = await client.from("app_settings").upsert({ key, value, is_public: true });
+  if (error) throw error;
+  await logChange(client, {
+    booking_table: "app_settings", booking_id: key, role: "rule",
+    from_id: before, to_id: value,
+    reason: `${key} changed by ${user.email ?? "staff"}: ${before ?? "none"} → ${value}`,
+    changed_by: user.email ?? null,
+  });
+  return { ok: true, value };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -1470,6 +1518,10 @@ Deno.serve(async (req: Request) => {
         return json(await contactGet(client));
       case "contact_update":
         return json(await contactUpdate(client, body, user));
+      case "app_update_get":
+        return json(await appUpdateGet(client));
+      case "app_update_update":
+        return json(await appUpdateUpdate(client, body, user));
       case "invoice_issue": {
         const table = String(body.table ?? "");
         const id = String(body.id ?? "");

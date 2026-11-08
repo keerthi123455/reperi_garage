@@ -796,6 +796,7 @@ const TABS = [
   ['homecms', 'Home content'],
   ['prices', 'Prices'],
   ['contacts', 'Contact numbers'],
+  ['appupdate', 'App update'],
 ];
 function buildChrome() {
   document.querySelectorAll('#rangeSeg button').forEach((b) => {
@@ -1262,7 +1263,7 @@ function render() {
   $('pageTitle').textContent = label;
   const errs = Object.keys(state.data.errors || {});
   const banner = errs.length ? `<div class="banner">Some data couldn't be loaded (${esc(errs.join(', '))}). Everything else is accurate.</div>` : '';
-  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons, inspections, quotations, ywashes, ybcod, rules, payqr, homecms, prices, contacts }[state.tab] || overview;
+  const view = { overview, live, bookings, deliveries, washes, claims, fleet, customers, partners, payments, cancellations, resolve, addons, inspections, quotations, ywashes, ybcod, rules, payqr, homecms, prices, contacts, appupdate }[state.tab] || overview;
   $('content').innerHTML = banner + view();
   bindRows();
   afterRender.splice(0).forEach((fn) => fn());
@@ -2239,11 +2240,16 @@ async function cmsConfirmOtp(op) {
         await api('services_price_update', { key: op.key, price: op.price, otp });
       } else if (op.kind === 'contact') {
         await api('contact_update', { key: op.key, value: op.value, otp });
+      } else if (op.kind === 'appupdate') {
+        await api('app_update_update', { key: op.key, value: op.value, otp });
       }
       document.getElementById('cmsOtp')?.remove();
       if (op.kind === 'contact') {
         contactState = { data: null, err: '' };
         await loadContacts();
+      } else if (op.kind === 'appupdate') {
+        appUpdState = { data: null, err: '' };
+        await loadAppUpd();
       } else if (op.kind === 'price') {
         priceState = { list: null, err: '', q: priceState.q };
         await loadPrices();
@@ -2345,6 +2351,104 @@ function contactOpenEditor(key) {
     }
     close();
     cmsConfirmOtp({ kind: 'contact', key, value: d });
+  };
+}
+
+// ── App update popup (app_settings) ──
+// When a newer version is on the Play Store / App Store, the app shows an
+// "Update" popup by itself (with "Later"). Here you set:
+//   * Minimum version — apps older than this MUST update (no "Later").
+//   * What's new — the lines listed in the popup.
+// Saving needs the same admin@trustkon.com code as Prices.
+let appUpdState = { data: null, err: '' };
+function appupdate() {
+  afterRender.push(() => { if (!appUpdState.data && !appUpdState.err) loadAppUpd(); else bindAppUpd(); });
+  return `<div style="max-width:820px;display:grid;gap:16px">
+    <div class="card pad"><h3 style="margin:0 0 4px">App update popup</h3>
+      <div class="secondary" style="line-height:1.55">When you publish a new version on the Play Store / App Store, customers see an <b>Update</b> popup automatically when they open the app. They can tap <b>Later</b>.<br>
+      To make an update <b>compulsory</b>, set the minimum version below to the new version number <i>after</i> it is live in both stores — older apps then can't be used until updated. Saving needs a 6-digit code sent to <b>admin@trustkon.com</b>.</div></div>
+    <div id="appUpdBody">${appUpdBodyHtml()}</div>
+  </div>`;
+}
+function appUpdBodyHtml() {
+  if (appUpdState.err) return `<div class="banner">${esc(appUpdState.err)}</div><button class="btn" data-appupd-retry>Try again</button>`;
+  const d = appUpdState.data;
+  if (!d) return '<div class="secondary">Loading…</div>';
+  const minV = String(d.app_min_version?.value ?? '').trim();
+  const forced = minV && minV !== '0.0.0';
+  const notes = String(d.app_update_notes?.value ?? '').split('\n').filter((l) => l.trim());
+  const when = (k) => d[k]?.updated_at ? 'Changed ' + new Date(d[k].updated_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  const row = (key, label, help, valueHtml) => `<div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:16px;border-bottom:1px solid var(--line)">
+      <div style="min-width:0">
+        <div style="font-weight:800">${esc(label)}</div>
+        <div class="secondary" style="font-size:12px;margin:2px 0 6px;line-height:1.45">${esc(help)}</div>
+        ${valueHtml}
+        <div class="secondary" style="font-size:12px;margin-top:4px">${esc(when(key))}</div>
+      </div>
+      <button class="btn btn-primary" data-appupd-edit="${esc(key)}">Change</button>
+    </div>`;
+  if (!d.app_min_version && !d.app_update_notes) {
+    return `<div class="banner">Not set up yet — run <code>supabase/app_update.sql</code> in Supabase once.</div>`;
+  }
+  return `<div class="card" style="padding:0">
+    ${row('app_min_version', 'Minimum version (compulsory update)',
+      'Apps older than this must update before they can be used. 0.0.0 = off (popup can be skipped).',
+      forced ? `<div style="font-size:18px;font-weight:800">${esc(minV)} <span class="pill" style="font-size:11px">Compulsory</span></div>`
+             : `<div style="font-size:18px;font-weight:800">Off <span class="secondary" style="font-size:12px;font-weight:500">(0.0.0)</span></div>`)}
+    ${row('app_update_notes', "What's new", 'Shown as a list in the popup. Up to 5 short lines.',
+      notes.length ? `<ul style="margin:4px 0 0 18px;padding:0;line-height:1.6">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`
+                   : '<div class="secondary">Empty — the popup shows a short generic line.</div>')}
+  </div>`;
+}
+async function loadAppUpd() {
+  try { appUpdState.data = (await api('app_update_get')).settings || {}; }
+  catch (e) { appUpdState.err = e.message || "Couldn't load settings"; }
+  const el = document.getElementById('appUpdBody'); if (el) el.innerHTML = appUpdBodyHtml();
+  bindAppUpd();
+}
+function bindAppUpd() {
+  document.querySelectorAll('[data-appupd-retry]').forEach((b) => b.onclick = () => { appUpdState = { data: null, err: '' }; loadAppUpd(); });
+  document.querySelectorAll('[data-appupd-edit]').forEach((b) => b.onclick = () => appUpdOpenEditor(b.dataset.appupdEdit));
+}
+function appUpdOpenEditor(key) {
+  const isVer = key === 'app_min_version';
+  const cur = String(appUpdState.data?.[key]?.value ?? (isVer ? '0.0.0' : ''));
+  const input = isVer
+    ? `<input class="input" id="appUpdInput" value="${esc(cur)}" placeholder="2.2.0" style="height:44px;font-size:18px;font-weight:700;width:100%">`
+    : `<textarea class="input" id="appUpdInput" rows="5" placeholder="New Wheel Care screen&#10;Pay per wheel for balancing" style="width:100%;padding:10px;font-size:14px;line-height:1.5">${esc(cur)}</textarea>`;
+  const help = isVer
+    ? 'Type the version that is now live on BOTH stores (e.g. 2.2.0). Anyone on an older version will have to update. Type 0.0.0 to turn this off.'
+    : 'One item per line, up to 5 lines (each up to 80 characters).';
+  const html = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999" id="appUpdEditor">
+    <div style="width:460px;max-width:calc(100vw - 32px);background:var(--bg);border-radius:14px;padding:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h3 style="margin:0">${isVer ? 'Minimum version' : "What's new"}</h3>
+        <button class="btn" data-appupd-close>✕</button>
+      </div>
+      <div class="secondary" style="font-size:12px;line-height:1.45;margin-bottom:12px">${esc(help)}</div>
+      ${input}
+      <div id="appUpdMsg" class="secondary" style="font-size:12px;margin-top:8px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn" data-appupd-close>Cancel</button>
+        <button class="btn btn-primary" id="appUpdSave">Save</button>
+      </div>
+    </div></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  const close = () => document.getElementById('appUpdEditor')?.remove();
+  document.querySelectorAll('[data-appupd-close]').forEach((b) => b.onclick = close);
+  document.getElementById('appUpdSave').onclick = () => {
+    const v = document.getElementById('appUpdInput').value;
+    const m = document.getElementById('appUpdMsg');
+    if (isVer) {
+      const t = v.trim() || '0.0.0';
+      if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(t)) { m.style.color = 'var(--red)'; m.textContent = 'Use the format 2.2.0'; return; }
+      if (t !== '0.0.0' && !confirm('Everyone on a version older than ' + t + ' will have to update before using the app. Only do this once ' + t + ' is live on BOTH the Play Store and the App Store. Continue?')) return;
+      close(); cmsConfirmOtp({ kind: 'appupdate', key, value: t });
+    } else {
+      const lines = v.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (lines.length > 5) { m.style.color = 'var(--red)'; m.textContent = 'Keep it to 5 lines.'; return; }
+      close(); cmsConfirmOtp({ kind: 'appupdate', key, value: lines.join('\n') });
+    }
   };
 }
 

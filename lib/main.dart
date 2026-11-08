@@ -13,6 +13,7 @@ import 'services/push_notification_service.dart';
 import 'services/web_display.dart';
 import 'theme/theme_controller.dart';
 import 'services/contact_settings.dart';
+import 'services/app_update_service.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -57,6 +58,10 @@ Future<void> main() async {
   // Shared Community links (reperi.in/community/reel|post/...) open the
   // app on that reel / post — caught here, opened after the splash.
   CommunityLinks.init(navigatorKey);
+
+  // "A new version of Reperi is ready" popup — checks the Play Store /
+  // App Store and the CRM's minimum version once the splash is done.
+  AppUpdateService.init(navigatorKey);
 
   Supabase.instance.client.auth.onAuthStateChange.listen((data) {
     if (data.event == AuthChangeEvent.passwordRecovery) {
@@ -104,6 +109,7 @@ class GarageApp extends StatelessWidget {
         ),
       ),
       navigatorKey: navigatorKey,
+      navigatorObservers: [AppUpdateService.observer],
       debugShowCheckedModeBanner: false,
       // Screens across the app use fixed-height tiles/cards sized for a
       // roughly 1.0 system text scale (see e.g. ServiceTile). Some
