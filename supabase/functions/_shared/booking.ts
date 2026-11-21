@@ -155,6 +155,10 @@ export interface QuoteInput {
 //                 'flat'    → ₹discount_value off
 // Optional: max_discount (₹ cap for percent), min_order, valid_from /
 // valid_until, max_uses (all customers), per_user_limit, active.
+// Also (supabase/migrations/20261121000000_one_wash_coupon.sql):
+//   user_id      → personal code, only that customer can use it
+//   service_keys → only those services are discounted, e.g. {wash_express}
+//   fixed_price  → those services cost exactly this (the ₹1 wash = 1)
 // The pickup & drop fee is never discounted, and at least ₹1 is always
 // charged (Razorpay's minimum).
 
@@ -169,6 +173,9 @@ interface CouponRow {
   valid_until: string | null;
   max_uses: number | null;
   per_user_limit: number | null;
+  user_id?: string | null;
+  service_keys?: string[] | null;
+  fixed_price?: number | string | null;
 }
 
 const COUPON_RE = /^[A-Z0-9_-]{3,30}$/;
@@ -179,9 +186,20 @@ export function normalizeCoupon(raw: unknown): string | null {
   return code ? code : null;
 }
 
+/** "Express Wash (car) or Quick Wash (bike)" — for the "works only on" message. */
+async function couponServiceNames(db: SupabaseClient, keys: string[]): Promise<string> {
+  const { data } = await db.from("services").select("key,name,vehicle_type").in("key", keys);
+  const names = ((data ?? []) as Array<{ name?: string; vehicle_type?: string }>)
+    .map((s) => `${s.name ?? ""}${s.vehicle_type === "car" || s.vehicle_type === "bike" ? ` (${s.vehicle_type})` : ""}`)
+    .filter((n) => n.trim());
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
+
 async function applyCoupon(
   db: SupabaseClient,
   code: string,
+  lines: QuoteLine[],
   subtotal: number,
   userId: string | null,
 ): Promise<number> {
@@ -193,6 +211,13 @@ async function applyCoupon(
   const c = data as CouponRow | null;
   if (!c || !c.active) throw invalid();
 
+  // Personal code (e.g. the ₹1 first-wash code): only its owner can use it.
+  // Anyone else gets the same answer as a code that doesn't exist.
+  if (c.user_id) {
+    if (!userId) throw new ApiError("coupon_sign_in", "Please sign in to use this coupon.");
+    if (String(c.user_id) !== userId) throw invalid();
+  }
+
   const now = Date.now();
   if (c.valid_from && Date.parse(c.valid_from) > now) {
     throw new ApiError("coupon_not_started", "This coupon isn't active yet.");
@@ -200,6 +225,19 @@ async function applyCoupon(
   if (c.valid_until && Date.parse(c.valid_until) < now) {
     throw new ApiError("coupon_expired", "This coupon has expired.");
   }
+
+  // Limited to some services: only those lines are discounted.
+  const onlyKeys = Array.isArray(c.service_keys) ? c.service_keys.filter((k) => typeof k === "string" && k) : [];
+  const eligible = onlyKeys.length ? lines.filter((l) => l.key !== null && onlyKeys.includes(l.key)) : lines;
+  if (onlyKeys.length && eligible.length === 0) {
+    const names = await couponServiceNames(db, onlyKeys);
+    throw new ApiError(
+      "coupon_not_applicable",
+      names ? `This coupon works only on ${names}.` : "This coupon can't be used on this booking.",
+    );
+  }
+  const base = eligible.reduce((sum, l) => sum + l.amount, 0);
+
   if (c.min_order && subtotal < c.min_order) {
     throw new ApiError("coupon_min_order", `This coupon needs a booking of at least ${rupees(c.min_order)}.`);
   }
@@ -218,11 +256,18 @@ async function applyCoupon(
     }
   }
 
-  const value = Number(c.discount_value);
-  if (!Number.isFinite(value) || value <= 0) throw invalid();
-  let discount = c.discount_type === "flat" ? Math.round(value) : Math.floor((subtotal * value) / 100);
-  if (c.max_discount && c.max_discount > 0) discount = Math.min(discount, c.max_discount);
-  discount = Math.max(0, Math.min(discount, subtotal - 1)); // always charge at least ₹1
+  let discount: number;
+  const fixed = c.fixed_price === null || c.fixed_price === undefined ? NaN : Number(c.fixed_price);
+  if (Number.isFinite(fixed) && fixed >= 0) {
+    // "This wash costs ₹1": take off everything above the fixed price.
+    discount = base - Math.round(fixed);
+  } else {
+    const value = Number(c.discount_value);
+    if (!Number.isFinite(value) || value <= 0) throw invalid();
+    discount = c.discount_type === "flat" ? Math.round(value) : Math.floor((base * value) / 100);
+    if (c.max_discount && c.max_discount > 0) discount = Math.min(discount, c.max_discount);
+  }
+  discount = Math.max(0, Math.min(discount, base, subtotal - 1)); // always charge at least ₹1
   return discount;
 }
 
@@ -349,7 +394,7 @@ export async function buildQuote(
   }
 
   const couponCode = normalizeCoupon(input.coupon);
-  const discount = couponCode ? await applyCoupon(db, couponCode, subtotal, userId) : 0;
+  const discount = couponCode ? await applyCoupon(db, couponCode, lines, subtotal, userId) : 0;
 
   return {
     kind: "service",

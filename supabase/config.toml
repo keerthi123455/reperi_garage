@@ -70,3 +70,18 @@ entrypoint = "./functions/invoice-api/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/fleet-inspection/index.ts"
+
+# "₹1 Car Wash" first-vehicle coupon: push + email. Called by the database
+# (pg_net) from supabase/migrations/20261121000000_one_wash_coupon.sql — no
+# user JWT. Each message is sent once, so extra calls do nothing.
+[functions.one-wash]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/one-wash/index.ts"
+
+# OBD Report on inspection visits (delivery dashboard). Called with the
+# expert's own login; the function checks it itself.
+[functions.obd-report]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/obd-report/index.ts"

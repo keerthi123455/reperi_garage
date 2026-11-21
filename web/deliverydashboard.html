@@ -543,6 +543,62 @@
         .insp-note { text-align: center; font-size: 13px; color: #9aa4b5; margin-top: 8px; }
         .insp-done { margin-top: 14px; padding: 12px; border-radius: 14px; background: rgba(34,197,94,.15); color: #86efac; font-weight: 800; text-align: center; }
 
+        /* ── OBD Report (inspection visits) ── */
+        .obd-btn { width: 100%; margin-top: 14px; border: 0; border-radius: 14px; padding: 15px 12px; font-size: 18px; font-weight: 900;
+            letter-spacing: .5px; cursor: pointer; background: #FDF003; color: #022B57; box-shadow: 0 0 0 5px rgba(253,240,3,.18); font-family: inherit; }
+        .obd-btn-sub { text-align: center; font-size: 13px; color: #c9d4e8; margin-top: 7px; }
+        .obd-strip { margin-top: 14px; border-radius: 14px; background: rgba(253,240,3,.12); border: 2px solid #FDF003; padding: 12px;
+            display: flex; gap: 10px; align-items: center; cursor: pointer; }
+        .obd-strip .ic { font-size: 26px; flex-shrink: 0; }
+        .obd-strip b { display: block; color: #FDF003; font-size: 15px; }
+        .obd-strip span { font-size: 12.5px; color: #dde3ee; }
+        .obd-strip .go { margin-left: auto; background: #FDF003; color: #022B57; font-weight: 900; font-size: 13px; border-radius: 10px;
+            padding: 9px 12px; white-space: nowrap; flex-shrink: 0; }
+        .obd-strip.wait { border-color: #93c5fd; background: rgba(147,197,253,.12); }
+        .obd-strip.wait b { color: #93c5fd; }
+        .obd-strip.wait .go { background: #93c5fd; }
+        .obd-x { width: 36px; height: 36px; border-radius: 50%; background: #F1EFEA; border: 0; font-size: 17px; color: #63656B; cursor: pointer; flex-shrink: 0; }
+        .obd-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .obd-step { margin-top: 18px; }
+        .obd-sn { display: flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 900; color: #15171A; }
+        .obd-num { width: 28px; height: 28px; border-radius: 50%; background: #022B57; color: #fff; font-size: 14px; display: grid; place-items: center; flex-shrink: 0; }
+        .obd-num.ok { background: #17803D; }
+        .obd-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+        .obd-shot { aspect-ratio: 1; border-radius: 12px; background: #1f2937; position: relative; overflow: hidden; }
+        .obd-shot img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; }
+        .obd-shot button { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border-radius: 50%; border: 0;
+            background: rgba(0,0,0,.65); color: #fff; font-size: 13px; cursor: pointer; }
+        .obd-add { aspect-ratio: 1; border-radius: 12px; border: 2.5px dashed #022B57; color: #022B57; background: #F4F7FC; display: flex;
+            flex-direction: column; align-items: center; justify-content: center; font-weight: 900; font-size: 12px; text-align: center; cursor: pointer; }
+        .obd-add big { font-size: 28px; line-height: 1; }
+        .obd-add input { display: none; }
+        .obd-hint { font-size: 13px; color: #63656B; margin-top: 7px; line-height: 1.4; }
+        .obd-text { width: 100%; min-height: 100px; margin-top: 10px; border: 2px solid #E3E0D8; border-radius: 14px; padding: 12px;
+            font-family: inherit; font-size: 16px; font-weight: 600; line-height: 1.4; color: #15171A; resize: vertical; box-sizing: border-box; }
+        .obd-text:focus { outline: none; border-color: #022B57; }
+        .obd-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+        .obd-chips button { border: 1.5px solid #E3E0D8; background: #fff; border-radius: 20px; padding: 7px 11px; font-size: 13.5px;
+            font-weight: 700; color: #3d4048; cursor: pointer; font-family: inherit; }
+        .obd-navy { background: #022B57; color: #fff; border: none; }
+        .obd-navy:disabled { opacity: .4; cursor: not-allowed; }
+        .obd-wa { background: #1FAF54; color: #fff; border: none; }
+        .obd-wa:disabled { opacity: .4; cursor: not-allowed; }
+        .obd-center { text-align: center; font-size: 13px; color: #63656B; margin-top: 8px; line-height: 1.4; }
+        .obd-score { display: flex; gap: 10px; margin-top: 14px; }
+        .obd-score .num { width: 104px; flex-shrink: 0; background: #0B2A6F; border-radius: 14px; color: #fff; display: flex;
+            flex-direction: column; align-items: center; justify-content: center; padding: 10px 0; }
+        .obd-score .num b { font-size: 34px; color: #FFD400; line-height: 1; }
+        .obd-score .num span { font-size: 10px; font-weight: 800; margin-top: 6px; letter-spacing: .5px; }
+        .obd-score .vd { background: #F1F3F6; border-radius: 12px; padding: 10px 11px; font-size: 13.5px; line-height: 1.42; color: #2b2e35; }
+        .obd-rt { font-size: 16px; font-weight: 900; color: #0B2A6F; margin-top: 16px; }
+        .obd-bar { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 13.5px; font-weight: 700; color: #15171A; }
+        .obd-bar span { width: 46%; flex-shrink: 0; line-height: 1.25; overflow-wrap: anywhere; }
+        .obd-bar i { flex: 1; height: 12px; background: #E3E7EE; border-radius: 4px; overflow: hidden; }
+        .obd-bar u { display: block; height: 100%; }
+        .obd-bar b { width: 22px; text-align: right; font-size: 15px; }
+        .obd-spin { width: 56px; height: 56px; border: 5px solid #E3E0D8; border-top-color: #022B57; border-radius: 50%;
+            margin: 40px auto 18px; animation: cpspin 1s linear infinite; }
+
         /* ── Collect payment (UPI QR / cash) ── */
         .cp-dim { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 9999; display: flex; align-items: flex-end; justify-content: center; }
         .cp-dim.center { align-items: center; padding: 20px; }
@@ -1033,6 +1089,7 @@
                 </div>
             `;
             loadInspPhotoUrls().catch(() => {});
+            refreshObdStatuses().catch(() => {});
         }
 
         function formatFullDateTime(iso) {
@@ -1652,6 +1709,8 @@
                     ${photos.length || canPhoto ? `
                         <div class="booking-detail-row" style="margin-top:14px"><strong>Photos (${photos.length})</strong></div>
                         <div class="insp-photos">${thumbs}${addTile}</div>` : ''}
+                    ${stage === 'analyzing' || stage === 'completed'
+                        ? `<div data-obd-slot="${escapeHtml(key)}">${renderObdEntry(key)}</div>` : ''}
                     ${action}
                 </div>
             `;
@@ -1746,6 +1805,315 @@
             });
             if (error) { alert(error.message); return; }
             await fetchAssignedBookings(currentPartnerId);
+        }
+
+        // ── OBD Report (inspection visits) ─────────────────────────────
+        // The expert photographs the OBD scanner's screens, types what the
+        // customer says is wrong and taps MAKE REPORT. The obd-report Edge
+        // Function reads the photos with AI and makes a Reperi Scan PDF
+        // (about a minute), which the expert downloads or sends to the
+        // customer on WhatsApp from their own phone.
+        const OBD_CHIPS = ['Engine light on', 'Shaking / jerking', 'Low mileage', 'Starting problem', 'Noise', 'Smoke',
+            'AC not cooling', 'Routine check - no complaint'];
+        let obdStatuses = {};       // "bookings::123" → { status, generated_at, whatsapp_opened_at }
+        let obdStatusesAt = 0;
+        let obd = null;             // the open sheet: { key, data, busy, poll, uploading }
+
+        async function obdApi(action, payload = {}) {
+            const { data, error } = await sbClient.functions.invoke('obd-report', { body: { action, ...payload } });
+            if (error) {
+                let msg = error.message || 'Something went wrong.';
+                try { const b = await error.context.json(); if (b && b.message) msg = b.message; } catch (_) {}
+                throw new Error(msg);
+            }
+            return data;
+        }
+
+        function obdPhone(wa) {
+            const d = String(wa || '');
+            return d.length === 12 && d.startsWith('91') ? `+91 ${d.slice(2, 7)} ${d.slice(7)}` : `+${d}`;
+        }
+
+        function obdTime(iso) {
+            if (!iso) return '';
+            return new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+        }
+
+        function renderObdEntry(key) {
+            const st = obdStatuses[key];
+            if (st && st.status === 'ready') {
+                return `<div class="obd-strip" onclick="openObdSheet('${escapeHtml(key)}')">
+                    <div class="ic">📋</div>
+                    <div><b>OBD report ready</b><span>${st.whatsapp_opened_at ? `Sent on WhatsApp · ${escapeHtml(obdTime(st.whatsapp_opened_at))}` : 'Not sent to the customer yet'}</span></div>
+                    <div class="go">OPEN</div></div>`;
+            }
+            if (st && st.status === 'processing') {
+                return `<div class="obd-strip wait" onclick="openObdSheet('${escapeHtml(key)}')">
+                    <div class="ic">⏳</div><div><b>Making the OBD report…</b><span>About 1 minute</span></div><div class="go">OPEN</div></div>`;
+            }
+            return `<button class="obd-btn" onclick="openObdSheet('${escapeHtml(key)}')">📋 OBD REPORT</button>
+                <div class="obd-btn-sub">${st && st.status === 'failed' ? '⚠️ Last try failed — tap to try again' : 'Photos of the OBD scanner → report for the customer'}</div>`;
+        }
+
+        async function refreshObdStatuses(force = false) {
+            const slots = document.querySelectorAll('[data-obd-slot]');
+            if (!slots.length) return;
+            if (!force && Date.now() - obdStatusesAt < 60000) {
+                slots.forEach((el) => { el.innerHTML = renderObdEntry(el.dataset.obdSlot); });
+                return;
+            }
+            obdStatusesAt = Date.now();
+            const res = await obdApi('statuses');
+            obdStatuses = (res && res.reports) || {};
+            document.querySelectorAll('[data-obd-slot]').forEach((el) => { el.innerHTML = renderObdEntry(el.dataset.obdSlot); });
+        }
+
+        function obdTarget(key) {
+            const b = bookingsIndex[key];
+            return b ? { table: b.sourceTable, id: String(b.id) } : null;
+        }
+
+        async function openObdSheet(key) {
+            const t = obdTarget(key);
+            if (!t) return;
+            closeObdSheet();
+            obd = { key, data: null, busy: false, poll: null, uploading: '', complaintDraft: null };
+            document.body.insertAdjacentHTML('beforeend',
+                `<div class="cp-dim" id="obdSheet" onclick="if (event.target === this) closeObdSheet()"><div class="cp-sheet" id="obdBody"><div class="cp-handle"></div><div class="obd-spin"></div></div></div>`);
+            try {
+                obd.data = await obdApi('get', t);
+                if (obd && obd.key === key) { renderObdSheet(); if (obd.data.status === 'processing') startObdPoll(); }
+            } catch (e) {
+                renderObdError(e.message);
+            }
+        }
+
+        function closeObdSheet() {
+            if (obd && obd.poll) clearInterval(obd.poll);
+            const changed = !!obd;
+            obd = null;
+            document.getElementById('obdSheet')?.remove();
+            if (changed) refreshObdStatuses(true).catch(() => {});
+        }
+
+        function renderObdError(msg) {
+            const body = document.getElementById('obdBody');
+            if (!body) return;
+            body.innerHTML = `<div class="cp-handle"></div>
+                <div class="obd-head"><div class="cp-h">OBD Report</div><button class="obd-x" onclick="closeObdSheet()">✕</button></div>
+                <div class="cp-err">${escapeHtml(msg || 'Something went wrong.')}</div>
+                <button class="cp-btn cp-ghost" onclick="openObdSheet(obd.key)">Try again</button>`;
+        }
+
+        function renderObdSheet() {
+            const body = document.getElementById('obdBody');
+            if (!body || !obd || !obd.data) return;
+            const d = obd.data;
+            const who = [d.customer && d.customer.name, d.vehicle].filter(Boolean).join(' · ');
+            const head = `<div class="cp-handle"></div>
+                <div class="obd-head"><div class="cp-h">OBD Report</div><button class="obd-x" onclick="closeObdSheet()">✕</button></div>
+                ${who ? `<div class="cp-sub">${escapeHtml(who)}</div>` : ''}`;
+
+            // ── Making it ──
+            if (d.status === 'processing') {
+                body.innerHTML = head + `<div class="obd-spin"></div>
+                    <div class="cp-h" style="text-align:center;font-size:20px">Making the report…</div>
+                    <div class="obd-center" style="font-size:15px">Reading ${d.photos.length} scanner photo${d.photos.length === 1 ? '' : 's'} with AI.<br>About 1 minute.</div>
+                    <div class="cp-note" style="text-align:center">You can close this — it keeps going. Open it again from the card.</div>
+                    <button class="cp-btn cp-ghost" onclick="closeObdSheet()">Close</button>`;
+                return;
+            }
+
+            // ── Ready ──
+            if (d.status === 'ready' && d.report) {
+                const r = d.report;
+                const comps = [...(r.components || [])].sort((a, b) => a.score - b.score);
+                const shown = comps.slice(0, 5);
+                const colorOf = (n) => (n >= 8 ? '#1E9E5A' : n >= 6 ? '#E8A317' : '#D64545');
+                const bars = shown.map((c) => `<div class="obd-bar"><span>${escapeHtml(c.name)}</span>
+                    <i><u style="width:${c.score * 10}%;background:${colorOf(c.score)}"></u></i><b style="color:${colorOf(c.score)}">${c.score}</b></div>`).join('');
+                const more = [comps.length > shown.length ? `+ ${comps.length - shown.length} more in the PDF` : '',
+                    r.findings ? `${r.findings} finding${r.findings === 1 ? '' : 's'} & recommendations` : ''].filter(Boolean).join(' · ');
+                const wa = d.customer && d.customer.wa;
+                body.innerHTML = head + `
+                    <div class="obd-score"><div class="num"><b>${Number(r.overall_score).toFixed(1)}</b><span>OVERALL / 10</span></div>
+                        <div class="vd"><b>${escapeHtml(r.verdict_headline || '')}</b> ${escapeHtml(r.verdict || '')}</div></div>
+                    ${bars ? `<div class="obd-rt">Needs the most attention</div>${bars}` : ''}
+                    ${more ? `<div class="obd-center" style="text-align:left">${escapeHtml(more)}</div>` : ''}
+                    <button class="cp-btn cp-green" id="obdDl" onclick="obdDownload()">⬇ DOWNLOAD PDF</button>
+                    <button class="cp-btn obd-wa" id="obdWa" onclick="obdWhatsApp()" ${wa ? '' : 'disabled'}>💬 SEND ON WHATSAPP</button>
+                    <div class="obd-center">${wa
+                        ? `Goes to ${escapeHtml(d.customer.name || 'the customer')} · ${escapeHtml(obdPhone(wa))}${r.whatsapp_opened_at ? `<br>Last opened WhatsApp at ${escapeHtml(obdTime(r.whatsapp_opened_at))}` : ''}`
+                        : 'No customer phone on this booking — download the PDF and share it yourself.'}</div>
+                    <div class="obd-center" style="margin-top:4px">Report ${escapeHtml(r.report_no || '')}</div>
+                    <button class="cp-btn cp-ghost" onclick="obdEditAgain()">Change photos / make again</button>`;
+                return;
+            }
+
+            // ── Add photos + complaint ──
+            const photos = d.photos || [];
+            const complaint = obd.complaintDraft !== null ? obd.complaintDraft : (d.complaint || '');
+            const thumbs = photos.map((p) => `<div class="obd-shot">
+                    <img src="${escapeHtml(p.url || '')}" alt="Scanner photo" onclick="if (this.src) window.open(this.src, '_blank', 'noopener')">
+                    <button title="Remove" onclick="obdRemovePhoto('${escapeHtml(p.path)}')">✕</button></div>`).join('');
+            const canAdd = photos.length < (d.max_photos || 16) && !obd.busy;
+            body.innerHTML = head + `
+                ${d.status === 'failed' && d.error ? `<div class="cp-err" style="text-align:left">${escapeHtml(d.error)}</div>` : ''}
+                <div class="obd-step">
+                    <div class="obd-sn"><span class="obd-num ${photos.length ? 'ok' : ''}">${photos.length ? '✓' : '1'}</span> Photos of the OBD scanner screen</div>
+                    <div class="obd-grid">${thumbs}${canAdd ? `<label class="obd-add"><big>＋</big>ADD<br>PHOTO
+                        <input type="file" accept="image/*" multiple onchange="obdAddPhotos(this)"></label>` : ''}</div>
+                    <div class="obd-hint">${obd.uploading ? `<b>${escapeHtml(obd.uploading)}</b>` : `${photos.length} photo${photos.length === 1 ? '' : 's'} · take one clear photo of each scanner screen: fault codes, readiness, live data, Mode 6`}</div>
+                </div>
+                <div class="obd-step">
+                    <div class="obd-sn"><span class="obd-num ${complaint.trim() ? 'ok' : ''}">${complaint.trim() ? '✓' : '2'}</span> What problem does the customer say?</div>
+                    <textarea class="obd-text" id="obdComplaint" maxlength="1500" placeholder="e.g. Engine light came on, car shakes at signals" oninput="obd.complaintDraft = this.value">${escapeHtml(complaint)}</textarea>
+                    <div class="obd-chips">${OBD_CHIPS.map((c) => `<button type="button" onclick="obdChip(this.textContent)">+ ${escapeHtml(c)}</button>`).join('')}</div>
+                </div>
+                <button class="cp-btn obd-navy" id="obdMake" onclick="obdMake()" ${photos.length && !obd.busy ? '' : 'disabled'}>✨ MAKE REPORT</button>
+                <div class="obd-center">${photos.length ? 'Takes about 1 minute' : 'Add at least 1 photo first'}</div>`;
+        }
+
+        function obdChip(text) {
+            const ta = document.getElementById('obdComplaint');
+            if (!ta || !obd) return;
+            const t = String(text).replace(/^\+\s*/, '');
+            ta.value = ta.value.trim() ? `${ta.value.trim().replace(/[.,]$/, '')}, ${t.toLowerCase()}` : t;
+            obd.complaintDraft = ta.value;
+            renderObdSheet();
+        }
+
+        function obdFileToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const r = new FileReader();
+                r.onload = () => resolve(String(r.result));
+                r.onerror = () => reject(new Error("Couldn't read that photo."));
+                r.readAsDataURL(blob);
+            });
+        }
+
+        async function obdAddPhotos(input) {
+            if (!obd || obd.busy) return;
+            const t = obdTarget(obd.key);
+            const files = [...(input.files || [])];
+            if (!t || !files.length) return;
+            const room = (obd.data.max_photos || 16) - (obd.data.photos || []).length;
+            const list = files.slice(0, Math.max(0, room));
+            obd.busy = true;
+            try {
+                for (let i = 0; i < list.length; i++) {
+                    if (!obd) return;
+                    obd.uploading = `Uploading photo ${i + 1} of ${list.length}…`;
+                    renderObdSheet();
+                    const jpeg = await inspImageToJpeg(list[i], 1600);
+                    const image = await obdFileToBase64(jpeg);
+                    obd.data = await obdApi('photo_add', { ...t, image });
+                }
+                if (files.length > list.length) alert(`Only ${obd.data.max_photos || 16} photos can be added.`);
+            } catch (e) {
+                alert('Photo upload failed: ' + (e.message || e));
+            } finally {
+                if (obd) { obd.busy = false; obd.uploading = ''; renderObdSheet(); }
+            }
+        }
+
+        async function obdRemovePhoto(path) {
+            if (!obd || obd.busy || !confirm('Remove this photo?')) return;
+            const t = obdTarget(obd.key);
+            obd.busy = true;
+            try { obd.data = await obdApi('photo_remove', { ...t, path }); }
+            catch (e) { alert(e.message); }
+            finally { if (obd) { obd.busy = false; renderObdSheet(); } }
+        }
+
+        async function obdMake() {
+            if (!obd || obd.busy) return;
+            const t = obdTarget(obd.key);
+            const ta = document.getElementById('obdComplaint');
+            const complaint = ta ? ta.value.trim() : '';
+            if (!complaint && !confirm("You didn't write the customer's problem. Make the report anyway?")) return;
+            obd.busy = true;
+            const btn = document.getElementById('obdMake');
+            if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+            try {
+                obd.data = await obdApi('generate', { ...t, complaint });
+                obd.complaintDraft = null;
+                obd.busy = false;
+                renderObdSheet();
+                if (obd.data.status === 'processing') startObdPoll();
+            } catch (e) {
+                obd.busy = false;
+                alert(e.message);
+                renderObdSheet();
+            }
+        }
+
+        function startObdPoll() {
+            if (!obd) return;
+            if (obd.poll) clearInterval(obd.poll);
+            const key = obd.key;
+            const started = Date.now();
+            obd.poll = setInterval(async () => {
+                if (!obd || obd.key !== key) return;
+                try {
+                    const d = await obdApi('get', obdTarget(key));
+                    if (!obd || obd.key !== key) return;
+                    obd.data = d;
+                    if (d.status !== 'processing' || Date.now() - started > 7 * 60000) {
+                        clearInterval(obd.poll);
+                        obd.poll = null;
+                        renderObdSheet();
+                        if (d.status === 'ready' && navigator.vibrate) navigator.vibrate(120);
+                    }
+                } catch (_) { /* network blip — keep trying */ }
+            }, 4000);
+        }
+
+        async function obdDownload() {
+            if (!obd) return;
+            const btn = document.getElementById('obdDl');
+            const label = btn ? btn.textContent : '';
+            if (btn) { btn.disabled = true; btn.textContent = 'Getting the PDF…'; }
+            try {
+                const { url, file_name } = await obdApi('download', obdTarget(obd.key));
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = file_name || 'Reperi-Scan.pdf';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            } catch (e) {
+                alert(e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = label; }
+            }
+        }
+
+        async function obdWhatsApp() {
+            if (!obd) return;
+            // Open the tab now (inside the tap) so the phone doesn't block it,
+            // then point it at WhatsApp once the link is ready.
+            const tab = window.open('', '_blank');
+            const btn = document.getElementById('obdWa');
+            if (btn) { btn.disabled = true; btn.textContent = 'Opening WhatsApp…'; }
+            try {
+                const { wa, text } = await obdApi('share', obdTarget(obd.key));
+                const link = `https://wa.me/${wa}?text=${encodeURIComponent(text)}`;
+                if (tab) tab.location.href = link; else window.location.href = link;
+                if (obd && obd.data && obd.data.report) obd.data.report.whatsapp_opened_at = new Date().toISOString();
+            } catch (e) {
+                if (tab) tab.close();
+                alert(e.message);
+            } finally {
+                if (obd) renderObdSheet();
+            }
+        }
+
+        function obdEditAgain() {
+            if (!obd || !obd.data) return;
+            obd.data.status = 'draft';
+            obd.complaintDraft = obd.data.complaint || '';
+            renderObdSheet();
         }
 
         // ── Fleet pickups (21-point inspection) ─────────────────────────
