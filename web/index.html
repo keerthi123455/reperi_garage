@@ -297,161 +297,203 @@
     }
   </style>
   <!-- ===================================================================
-       "GET THE APP" POPUP
-       Shown once per visit over the website: one Download button that
-       opens the right store for the phone (App Store on iPhone/iPad,
-       Google Play on Android), with WhatsApp chat below it. On a laptop, where
-       there is no phone to detect, the button shows the two store links.
-       The ✕ appears after 7 seconds and closes it, leaving the app's own
-       login screen underneath. Plain, solid colours, no animation.
-       No image files needed.
+       "GET THE APP" POPUP + WHATSAPP BUTTON  (website only — not the app)
+
+       Popup: shown once per visit, a moment after the app has loaded, as a
+       small card over the website's own page (the Create account / Log in
+       screen for anyone signed out). Reperi logo, "Download the Reperi app"
+       and one button that opens the right store for the phone: App Store on
+       iPhone/iPad, Play Store on Android. On a laptop it shows both. The ✕
+       appears after 7 seconds and closes it.
+
+       WhatsApp button: a floating green "Chat on WhatsApp" button with a
+       message icon, bottom right, shown only while someone is signed out —
+       i.e. on the Create account and Log in screens. Hidden once they sign
+       in, continue as a guest, or open the admin dashboard, and while they
+       are typing (so it never covers the keyboard). No image files needed.
        =================================================================== -->
   <style>
     #rp-app-popup {
       position: fixed; inset: 0; z-index: 10001;
       display: flex; align-items: center; justify-content: center;
-      padding: 16px; box-sizing: border-box; overflow-y: auto;
-      background: #0B2A6F;
+      padding: 20px; box-sizing: border-box; overflow-y: auto;
+      background: rgba(8, 14, 28, .62);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      -webkit-font-smoothing: antialiased; color: #14181F;
+      -webkit-font-smoothing: antialiased;
     }
     #rp-app-popup[hidden] { display: none; }
-    html.rp-pop-open, html.rp-pop-open body { overflow: hidden; }
     #rp-app-popup * { box-sizing: border-box; }
     #rp-app-popup .rp-card {
-      width: 100%; max-width: 400px; margin: auto;
-      background: #FFFFFF; border-radius: 16px; padding: 18px 20px 22px;
+      position: relative; width: 100%; max-width: 340px; margin: auto;
+      background: #FFFFFF; border-radius: 12px; padding: 28px 22px 22px;
+      text-align: center; box-shadow: 0 10px 30px rgba(0, 0, 0, .22);
     }
-    /* Top row: logo + title on the left, ✕ on the right. The ✕ keeps its
-       space while hidden, so nothing moves when it appears. */
-    #rp-app-popup .rp-top { display: flex; align-items: flex-start; gap: 10px; }
-    #rp-app-popup .rp-top .rp-brand { flex: 1; min-width: 0; }
-    #rp-app-popup .rp-wa {
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-      width: 100%; min-height: 48px; margin-top: 12px; padding: 8px 12px; border-radius: 12px;
-      background: #157347; color: #FFFFFF; text-decoration: none;
-      font-size: 15.5px; font-size: clamp(14px, 4vw, 15.5px); font-weight: 700; line-height: 1.25;
-      text-align: center;
-    }
-    #rp-app-popup .rp-wa svg { flex-shrink: 0; }
     #rp-app-popup .rp-x {
-      width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px;
-      border: 1px solid #D5DAE3; background: #FFFFFF; color: #0B2A6F;
-      font-size: 20px; line-height: 1; cursor: pointer; padding: 0;
+      position: absolute; top: 10px; right: 10px;
+      width: 36px; height: 36px; border-radius: 8px; border: 0; padding: 0;
+      background: #F1F3F7; color: #0B2A6F; font-size: 16px; line-height: 1; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       visibility: hidden;
     }
     #rp-app-popup .rp-x.rp-show { visibility: visible; }
-    #rp-app-popup .rp-brand { display: flex; align-items: center; gap: 14px; }
-    #rp-app-popup .rp-logo { width: 64px; height: 64px; border-radius: 14px; flex-shrink: 0; display: block; }
-    #rp-app-popup h2 { margin: 0; font-size: 24px; font-size: clamp(20px, 6.2vw, 24px); line-height: 1.2; font-weight: 800; color: #0B2A6F; }
-    #rp-app-popup .rp-keep { white-space: nowrap; }  /* "Reperi app" stays on one line */
-    #rp-app-popup .rp-tag { margin: 4px 0 0; font-size: 14px; font-weight: 600; color: #4A5263; }
-    #rp-app-popup .rp-sub { margin: 18px 0 0; font-size: 15.5px; line-height: 1.45; color: #2A303B; }
-    #rp-app-popup ul { list-style: none; margin: 14px 0 0; padding: 0; }
-    #rp-app-popup li { display: flex; align-items: center; gap: 10px; margin-top: 9px; font-size: 15px; font-weight: 600; color: #14181F; }
-    #rp-app-popup li i {
-      width: 20px; height: 20px; flex-shrink: 0; border-radius: 5px; background: #0B2A6F;
-      display: flex; align-items: center; justify-content: center;
+    #rp-app-popup .rp-logo { width: 72px; height: 72px; border-radius: 16px; display: block; margin: 0 auto; }
+    #rp-app-popup h2 {
+      margin: 16px 0 0; font-size: 21px; font-size: clamp(19px, 5.6vw, 21px);
+      line-height: 1.25; font-weight: 800; color: #0B2A6F;
     }
-    /* The one Download button. The label may wrap to two lines on small
-       phones, so it never gets cut off. */
-    #rp-app-popup .rp-dl {
+    #rp-app-popup .rp-sub { margin: 6px 0 0; font-size: 14.5px; line-height: 1.4; color: #4A5263; }
+    #rp-app-popup .rp-dl, #rp-app-popup .rp-stores a {
       display: flex; align-items: center; justify-content: center; gap: 10px;
-      width: 100%; min-height: 56px; margin-top: 22px; padding: 10px 16px; border-radius: 12px;
-      border: 0; cursor: pointer; font-family: inherit;
+      min-height: 52px; padding: 10px 14px; border-radius: 10px;
       background: #0B2A6F; color: #FFFFFF; text-decoration: none; text-align: center;
-      font-size: 16.5px; font-size: clamp(15px, 4.3vw, 16.5px); font-weight: 800; line-height: 1.25;
+      font-size: 16px; font-size: clamp(15px, 4.4vw, 16px); font-weight: 800; line-height: 1.25;
     }
+    #rp-app-popup .rp-dl { width: 100%; margin-top: 20px; }
     #rp-app-popup .rp-dl svg { flex-shrink: 0; }
-    #rp-app-popup .rp-dl-note { margin-top: 7px; text-align: center; font-size: 13px; color: #5B6372; }
-    /* Laptop only: the two store links, shown after the button is clicked. */
-    #rp-app-popup .rp-stores { display: flex; gap: 10px; margin-top: 10px; }
-    #rp-app-popup .rp-stores[hidden] { display: none; }
-    #rp-app-popup .rp-stores a {
-      flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
-      min-height: 46px; padding: 6px 10px; border-radius: 10px;
-      border: 1px solid #0B2A6F; color: #0B2A6F; background: #FFFFFF;
-      text-decoration: none; font-size: 15px; font-weight: 700; text-align: center;
-    }
-    #rp-app-popup .rp-wa-short { display: none; }
+    #rp-app-popup .rp-dl[hidden], #rp-app-popup .rp-stores[hidden] { display: none; }
+    #rp-app-popup .rp-stores { display: flex; gap: 10px; margin-top: 20px; }
+    #rp-app-popup .rp-stores a { flex: 1; min-width: 0; padding: 10px 8px; }
     @media (max-width: 350px) {
-      #rp-app-popup .rp-card { padding: 14px 14px 18px; }
-      #rp-app-popup .rp-logo { width: 52px; height: 52px; border-radius: 12px; }
-      #rp-app-popup .rp-brand { gap: 12px; }
+      /* Small phones: a little less padding and no arrow, so the button
+         text fits on one line. */
+      #rp-app-popup .rp-card { padding: 26px 16px 18px; }
+      #rp-app-popup .rp-dl svg { display: none; }
     }
-    @media (max-width: 300px) {
-      #rp-app-popup .rp-keep { white-space: normal; }
-      #rp-app-popup .rp-wa-long { display: none; }
-      #rp-app-popup .rp-wa-short { display: inline; }
+
+    #rp-wa-fab {
+      position: fixed; z-index: 9990;
+      right: 16px; bottom: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      height: 48px; padding: 0 18px 0 14px; border-radius: 24px; box-sizing: border-box;
+      display: flex; align-items: center; gap: 8px;
+      background: #157347; color: #FFFFFF; text-decoration: none; white-space: nowrap;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 15px; font-weight: 700; line-height: 1; -webkit-font-smoothing: antialiased;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, .2);
+      -webkit-tap-highlight-color: transparent;
     }
-    @media (max-height: 640px) {
-      #rp-app-popup ul { display: none; }
+    #rp-wa-fab[hidden] { display: none; }
+    #rp-wa-fab svg { flex-shrink: 0; display: block; }
+    /* Laptop: the app is shown as a 460px-wide column in the middle of the
+       window (see main.dart's _WebFrame) — keep the button in that column's
+       bottom-right corner rather than far off at the window's edge. */
+    @media (min-width: 701px) {
+      #rp-wa-fab:not(.rp-zoomed) {
+        right: calc(50vw - 230px + 16px);
+        bottom: max(16px, calc(50vh - 470px + 16px));
+      }
     }
   </style>
 </head>
 <body>
   <div id="rp-app-popup" role="dialog" aria-modal="true" aria-labelledby="rp-app-title" hidden>
     <div class="rp-card">
-      <div class="rp-top">
-        <div class="rp-brand">
-          <img class="rp-logo" src="/seo/reperi-logo-512.png" alt="Reperi">
-          <div>
-            <h2 id="rp-app-title">Get the <span class="rp-keep">Reperi app</span></h2>
-            <p class="rp-tag">Car &amp; bike care at your doorstep</p>
-          </div>
-        </div>
-        <button class="rp-x" type="button" aria-label="Close and continue to the website">&#x2715;</button>
-      </div>
-      <p class="rp-sub">Book a service in a minute, track it live and pay securely — all from your phone.</p>
-      <ul>
-        <li><i><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.3l2.4 2.4L10 3.2" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></i>Doorstep pickup &amp; drop</li>
-        <li><i><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.3l2.4 2.4L10 3.2" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></i>Live updates on every booking</li>
-        <li><i><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.3l2.4 2.4L10 3.2" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></i>Upfront prices, no surprises</li>
-      </ul>
-
-      <a class="rp-dl" id="rp-dl" href="https://play.google.com/store/apps/details?id=com.reperi.autocare.app" rel="noopener">
+      <button class="rp-x" type="button" aria-label="Close">&#x2715;</button>
+      <img class="rp-logo" src="/seo/reperi-logo-512.png" alt="Reperi">
+      <h2 id="rp-app-title">Download the Reperi app</h2>
+      <p class="rp-sub">For a better experience</p>
+      <a class="rp-dl" id="rp-dl" href="https://play.google.com/store/apps/details?id=com.reperi.autocare.app" rel="noopener" hidden>
         <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0l-4.5-4.5M12 14l4.5-4.5M4 16.5V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2.5" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>Download our app for a better experience</span>
+        <span id="rp-dl-label">Download from Play Store</span>
       </a>
-      <div class="rp-dl-note" id="rp-dl-note"></div>
       <div class="rp-stores" id="rp-stores" hidden>
         <a href="https://apps.apple.com/in/app/reperi-complete-vehicle-care/id6814854540" target="_blank" rel="noopener" data-store="ios">App Store</a>
-        <a href="https://play.google.com/store/apps/details?id=com.reperi.autocare.app" target="_blank" rel="noopener" data-store="android">Google Play</a>
+        <a href="https://play.google.com/store/apps/details?id=com.reperi.autocare.app" target="_blank" rel="noopener" data-store="android">Play Store</a>
       </div>
-
-      <a class="rp-wa" href="https://wa.me/919353094672?text=Hi%20Reperi%2C%20I%20have%20a%20question" target="_blank" rel="noopener" data-track="whatsapp">
-        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#FFFFFF" d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9.5L5 21.5V18H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 6.5a1.5 1.5 0 1 0 0 .01zm5 0a1.5 1.5 0 1 0 0 .01zm5 0a1.5 1.5 0 1 0 0 .01z"/></svg>
-        <span class="rp-wa-long">Chat with us on WhatsApp</span><span class="rp-wa-short">Chat on WhatsApp</span>
-      </a>
     </div>
   </div>
+
+  <a id="rp-wa-fab" href="https://wa.me/919353094672?text=Hi%20Reperi%2C%20I%20have%20a%20question" target="_blank" rel="noopener" data-track="whatsapp" hidden>
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#FFFFFF" d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9.5L5 21.5V18H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 6.5a1.5 1.5 0 1 0 0 .01zm5 0a1.5 1.5 0 1 0 0 .01zm5 0a1.5 1.5 0 1 0 0 .01z"/></svg>
+    <span>Chat on WhatsApp</span>
+  </a>
 
   <script>
     (function () {
       var IOS_URL = "https://apps.apple.com/in/app/reperi-complete-vehicle-care/id6814854540";
       var PLAY_URL = "https://play.google.com/store/apps/details?id=com.reperi.autocare.app";
-      var SEEN = "reperi_app_popup_v1";
+      var SEEN = "reperi_app_popup_v2";
       var CLOSE_AFTER_MS = 7000;
-      var pop = document.getElementById("rp-app-popup");
-      if (!pop) return;
+      // The app's own splash (1.2s) plays after the loader leaves — wait for
+      // it, so the popup and the WhatsApp button appear over the real page.
+      var AFTER_APP_READY_MS = 2400;
+      // If the app is very slow to start, show the popup anyway.
+      var FALLBACK_MS = 20000;
 
-      // Not on password-reset / sign-in links from emails, not inside an
-      // installed web app, and only once per visit.
+      var pop = document.getElementById("rp-app-popup");
+      var fab = document.getElementById("rp-wa-fab");
+      if (!pop || !fab) return;
+
+      // Phone showing the site as a DESKTOP page ("Desktop site", some in-app
+      // browsers): the page is ~980px wide and shrunk to fit. Scale the popup
+      // and the button back up to normal phone size (same check as the loader
+      // and main.dart's _WebFrame).
+      var zoom = null;
+      try {
+        var iw = window.innerWidth, sw = screen.width, vv = window.visualViewport;
+        var touch = (navigator.maxTouchPoints || 0) > 0, phoneWidth = null;
+        if (touch && sw > 0 && sw <= 700 && iw > sw * 1.3) phoneWidth = sw;
+        else if (touch && vv && vv.scale > 0 && vv.scale < 0.85 && iw * vv.scale <= 700) phoneWidth = iw * vv.scale;
+        if (phoneWidth && iw / phoneWidth >= 1.3) zoom = iw / phoneWidth;
+      } catch (e) {}
+      if (zoom) {
+        pop.querySelector(".rp-card").style.zoom = zoom.toFixed(3);
+        fab.style.zoom = zoom.toFixed(3);
+        fab.classList.add("rp-zoomed");
+      }
+
+      // ---------- Is anyone signed in? ----------
+      // The app keeps its sign-in in this browser's storage. Signed out (and
+      // not a guest / admin / fleet login) means the app is on its Create
+      // account or Log in screen — the only place the WhatsApp button shows.
+      function signedOut() {
+        try {
+          var ls = window.localStorage;
+          if (ls.getItem("sb-rmvxqjyoqfinbrpubsvp-auth-token")) return false;
+          if (ls.getItem("flutter.guest_mode") === "true") return false;
+          if (ls.getItem("flutter.admin_logged_in") === "true") return false;
+          if (ls.getItem("flutter.fleet_logged_in") === "true") return false;
+          return true;
+        } catch (e) { return false; }
+      }
+
+      var appReady = false, popupOpen = false, typing = false;
+      var onCommunityLink = /^\/community\//.test(location.pathname);
+      function updateFab() {
+        fab.hidden = !(appReady && !popupOpen && !typing && !onCommunityLink && signedOut());
+      }
+      setInterval(updateFab, 700);
+
+      // Hide the button while a text box in the app is being typed in, so it
+      // never sits on top of the phone keyboard or the field.
+      if ((navigator.maxTouchPoints || 0) > 0) {
+        document.addEventListener("focusin", function (e) {
+          var t = e.composedPath ? e.composedPath()[0] : e.target;
+          typing = !!t && /^(INPUT|TEXTAREA)$/.test(t.tagName || "");
+          updateFab();
+        }, true);
+        document.addEventListener("focusout", function () {
+          setTimeout(function () {
+            var a = document.activeElement;
+            while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+            typing = !!a && /^(INPUT|TEXTAREA)$/.test(a.tagName || "");
+            updateFab();
+          }, 50);
+        }, true);
+      }
+
+      // ---------- Popup: when to show ----------
       var q = location.search + location.hash;
       var authLink = /access_token|refresh_token|type=recovery|type=signup|type=magiclink|type=invite|[?&#]code=|error_description/.test(q);
       var standalone = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
       var seen = false;
       try { seen = sessionStorage.getItem(SEEN) === "1"; } catch (e) {}
-      if (authLink || standalone || seen) { pop.parentNode.removeChild(pop); return; }
+      var popupWanted = !(authLink || standalone || seen);
+      if (!popupWanted) pop.parentNode.removeChild(pop);
 
-      // Which phone is this?
+      // ---------- Popup: which store ----------
       var ua = navigator.userAgent || "";
       var ios = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
       var android = !ios && /Android/i.test(ua);
-      var dl = document.getElementById("rp-dl");
-      var note = document.getElementById("rp-dl-note");
-      var stores = document.getElementById("rp-stores");
 
       function track(store) {
         try {
@@ -460,47 +502,52 @@
         } catch (e) {}
       }
 
-      if (ios || android) {
-        // Phone: the button goes straight to the right store.
-        dl.href = ios ? IOS_URL : PLAY_URL;
-        note.textContent = ios ? "Opens the App Store" : "Opens Google Play";
-        dl.addEventListener("click", function () { track(ios ? "ios" : "android"); });
-      } else {
-        // Laptop / desktop: no phone to detect, so the button shows both
-        // store links instead of guessing.
-        dl.removeAttribute("href");
-        dl.setAttribute("role", "button");
-        dl.setAttribute("tabindex", "0");
-        dl.setAttribute("aria-controls", "rp-stores");
-        dl.setAttribute("aria-expanded", "false");
-        function showStores() {
+      if (popupWanted) {
+        var dl = document.getElementById("rp-dl");
+        var stores = document.getElementById("rp-stores");
+        if (ios || android) {
+          // Phone: one button, straight to the right store.
+          dl.href = ios ? IOS_URL : PLAY_URL;
+          document.getElementById("rp-dl-label").textContent = ios ? "Download from App Store" : "Download from Play Store";
+          dl.hidden = false;
+          dl.addEventListener("click", function () { track(ios ? "ios" : "android"); });
+        } else {
+          // Laptop: no phone to detect — both stores.
           stores.hidden = false;
-          dl.setAttribute("aria-expanded", "true");
-          note.textContent = "Choose your phone's store";
+          Array.prototype.forEach.call(stores.querySelectorAll("[data-store]"), function (a) {
+            a.addEventListener("click", function () { track(a.getAttribute("data-store")); });
+          });
         }
-        dl.addEventListener("click", function (e) { e.preventDefault(); showStores(); });
-        dl.addEventListener("keydown", function (e) {
-          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showStores(); }
-        });
-        Array.prototype.forEach.call(stores.querySelectorAll("[data-store]"), function (a) {
-          a.addEventListener("click", function () { track(a.getAttribute("data-store")); });
-        });
+
+        var x = pop.querySelector(".rp-x");
+        function closePopup() {
+          if (!x.classList.contains("rp-show")) return;
+          popupOpen = false;
+          if (pop.parentNode) pop.parentNode.removeChild(pop);
+          updateFab();
+        }
+        x.addEventListener("click", closePopup);
+        document.addEventListener("keydown", function (e) { if (e.key === "Escape") closePopup(); });
+        var showPopup = function () {
+          showPopup = function () {};
+          if (!pop.parentNode) return;
+          popupOpen = true;
+          pop.hidden = false;
+          updateFab();
+          try { sessionStorage.setItem(SEEN, "1"); } catch (e) {}
+          setTimeout(function () { x.classList.add("rp-show"); }, CLOSE_AFTER_MS);
+        };
+        setTimeout(function () { showPopup(); }, FALLBACK_MS);
       }
 
-      // Show it, then the ✕ after 7 seconds. Closing leaves the app underneath
-      // (the login screen for anyone not signed in).
-      var x = pop.querySelector(".rp-x");
-      function close() {
-        if (!x.classList.contains("rp-show")) return;
-        document.documentElement.classList.remove("rp-pop-open");
-        if (pop.parentNode) pop.parentNode.removeChild(pop);
-      }
-      pop.hidden = false;
-      document.documentElement.classList.add("rp-pop-open");
-      try { sessionStorage.setItem(SEEN, "1"); } catch (e) {}
-      setTimeout(function () { x.classList.add("rp-show"); }, CLOSE_AFTER_MS);
-      x.addEventListener("click", close);
-      document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+      // ---------- App ready ----------
+      window.addEventListener("flutter-first-frame", function () {
+        setTimeout(function () {
+          appReady = true;
+          if (popupWanted) showPopup();
+          updateFab();
+        }, AFTER_APP_READY_MS);
+      });
     })();
   </script>
 
